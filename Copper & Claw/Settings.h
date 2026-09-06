@@ -26,6 +26,22 @@ struct CopperAndClawSettings
     // This changes display order only. The saved watch list
     // remains in its original added order.
     int tradingPostWatchSortMode = 0;
+
+    // Automatic backup settings:
+    // interval:
+    // 0 = 6h
+    // 1 = 12h
+    // 2 = 24h
+    // 3 = 3d
+    // 4 = 7d
+    bool backupAutoEnabled = true;
+    int backupIntervalIndex = 2;
+
+    // Retained backup count:
+    // 0 = 5
+    // 1 = 10
+    // 2 = 20
+    int backupKeepCountIndex = 1;
 };
 
 extern CopperAndClawSettings g_Settings;

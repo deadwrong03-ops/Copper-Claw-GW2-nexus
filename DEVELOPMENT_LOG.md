@@ -13,6 +13,79 @@ Development: `Active`
 
 ---
 
+## 2026-09-06 — Backup & Restore System
+
+Added a dedicated Backup & Restore tab for protecting Copper&Claw's locally collected data without cluttering the Trading Post interface.
+
+Current user-facing behavior:
+
+- Automatic Backups can be enabled or disabled
+- automatic backups are enabled by default
+- default interval is 24 hours
+- default retention is 10 backups
+- available intervals are 6h, 12h, 24h, 3d, and 7d
+- retention options are 5, 10, or 20 backups
+- Last backup and Next backup are shown directly in the tab
+- Back Up Now creates an immediate manual backup
+- available backups are shown as a simple date/time list
+- Restore and Delete remain visually inactive until a backup is selected
+- clicking the selected backup again deselects it
+- Restore and Delete both use confirmation dialogs
+- Last restored shows the date/time of the backup most recently restored
+
+Backup contents:
+
+- `CopperAndClaw.ini`
+- `CopperAndClaw_TradingPostWatch.ini`
+- `CopperAndClaw_TradingPostHistory.tsv`
+
+The item-search cache is intentionally excluded because it can rebuild automatically.
+
+Restore safety behavior:
+
+- restore is staged while Guild Wars 2 is running
+- the selected backup is applied on the next Copper&Claw startup before Settings or Trading Post managers open the live data files
+- automatic backups pause while a restore is waiting to be applied
+- an internal safety snapshot is created before live files are replaced
+- the safety snapshot is hidden from the normal backup list
+- safety snapshots do not affect Last backup or the automatic-backup schedule
+- a successful restore removes the temporary safety snapshot
+- if replacement fails, Copper&Claw attempts to recover the previous live files from the safety snapshot
+
+The first UI pass exposed implementation details such as `[Automatic]`, `[Safety]`, `Stage Restore`, and `Restore Pending`. These were intentionally removed from the normal interface so the workflow reads like standard backup software:
+
+`select a date → Restore → restart Guild Wars 2`
+
+Restore-point tracking was then added so the user can immediately see which backup was restored.
+
+Example:
+
+`Last restored: Sep 6, 2026 2:20 AM`
+
+The success message also identifies the restored backup:
+
+`Restored backup from Sep 6, 2026 2:20 AM.`
+
+In-game validation confirmed:
+
+- automatic first backup creation
+- manual Back Up Now
+- Last backup / Next backup scheduling
+- Delete confirmation
+- Restore confirmation
+- restore staging
+- restore application after Guild Wars 2 restart
+- internal safety snapshot behavior
+- internal safety snapshots remain hidden from the normal list
+- normal backup list remains intact after restore
+- Last restored persists across restart
+- restored backup timestamp is displayed correctly
+- backup-row select/deselect behavior
+- Restore/Delete inactive appearance when no backup is selected
+- clean rebuild after compatibility adjustment for the Nexus-bundled ImGui version
+
+**Result: PASS**
+
 ## 2026-09-06 — Most / Least Volatile Watch-List Sorting
 
 Extended the persistent watch-list sorting system with two additional options:
@@ -262,6 +335,13 @@ The following systems are currently working in-game:
 - local-history disclaimer
 - sell/buy history sparklines
 - historical min/avg/max values
+- dedicated Backup & Restore tab
+- automatic rolling backups
+- manual Back Up Now
+- restore/delete confirmation flow
+- staged restore on next startup
+- internal pre-restore safety protection
+- persistent Last restored restore-point tracking
 
 **Current overall status: Core standalone functionality is working and the current build is a release candidate.**
 

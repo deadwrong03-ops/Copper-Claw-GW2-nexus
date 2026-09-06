@@ -102,6 +102,33 @@ bool Settings::Load(
                     .tradingPostWatchSortMode =
                     std::stoi(value);
             }
+            else if (
+                key ==
+                "backupAutoEnabled"
+                )
+            {
+                g_Settings
+                    .backupAutoEnabled =
+                    std::stoi(value) != 0;
+            }
+            else if (
+                key ==
+                "backupIntervalIndex"
+                )
+            {
+                g_Settings
+                    .backupIntervalIndex =
+                    std::stoi(value);
+            }
+            else if (
+                key ==
+                "backupKeepCountIndex"
+                )
+            {
+                g_Settings
+                    .backupKeepCountIndex =
+                    std::stoi(value);
+            }
         }
         catch (...)
         {
@@ -122,6 +149,20 @@ bool Settings::Load(
             g_Settings.tradingPostWatchSortMode,
             0,
             6
+        );
+
+    g_Settings.backupIntervalIndex =
+        std::clamp(
+            g_Settings.backupIntervalIndex,
+            0,
+            4
+        );
+
+    g_Settings.backupKeepCountIndex =
+        std::clamp(
+            g_Settings.backupKeepCountIndex,
+            0,
+            2
         );
 
     return true;
@@ -159,6 +200,27 @@ bool Settings::Save(
         << "tradingPostWatchSortMode="
         << g_Settings
         .tradingPostWatchSortMode
+        << '\n';
+
+    file
+        << "backupAutoEnabled="
+        << (
+            g_Settings.backupAutoEnabled
+            ? 1
+            : 0
+            )
+        << '\n';
+
+    file
+        << "backupIntervalIndex="
+        << g_Settings
+        .backupIntervalIndex
+        << '\n';
+
+    file
+        << "backupKeepCountIndex="
+        << g_Settings
+        .backupKeepCountIndex
         << '\n';
 
     return true;

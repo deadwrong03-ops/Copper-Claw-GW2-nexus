@@ -3,6 +3,8 @@
 #include "nexus/Nexus.h"
 #include "imgui/imgui.h"
 
+#include "BackupManager.h"
+#include "BackupUI.h"
 #include "Settings.h"
 #include "TradingPostHistoryManager.h"
 #include "TradingPostItemIndexManager.h"
@@ -96,9 +98,23 @@ void AddonLoad(
         APIDefs->ImguiFree
     );
 
+    //
+    // Apply any staged restore before Settings or any manager
+    // opens the live Copper&Claw data files.
+    //
+    BackupManager::
+        ApplyPendingRestore(
+            hSelf
+        );
+
     Settings::Load(
         hSelf
     );
+
+    BackupManager::
+        Start(
+            hSelf
+        );
 
     TradingPostPriceManager::
         Start();
@@ -147,6 +163,9 @@ void AddonUnload()
         hSelf
     );
 
+    BackupManager::
+        Shutdown();
+
     TradingPostWatchManager::
         Shutdown();
 
@@ -191,6 +210,9 @@ void AddonRender()
     TradingPostWatchManager::
         Update();
 
+    BackupManager::
+        Update();
+
     const bool isGameplay =
         NexusLink != nullptr &&
         NexusLink->IsGameplay;
@@ -217,9 +239,42 @@ void AddonOptions()
 
     ImGui::Separator();
 
-    TradingPostUI::RenderTab(
-        hSelf
-    );
+    if (
+        ImGui::BeginTabBar(
+            "##CopperAndClawOptionsTabs"
+        )
+        )
+    {
+        if (
+            ImGui::BeginTabItem(
+                "Trading Post"
+            )
+            )
+        {
+            TradingPostUI::
+                RenderTab(
+                    hSelf
+                );
+
+            ImGui::EndTabItem();
+        }
+
+        if (
+            ImGui::BeginTabItem(
+                "Backup & Restore"
+            )
+            )
+        {
+            BackupUI::
+                RenderTab(
+                    hSelf
+                );
+
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
