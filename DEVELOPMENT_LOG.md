@@ -13,6 +13,31 @@ Development: `Active`
 
 ---
 
+## 2026-09-06 — Most / Least Volatile Watch-List Sorting
+
+Extended the persistent watch-list sorting system with two additional options:
+
+- Most Volatile
+- Least Volatile
+
+Behavior:
+
+- volatility sorting uses Sell Listing price movement inside the selected Trend Window
+- it uses the same volatility calculation as the Market Analysis badge
+- an item must meet the volatility readiness requirements before it receives a sortable volatility value
+- readiness requires at least 15 selected-window samples and at least 75% gap-aware selected-window coverage
+- items still classified as `DEVELOPING` are placed below items with mature volatility data
+- the sort remains display-only and does not rewrite the saved watch-list order
+- the selected sort mode continues to persist in `CopperAndClaw.ini`
+
+In-game testing confirmed both new sort options appear correctly in the dropdown.
+
+Because the currently watched items are still `DEVELOPING`, final live ranking behavior will become directly observable once multiple items have mature volatility data.
+
+**Result: UI / INTEGRATION PASS — LIVE RANKING VALIDATION PENDING MATURE DATA**
+
+---
+
 ## 2026-09-06 — Colored Volatility Badge
 
 Added a compact volatility classification to Market Analysis.
@@ -61,6 +86,8 @@ Current sort options:
 - Closest to Target
 - Biggest Price Drop
 - Biggest Price Rise
+- Most Volatile
+- Least Volatile
 
 Behavior:
 
@@ -71,6 +98,8 @@ Behavior:
 - items without a usable target/current price sort below items with usable target data
 - Biggest Price Drop / Rise use Sell Listing trend percentage over the selected Trend Window
 - items without usable trend history sort below items with usable trend data
+- Most Volatile / Least Volatile use the same gap-aware volatility readiness rules as Market Analysis
+- items still marked `DEVELOPING` sort below items with mature volatility data
 
 In-game testing confirmed the watch list reorders correctly.
 
@@ -236,7 +265,7 @@ The following systems are currently working in-game:
 
 **Current overall status: Core standalone functionality is working and the current build is a release candidate.**
 
-No public Copper&Claw release has been published yet.
+Copper&Claw has since published releases through `v0.1.1`.
 
 ---
 

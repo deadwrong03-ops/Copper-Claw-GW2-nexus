@@ -48,8 +48,12 @@ Current sort options:
 - Closest to Target
 - Biggest Price Drop
 - Biggest Price Rise
+- Most Volatile
+- Least Volatile
 
-Price-rise and price-drop sorting use the selected **Trend Window**.
+Price-rise, price-drop, and volatility sorting use the selected **Trend Window**.
+
+Volatility sorting uses the same gap-aware history requirements as the Volatility badge. Items still marked **DEVELOPING** are placed below items with mature volatility data.
 
 ---
 

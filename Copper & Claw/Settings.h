@@ -20,6 +20,8 @@ struct CopperAndClawSettings
     // 2 = Closest to Target
     // 3 = Biggest Price Drop
     // 4 = Biggest Price Rise
+    // 5 = Most Volatile
+    // 6 = Least Volatile
     //
     // This changes display order only. The saved watch list
     // remains in its original added order.

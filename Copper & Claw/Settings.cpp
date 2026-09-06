@@ -121,7 +121,7 @@ bool Settings::Load(
         std::clamp(
             g_Settings.tradingPostWatchSortMode,
             0,
-            4
+            6
         );
 
     return true;

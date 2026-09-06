@@ -927,7 +927,9 @@ void TradingPostUI::RenderTab(
         "Name A-Z",
         "Closest to Target",
         "Biggest Price Drop",
-        "Biggest Price Rise"
+        "Biggest Price Rise",
+        "Most Volatile",
+        "Least Volatile"
     };
 
     const uint64_t trendWindowSeconds =
@@ -2750,6 +2752,9 @@ void TradingPostUI::RenderTab(
 
         bool hasSellTrend = false;
         double sellTrendPercent = 0.0;
+
+        bool hasVolatility = false;
+        double volatilityPercent = 0.0;
     };
 
     std::vector<WatchSortMetric>
@@ -2816,7 +2821,11 @@ void TradingPostUI::RenderTab(
                 g_Settings.tradingPostWatchSortMode ==
                 3 ||
                 g_Settings.tradingPostWatchSortMode ==
-                4
+                4 ||
+                g_Settings.tradingPostWatchSortMode ==
+                5 ||
+                g_Settings.tradingPostWatchSortMode ==
+                6
                 )
             {
                 const std::vector<
@@ -2827,18 +2836,53 @@ void TradingPostUI::RenderTab(
                         sortItem.itemID
                     );
 
-                const TrendInfo sortSellTrend =
-                    CalculateTrend(
-                        sortHistory,
-                        true,
-                        trendWindowSeconds
-                    );
+                if (
+                    g_Settings.tradingPostWatchSortMode ==
+                    3 ||
+                    g_Settings.tradingPostWatchSortMode ==
+                    4
+                    )
+                {
+                    const TrendInfo sortSellTrend =
+                        CalculateTrend(
+                            sortHistory,
+                            true,
+                            trendWindowSeconds
+                        );
 
-                metric.hasSellTrend =
-                    sortSellTrend.available;
+                    metric.hasSellTrend =
+                        sortSellTrend.available;
 
-                metric.sellTrendPercent =
-                    sortSellTrend.percentChange;
+                    metric.sellTrendPercent =
+                        sortSellTrend.percentChange;
+                }
+                else
+                {
+                    const WindowCoverageInfo sortWindowCoverage =
+                        CalculateGapAwareCoverage(
+                            sortHistory,
+                            trendWindowSeconds
+                        );
+
+                    const bool sortVolatilityReady =
+                        sortWindowCoverage.sampleCount >=
+                        15 &&
+                        sortWindowCoverage.coverage >=
+                        0.75;
+
+                    const VolatilityInfo sortVolatility =
+                        CalculateVolatility(
+                            sortHistory,
+                            trendWindowSeconds,
+                            sortVolatilityReady
+                        );
+
+                    metric.hasVolatility =
+                        sortVolatility.available;
+
+                    metric.volatilityPercent =
+                        sortVolatility.relativeStdDevPercent;
+                }
             }
 
             watchSortMetrics.push_back(
@@ -3040,6 +3084,114 @@ void TradingPostUI::RenderTab(
                     return
                         metricA->sellTrendPercent >
                         metricB->sellTrendPercent;
+                }
+
+                return
+                    a.name <
+                    b.name;
+            }
+        );
+        break;
+
+    case 5:
+        std::stable_sort(
+            watchedItems.begin(),
+            watchedItems.end(),
+            [&FindWatchSortMetric](
+                const TradingPostWatchItem& a,
+                const TradingPostWatchItem& b
+                )
+            {
+                const WatchSortMetric* metricA =
+                    FindWatchSortMetric(
+                        a.itemID
+                    );
+
+                const WatchSortMetric* metricB =
+                    FindWatchSortMetric(
+                        b.itemID
+                    );
+
+                const bool hasA =
+                    metricA != nullptr &&
+                    metricA->hasVolatility;
+
+                const bool hasB =
+                    metricB != nullptr &&
+                    metricB->hasVolatility;
+
+                if (hasA != hasB)
+                {
+                    return hasA;
+                }
+
+                if (!hasA)
+                {
+                    return false;
+                }
+
+                if (
+                    metricA->volatilityPercent !=
+                    metricB->volatilityPercent
+                    )
+                {
+                    return
+                        metricA->volatilityPercent >
+                        metricB->volatilityPercent;
+                }
+
+                return
+                    a.name <
+                    b.name;
+            }
+        );
+        break;
+
+    case 6:
+        std::stable_sort(
+            watchedItems.begin(),
+            watchedItems.end(),
+            [&FindWatchSortMetric](
+                const TradingPostWatchItem& a,
+                const TradingPostWatchItem& b
+                )
+            {
+                const WatchSortMetric* metricA =
+                    FindWatchSortMetric(
+                        a.itemID
+                    );
+
+                const WatchSortMetric* metricB =
+                    FindWatchSortMetric(
+                        b.itemID
+                    );
+
+                const bool hasA =
+                    metricA != nullptr &&
+                    metricA->hasVolatility;
+
+                const bool hasB =
+                    metricB != nullptr &&
+                    metricB->hasVolatility;
+
+                if (hasA != hasB)
+                {
+                    return hasA;
+                }
+
+                if (!hasA)
+                {
+                    return false;
+                }
+
+                if (
+                    metricA->volatilityPercent !=
+                    metricB->volatilityPercent
+                    )
+                {
+                    return
+                        metricA->volatilityPercent <
+                        metricB->volatilityPercent;
                 }
 
                 return
