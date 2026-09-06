@@ -2,7 +2,7 @@
 
 Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Post prices, building local price history, analyzing market movement, and alerting you when watched items reach a target price.
 
-<img src="screenshots/main.jpg" alt="Copper&Claw Trading Post watch list" width="1000">
+<img src="screenshots/main.jpg" alt="Copper&Claw Trading Post watch list" width="150">
 
 ## Status
 
@@ -95,7 +95,7 @@ Copper&Claw also reports:
 
 This helps prevent limited or interrupted local history from being presented as mature market data.
 
-<img src="screenshots/marketanalysis.jpg" alt="Copper&Claw Market Analysis and local price history" width="1000">
+<img src="screenshots/marketanalysis.jpg" alt="Copper&Claw Market Analysis and local price history" width="150">
 
 ---
 
@@ -105,7 +105,7 @@ Set a Sell Target for any watched item.
 
 When the current lowest sell listing reaches or drops below that target, Copper&Claw displays a celebration alert.
 
-<img src="screenshots/targetalert.jpg" alt="Copper&Claw Target Reached alert" width="720">
+<img src="screenshots/targetalert.jpg" alt="Copper&Claw Target Reached alert" width="150">
 
 Alerts include:
 
@@ -135,7 +135,7 @@ Copper&Claw can distinguish variants such as:
 - Expertise
 - Condition Damage
 
-<img src="screenshots/variantsearch.jpg" alt="Copper&Claw variant-aware Trading Post search" width="650">
+<img src="screenshots/variantsearch.jpg" alt="Copper&Claw variant-aware Trading Post search" width="150">
 
 This makes it easier to select the exact Trading Post listing you intended to watch.
 
@@ -172,7 +172,7 @@ New installations begin with **no historical market data from before tracking st
 
 Copper&Claw includes a dedicated **Backup & Restore** tab for protecting locally collected data.
 
-<img src="screenshots/backuprestore.jpg" alt="Copper&Claw Backup and Restore tab" width="1000">
+<img src="screenshots/backuprestore.jpg" alt="Copper&Claw Backup and Restore tab" width="150">
 
 Automatic backups are enabled by default.
 
@@ -226,7 +226,7 @@ The item-search cache is not included because Copper&Claw can rebuild it automat
 
 On first launch, Copper&Claw builds a searchable Trading Post item index using the Guild Wars 2 API.
 
-<img src="screenshots/itemindex.jpg" alt="Copper&Claw first-time Trading Post item indexing" width="650">
+<img src="screenshots/itemindex.jpg" alt="Copper&Claw first-time Trading Post item indexing" width="150">
 
 While the index is building:
 
