@@ -13,6 +13,17 @@ struct CopperAndClawSettings
     // 7 = 30d
     // 8 = 90d
     int tradingPostTrendWindowIndex = 1;
+
+    // Watch-list display sorting:
+    // 0 = Added Order
+    // 1 = Name A-Z
+    // 2 = Closest to Target
+    // 3 = Biggest Price Drop
+    // 4 = Biggest Price Rise
+    //
+    // This changes display order only. The saved watch list
+    // remains in its original added order.
+    int tradingPostWatchSortMode = 0;
 };
 
 extern CopperAndClawSettings g_Settings;

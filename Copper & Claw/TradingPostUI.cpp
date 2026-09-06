@@ -921,6 +921,15 @@ void TradingPostUI::RenderTab(
         "90d"
     };
 
+    const char* watchSortLabels[] =
+    {
+        "Added Order",
+        "Name A-Z",
+        "Closest to Target",
+        "Biggest Price Drop",
+        "Biggest Price Rise"
+    };
+
     const uint64_t trendWindowSeconds =
         trendWindowSecondsOptions[
             g_Settings.tradingPostTrendWindowIndex
@@ -1922,6 +1931,276 @@ void TradingPostUI::RenderTab(
                 outAverageSell > 0;
         };
 
+    enum class VolatilityLevel
+    {
+        Developing,
+        Calm,
+        Normal,
+        Active,
+        Wild
+    };
+
+    struct VolatilityInfo
+    {
+        VolatilityLevel level =
+            VolatilityLevel::Developing;
+
+        double relativeStdDevPercent =
+            0.0;
+
+        bool available =
+            false;
+    };
+
+    auto CalculateVolatility =
+        [](
+            const std::vector<
+            TradingPostHistoryPoint
+            >& points,
+            uint64_t windowSeconds,
+            bool analysisReady
+            )
+        {
+            VolatilityInfo result;
+
+            if (
+                !analysisReady ||
+                points.size() < 2 ||
+                windowSeconds == 0
+                )
+            {
+                return result;
+            }
+
+            const uint64_t newestTimestamp =
+                points.back().
+                timestampUnixSeconds;
+
+            if (newestTimestamp < windowSeconds)
+            {
+                return result;
+            }
+
+            const uint64_t startTimestamp =
+                newestTimestamp -
+                windowSeconds;
+
+            double total =
+                0.0;
+
+            size_t sampleCount =
+                0;
+
+            for (
+                const TradingPostHistoryPoint& point :
+                points
+                )
+            {
+                if (
+                    point.timestampUnixSeconds <
+                    startTimestamp ||
+                    point.sellUnitPrice == 0
+                    )
+                {
+                    continue;
+                }
+
+                total +=
+                    static_cast<double>(
+                        point.sellUnitPrice
+                        );
+
+                ++sampleCount;
+            }
+
+            if (sampleCount < 2)
+            {
+                return result;
+            }
+
+            const double mean =
+                total /
+                static_cast<double>(
+                    sampleCount
+                    );
+
+            if (mean <= 0.0)
+            {
+                return result;
+            }
+
+            double squaredDifferenceTotal =
+                0.0;
+
+            for (
+                const TradingPostHistoryPoint& point :
+                points
+                )
+            {
+                if (
+                    point.timestampUnixSeconds <
+                    startTimestamp ||
+                    point.sellUnitPrice == 0
+                    )
+                {
+                    continue;
+                }
+
+                const double difference =
+                    static_cast<double>(
+                        point.sellUnitPrice
+                        ) -
+                    mean;
+
+                squaredDifferenceTotal +=
+                    difference *
+                    difference;
+            }
+
+            const double variance =
+                squaredDifferenceTotal /
+                static_cast<double>(
+                    sampleCount
+                    );
+
+            const double standardDeviation =
+                std::sqrt(
+                    variance
+                );
+
+            result.relativeStdDevPercent =
+                standardDeviation /
+                mean *
+                100.0;
+
+            result.available =
+                true;
+
+            if (
+                result.relativeStdDevPercent <
+                0.75
+                )
+            {
+                result.level =
+                    VolatilityLevel::Calm;
+            }
+            else if (
+                result.relativeStdDevPercent <
+                2.0
+                )
+            {
+                result.level =
+                    VolatilityLevel::Normal;
+            }
+            else if (
+                result.relativeStdDevPercent <
+                5.0
+                )
+            {
+                result.level =
+                    VolatilityLevel::Active;
+            }
+            else
+            {
+                result.level =
+                    VolatilityLevel::Wild;
+            }
+
+            return result;
+        };
+
+    auto DrawStatusBadge =
+        [](
+            const char* label,
+            const ImVec4& color
+            )
+        {
+            const ImVec2 textSize =
+                ImGui::CalcTextSize(
+                    label
+                );
+
+            const float paddingX =
+                7.0f;
+
+            const float paddingY =
+                2.0f;
+
+            const ImVec2 start =
+                ImGui::GetCursorScreenPos();
+
+            const ImVec2 badgeSize(
+                textSize.x +
+                paddingX * 2.0f,
+                textSize.y +
+                paddingY * 2.0f
+            );
+
+            ImDrawList* drawList =
+                ImGui::GetWindowDrawList();
+
+            const ImVec4 backgroundColor(
+                color.x * 0.28f,
+                color.y * 0.28f,
+                color.z * 0.28f,
+                0.95f
+            );
+
+            const ImVec4 borderColor(
+                color.x,
+                color.y,
+                color.z,
+                0.85f
+            );
+
+            drawList->AddRectFilled(
+                start,
+                ImVec2(
+                    start.x +
+                    badgeSize.x,
+                    start.y +
+                    badgeSize.y
+                ),
+                ImGui::GetColorU32(
+                    backgroundColor
+                ),
+                4.0f
+            );
+
+            drawList->AddRect(
+                start,
+                ImVec2(
+                    start.x +
+                    badgeSize.x,
+                    start.y +
+                    badgeSize.y
+                ),
+                ImGui::GetColorU32(
+                    borderColor
+                ),
+                4.0f,
+                0,
+                1.0f
+            );
+
+            drawList->AddText(
+                ImVec2(
+                    start.x +
+                    paddingX,
+                    start.y +
+                    paddingY
+                ),
+                ImGui::GetColorU32(
+                    color
+                ),
+                label
+            );
+
+            ImGui::Dummy(
+                badgeSize
+            );
+        };
+
     auto DrawTrendText =
         [&](
             const char* label,
@@ -2413,6 +2692,31 @@ void TradingPostUI::RenderTab(
         Settings::Save(moduleHandle);
     }
 
+    ImGui::SameLine();
+
+    ImGui::SetNextItemWidth(
+        145.0f
+    );
+
+    if (ImGui::Combo(
+        "Sort Watch List",
+        &g_Settings.tradingPostWatchSortMode,
+        watchSortLabels,
+        static_cast<int>(
+            sizeof(
+                watchSortLabels
+                ) /
+            sizeof(
+                watchSortLabels[
+                    0
+                ]
+                )
+            )
+    ))
+    {
+        Settings::Save(moduleHandle);
+    }
+
     ImGui::Spacing();
 
     ImGui::TextDisabled(
@@ -2432,6 +2736,323 @@ void TradingPostUI::RenderTab(
     > watchedItems =
         TradingPostWatchManager::
         GetItems();
+
+    //
+    // Sorting is intentionally display-only. GetItems() returns a copy,
+    // so the user's persisted watch-list order is never rewritten.
+    //
+    struct WatchSortMetric
+    {
+        uint32_t itemID = 0;
+
+        bool hasTargetDistance = false;
+        double targetDistanceRatio = 0.0;
+
+        bool hasSellTrend = false;
+        double sellTrendPercent = 0.0;
+    };
+
+    std::vector<WatchSortMetric>
+        watchSortMetrics;
+
+    if (
+        g_Settings.tradingPostWatchSortMode >= 2 &&
+        !watchedItems.empty()
+        )
+    {
+        watchSortMetrics.reserve(
+            watchedItems.size()
+        );
+
+        for (
+            const TradingPostWatchItem& sortItem :
+            watchedItems
+            )
+        {
+            WatchSortMetric metric;
+            metric.itemID =
+                sortItem.itemID;
+
+            TradingPostPrice sortPrice;
+
+            const bool hasSortPrice =
+                TradingPostPriceManager::
+                TryGetPrice(
+                    sortItem.itemID,
+                    sortPrice
+                );
+
+            if (
+                sortItem.targetSellCopper > 0 &&
+                hasSortPrice &&
+                sortPrice.available &&
+                sortPrice.sellUnitPrice > 0
+                )
+            {
+                metric.hasTargetDistance =
+                    true;
+
+                const double target =
+                    static_cast<double>(
+                        sortItem.targetSellCopper
+                        );
+
+                const double currentSell =
+                    static_cast<double>(
+                        sortPrice.sellUnitPrice
+                        );
+
+                metric.targetDistanceRatio =
+                    currentSell <= target
+                    ? 0.0
+                    : (
+                        currentSell -
+                        target
+                        ) /
+                    target;
+            }
+
+            if (
+                g_Settings.tradingPostWatchSortMode ==
+                3 ||
+                g_Settings.tradingPostWatchSortMode ==
+                4
+                )
+            {
+                const std::vector<
+                    TradingPostHistoryPoint
+                > sortHistory =
+                    TradingPostHistoryManager::
+                    GetHistory(
+                        sortItem.itemID
+                    );
+
+                const TrendInfo sortSellTrend =
+                    CalculateTrend(
+                        sortHistory,
+                        true,
+                        trendWindowSeconds
+                    );
+
+                metric.hasSellTrend =
+                    sortSellTrend.available;
+
+                metric.sellTrendPercent =
+                    sortSellTrend.percentChange;
+            }
+
+            watchSortMetrics.push_back(
+                metric
+            );
+        }
+    }
+
+    auto FindWatchSortMetric =
+        [&watchSortMetrics](
+            uint32_t itemID
+            ) ->
+        const WatchSortMetric*
+        {
+            for (
+                const WatchSortMetric& metric :
+                watchSortMetrics
+                )
+            {
+                if (metric.itemID == itemID)
+                {
+                    return &metric;
+                }
+            }
+
+            return nullptr;
+        };
+
+    switch (
+        g_Settings.tradingPostWatchSortMode
+        )
+    {
+    case 1:
+        std::stable_sort(
+            watchedItems.begin(),
+            watchedItems.end(),
+            [](
+                const TradingPostWatchItem& a,
+                const TradingPostWatchItem& b
+                )
+            {
+                return
+                    a.name <
+                    b.name;
+            }
+        );
+        break;
+
+    case 2:
+        std::stable_sort(
+            watchedItems.begin(),
+            watchedItems.end(),
+            [&FindWatchSortMetric](
+                const TradingPostWatchItem& a,
+                const TradingPostWatchItem& b
+                )
+            {
+                const WatchSortMetric* metricA =
+                    FindWatchSortMetric(
+                        a.itemID
+                    );
+
+                const WatchSortMetric* metricB =
+                    FindWatchSortMetric(
+                        b.itemID
+                    );
+
+                const bool hasA =
+                    metricA != nullptr &&
+                    metricA->hasTargetDistance;
+
+                const bool hasB =
+                    metricB != nullptr &&
+                    metricB->hasTargetDistance;
+
+                if (hasA != hasB)
+                {
+                    return hasA;
+                }
+
+                if (!hasA)
+                {
+                    return false;
+                }
+
+                if (
+                    metricA->targetDistanceRatio !=
+                    metricB->targetDistanceRatio
+                    )
+                {
+                    return
+                        metricA->targetDistanceRatio <
+                        metricB->targetDistanceRatio;
+                }
+
+                return
+                    a.name <
+                    b.name;
+            }
+        );
+        break;
+
+    case 3:
+        std::stable_sort(
+            watchedItems.begin(),
+            watchedItems.end(),
+            [&FindWatchSortMetric](
+                const TradingPostWatchItem& a,
+                const TradingPostWatchItem& b
+                )
+            {
+                const WatchSortMetric* metricA =
+                    FindWatchSortMetric(
+                        a.itemID
+                    );
+
+                const WatchSortMetric* metricB =
+                    FindWatchSortMetric(
+                        b.itemID
+                    );
+
+                const bool hasA =
+                    metricA != nullptr &&
+                    metricA->hasSellTrend;
+
+                const bool hasB =
+                    metricB != nullptr &&
+                    metricB->hasSellTrend;
+
+                if (hasA != hasB)
+                {
+                    return hasA;
+                }
+
+                if (!hasA)
+                {
+                    return false;
+                }
+
+                if (
+                    metricA->sellTrendPercent !=
+                    metricB->sellTrendPercent
+                    )
+                {
+                    return
+                        metricA->sellTrendPercent <
+                        metricB->sellTrendPercent;
+                }
+
+                return
+                    a.name <
+                    b.name;
+            }
+        );
+        break;
+
+    case 4:
+        std::stable_sort(
+            watchedItems.begin(),
+            watchedItems.end(),
+            [&FindWatchSortMetric](
+                const TradingPostWatchItem& a,
+                const TradingPostWatchItem& b
+                )
+            {
+                const WatchSortMetric* metricA =
+                    FindWatchSortMetric(
+                        a.itemID
+                    );
+
+                const WatchSortMetric* metricB =
+                    FindWatchSortMetric(
+                        b.itemID
+                    );
+
+                const bool hasA =
+                    metricA != nullptr &&
+                    metricA->hasSellTrend;
+
+                const bool hasB =
+                    metricB != nullptr &&
+                    metricB->hasSellTrend;
+
+                if (hasA != hasB)
+                {
+                    return hasA;
+                }
+
+                if (!hasA)
+                {
+                    return false;
+                }
+
+                if (
+                    metricA->sellTrendPercent !=
+                    metricB->sellTrendPercent
+                    )
+                {
+                    return
+                        metricA->sellTrendPercent >
+                        metricB->sellTrendPercent;
+                }
+
+                return
+                    a.name <
+                    b.name;
+            }
+        );
+        break;
+
+    default:
+        // Added Order: leave the display copy exactly as returned.
+        break;
+    }
 
     if (watchedItems.empty())
     {
@@ -2998,6 +3619,18 @@ void TradingPostUI::RenderTab(
             selectedWindowCoverage >= 0.75 &&
             sellTrend.available &&
             buyTrend.available;
+
+        const bool volatilityAnalysisReady =
+            windowCoverage.sampleCount >=
+            minimumAnalysisSamples &&
+            selectedWindowCoverage >= 0.75;
+
+        const VolatilityInfo volatility =
+            CalculateVolatility(
+                history,
+                trendWindowSeconds,
+                volatilityAnalysisReady
+            );
 
         const TrendInfo observedSellTrend =
             sellTrend.available
@@ -3837,6 +4470,88 @@ void TradingPostUI::RenderTab(
                 {
                     ImGui::SetTooltip(
                         "Observations inside the selected trend window."
+                    );
+                }
+
+                const char* volatilityLabel =
+                    "DEVELOPING";
+
+                ImVec4 volatilityColor =
+                    mutedColor;
+
+                if (volatility.available)
+                {
+                    switch (volatility.level)
+                    {
+                    case VolatilityLevel::Calm:
+                        volatilityLabel =
+                            "CALM";
+
+                        volatilityColor =
+                            ImVec4(
+                                0.40f,
+                                0.88f,
+                                0.62f,
+                                1.00f
+                            );
+                        break;
+
+                    case VolatilityLevel::Normal:
+                        volatilityLabel =
+                            "NORMAL";
+
+                        volatilityColor =
+                            ImVec4(
+                                0.45f,
+                                0.76f,
+                                1.00f,
+                                1.00f
+                            );
+                        break;
+
+                    case VolatilityLevel::Active:
+                        volatilityLabel =
+                            "ACTIVE";
+
+                        volatilityColor =
+                            attentionColor;
+                        break;
+
+                    case VolatilityLevel::Wild:
+                        volatilityLabel =
+                            "WILD";
+
+                        volatilityColor =
+                            ImVec4(
+                                1.00f,
+                                0.42f,
+                                0.24f,
+                                1.00f
+                            );
+                        break;
+
+                    default:
+                        break;
+                    }
+                }
+
+                ImGui::TextDisabled(
+                    "Volatility"
+                );
+
+                ImGui::SameLine(
+                    125.0f
+                );
+
+                DrawStatusBadge(
+                    volatilityLabel,
+                    volatilityColor
+                );
+
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip(
+                        "How widely sell-listing prices have moved during the selected Trend Window. DEVELOPING is shown until Copper&Claw has enough gap-aware history."
                     );
                 }
 

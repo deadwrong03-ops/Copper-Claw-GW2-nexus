@@ -93,6 +93,15 @@ bool Settings::Load(
                     .tradingPostTrendWindowIndex =
                     std::stoi(value);
             }
+            else if (
+                key ==
+                "tradingPostWatchSortMode"
+                )
+            {
+                g_Settings
+                    .tradingPostWatchSortMode =
+                    std::stoi(value);
+            }
         }
         catch (...)
         {
@@ -106,6 +115,13 @@ bool Settings::Load(
             g_Settings.tradingPostTrendWindowIndex,
             0,
             8
+        );
+
+    g_Settings.tradingPostWatchSortMode =
+        std::clamp(
+            g_Settings.tradingPostWatchSortMode,
+            0,
+            4
         );
 
     return true;
@@ -137,6 +153,12 @@ bool Settings::Save(
         << "tradingPostTrendWindowIndex="
         << g_Settings
         .tradingPostTrendWindowIndex
+        << '\n';
+
+    file
+        << "tradingPostWatchSortMode="
+        << g_Settings
+        .tradingPostWatchSortMode
         << '\n';
 
     return true;
