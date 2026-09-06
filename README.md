@@ -3,7 +3,7 @@
 
 Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Post prices, building local price history, analyzing market movement, and alerting you when watched items reach a target price.
 
-<img src="screenshots/main.jpg" alt="Copper&Claw Trading Post watch list" width="300">
+<img width="1499" height="1177" alt="main" src="https://github.com/user-attachments/assets/b2582388-e137-4c12-ac6a-d3b1e31cd1ac" />
 
 ## Status
 
@@ -40,7 +40,8 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 Watched items display their official Guild Wars 2 item icon directly beside the item name.
 
-<img src="screenshots/itemicon.jpg" alt="Copper&Claw watched items with Guild Wars 2 item icons" width="300">
+
+<img width="365" height="335" alt="itemicon" src="https://github.com/user-attachments/assets/6d127eea-fdb2-41c0-93a4-76f4bb6bab87" />
 
 Icons are loaded from the Guild Wars 2 item data used by Copper&Claw's searchable Trading Post index.
 
@@ -108,7 +109,8 @@ Copper&Claw also reports:
 
 This helps prevent limited or interrupted local history from being presented as mature market data.
 
-<img src="screenshots/marketanalysis.jpg" alt="Copper&Claw Market Analysis and local price history" width="300">
+<img width="1497" height="1179" alt="marketanalysis" src="https://github.com/user-attachments/assets/57479002-ec6f-4e55-a33d-b898ccd273da" />
+
 
 ---
 
@@ -118,7 +120,7 @@ Set a Sell Target for any watched item.
 
 When the current lowest sell listing reaches or drops below that target, Copper&Claw displays a celebration alert.
 
-<img src="screenshots/targetalert.jpg" alt="Copper&Claw Target Reached alert" width="300">
+<img width="722" height="237" alt="targetalert" src="https://github.com/user-attachments/assets/d96b2118-75e9-4ba6-ba68-d9c2396d6628" />
 
 Alerts include:
 
@@ -148,7 +150,7 @@ Copper&Claw can distinguish variants such as:
 - Expertise
 - Condition Damage
 
-<img src="screenshots/varientsearch.jpg" alt="Copper&Claw variant-aware Trading Post search" width="300">
+<img width="541" height="214" alt="varientsearch" src="https://github.com/user-attachments/assets/f352a56f-e1df-4e14-9b0b-5d0120f96611" />
 
 This makes it easier to select the exact Trading Post listing you intended to watch.
 
@@ -185,7 +187,7 @@ New installations begin with **no historical market data from before tracking st
 
 Copper&Claw includes a dedicated **Backup & Restore** tab for protecting locally collected data.
 
-<img src="screenshots/backuprestore.jpg" alt="Copper&Claw Backup and Restore tab" width="300">
+<img width="1500" height="1174" alt="backuprestore" src="https://github.com/user-attachments/assets/e2b355ba-1edb-479f-acb8-bc405b950aa8" />
 
 Automatic backups are enabled by default.
 
@@ -239,7 +241,8 @@ The item-search cache is not included because Copper&Claw can rebuild it automat
 
 On first launch, Copper&Claw builds a searchable Trading Post item index using the Guild Wars 2 API.
 
-<img src="screenshots/itemindex.jpg" alt="Copper&Claw first-time Trading Post item indexing" width="600">
+
+<img width="543" height="56" alt="itemindex" src="https://github.com/user-attachments/assets/fe8e9588-9d5b-43ab-80d9-0b0cb555a305" />
 
 While the index is building:
 
@@ -261,8 +264,8 @@ allow it to finish before judging search behavior.
 Some Copper&Claw updates may require the Trading Post item index to rebuild.
 
 When this applies, Copper&Claw displays a one-time notice after the updated addon is loaded.
+<img width="470" height="146" alt="updatenotification" src="https://github.com/user-attachments/assets/f6074c48-49f1-4e53-9b9c-3d53635ad518" />
 
-<img src="screenshots/updatenotification.jpg" alt="Copper&Claw post-update item index notification" width="600">
 
 The rebuild starts automatically and may take a couple minutes.
 
