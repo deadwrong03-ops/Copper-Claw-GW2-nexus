@@ -13,6 +13,22 @@ Development: `Active`
 
 ---
 
+## 2026-09-06 — Version Metadata Sync
+
+Updated the standalone addon version metadata in `entry.cpp` so the running addon matches the current published release.
+
+Changes:
+
+- Nexus addon version changed from `0.1.0` to `0.1.1`
+- in-app footer changed from `Copper&Claw v0.1.0 - Development Build` to `Copper&Claw v0.1.1 - Development Build`
+- no functional Trading Post, backup, history, or settings behavior was changed
+
+The README and project overview already identified `v0.1.1` as the latest published release, so no README version change was required.
+
+A clean rebuild completed successfully and the updated version display was verified in-game.
+
+**Result: PASS**
+
 ## 2026-09-06 — Backup & Restore System
 
 Added a dedicated Backup & Restore tab for protecting Copper&Claw's locally collected data without cluttering the Trading Post interface.
