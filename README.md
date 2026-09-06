@@ -1,4 +1,4 @@
-﻿# Copper&Claw
+﻿
 <img width="75" height="75" alt="logo" src="https://github.com/user-attachments/assets/42abe8a1-7768-448f-a85a-d2bab4e7b667" />
 <img width="75" height="75" alt="SELLBUYstats" src="https://github.com/user-attachments/assets/486adbda-3460-4ca9-a713-00dfa3567230" />
 <img width="75" height="75" alt="Targethitboxlarge" src="https://github.com/user-attachments/assets/38b269cf-c077-450d-a564-d85a5d150cde" />
@@ -9,270 +9,130 @@
 
 
 
-Copper&Claw is a standalone Guild Wars 2 Nexus addon for watching Trading Post prices, building local price history, analyzing market movement, and alerting when watched items reach a user-defined sell target.
+# Copper&Claw
 
-## Current Status
+Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Post prices, building local price history, and alerting you when watched items hit your target price.
 
-**Version:** 0.1.0  
-**Status:** Release candidate / final pre-release validation passed
+## Status
 
-Core Trading Post functionality has been separated into its own addon, tested successfully in-game, and has completed the current release-candidate validation pass.
+**Version:** 0.1.1  
+**Status:** Active pre-release / release-candidate build
 
-## Features
+---
 
-- Watch multiple Guild Wars 2 Trading Post items
+## Screenshots
+
+<img width="75" height="75" alt="Muliitemwatch" src="https://github.com/user-attachments/assets/d0616ef8-69db-49cb-a75d-2e8f8d1cc11f" />
+<img width="75" height="75" alt="multiwatchitemsearchuncheckapi" src="https://github.com/user-attachments/assets/685f3ef5-37b4-487e-a2fe-441b372d2aa2" />
+<img width="75" height="75" alt="targethitsmall" src="https://github.com/user-attachments/assets/5d5507b5-8693-45ed-b70a-63b8a88bd496" />
+
+---
+
+## Main Features
+
+- Watch multiple Trading Post items
 - Automatic price refresh every 60 seconds
 - Manual per-item refresh
-- Refresh all watched items
-- Current lowest sell listing
-- Current highest buy order
-- Per-item Sell Target using gold / silver / copper inputs
-- Target status: No Target / Wait / Target Reached
-- Queued target alerts
-- Dragon Bash-style celebratory target popup
-- Dismiss Party action for active alerts
-- Persistent watched-item list
-- Persistent target prices
-- Persistent local Trading Post price history
-- Preserve-all historical observation policy
+- Refresh All
+- Current **lowest sell listing**
+- Current **highest buy order**
+- Per-item **Sell Target** using gold / silver / copper inputs
+- Persistent watched items, targets, settings, and price history
 - Cached searchable Trading Post item index
 - Item search without requiring manual item IDs
-- Variant-aware search for duplicate-name Trading Post items
-- Player-friendly stat labels for item variants
-- Searchable stat variants such as Power, Precision, Concentration, and Expertise
-- Configurable trend window
-- Persisted trend-window selection
-- Collapsible Details / History section
-- Separate Sell Listings and Buy Orders market analysis
-- Sell-listing direction and percentage change
-- Buy-order direction and percentage change
-- Recent-average comparisons
-- Price-position analysis
-- Buyer-facing market signal
-- Seller-facing market signal
-- Analysis confidence level
-- Selected-window coverage display
-- Observation/sample count
-- Current Trading Post spread
-- Sell and buy history sparklines
-- Historical minimum / average / maximum prices
+- Variant-aware search for duplicate-name items
+- Sell / Buy price-history sparklines
+- Historical minimum / average / maximum values
+- Dragon Bash-style **target reached** popup
 
-## Local Data
-
-Copper&Claw stores its data alongside the loaded addon module.
-
-Files currently used:
-
-- `CopperAndClaw.ini`
-- `CopperAndClaw_TradingPostWatch.ini`
-- `CopperAndClaw_TradingPostHistory.tsv`
-- `CopperAndClaw_TradingPostItemIndex.tsv`
-
-These files allow the addon to restore settings, watched items, targets, cached item-search data, and locally collected price history between game sessions.
-
-## Local Price History
-
-Copper&Claw builds its own Trading Post price-history database from observations collected while an item is being watched.
-
-Copper&Claw does **not** have access to historical Trading Post prices from before the item began being tracked locally.
-
-On a new installation, market history begins accumulating from the time tracking starts.
-
-The addon displays the following notice in-game:
-
-> Historical note: Copper&Claw builds its own price history from the time you begin tracking an item. No earlier market history is available on initial install.
-
-Developing analysis may also display:
-
-> Analysis is based only on locally collected history.
-
-This is important when interpreting longer trend windows such as 7d, 30d, or 90d on newly tracked items.
-
-## Price History Retention
-
-Copper&Claw preserves every successfully recorded Trading Post observation.
-
-Historical observations are no longer automatically compacted, downsampled, or discarded as they age.
-
-This means the local Trading Post history file can grow over time, but collected market data is preserved instead of silently losing detail.
+---
 
 ## Market Analysis
 
-Copper&Claw separates Trading Post analysis into the two different sides of the market so rising prices do not produce confusing or contradictory wording.
+Copper&Claw separates the two sides of the Trading Post market:
 
 ### Sell Listings
-
-Sell Listings represent the lowest current price a buyer would pay to purchase an item immediately.
-
-Copper&Claw can display:
-
+Shows:
 - Direction
-  - Getting More Expensive
-  - Getting Cheaper
-  - Stable
-  - Developing
-- Percentage change over the selected trend window
+- % movement
 - Recent average
-- Percentage difference from the recent average
 - Price position
-  - Well Below Recent Avg
-  - Below Recent Avg
-  - Near Recent Avg
-  - Above Recent Avg
-  - Well Above Recent Avg
 - Buyer-facing signal
-  - Favorable
-  - Worth Watching
-  - Typical
-  - Caution
-  - Developing
-
-Price position is given greater importance than trend direction so a rising market is not automatically labeled overpriced.
-
-For example, a sell listing can be rising while still remaining below its recent average.
 
 ### Buy Orders
-
-Buy Orders represent the highest current amount another player is offering to pay for the item.
-
-Copper&Claw can display:
-
+Shows:
 - Direction
-  - Buyers Offering More
-  - Buyers Offering Less
-  - Stable
-  - Developing
-- Percentage change over the selected trend window
+- % movement
 - Recent average
-- Percentage difference from the recent average
 - Price position
-  - Well Above Recent Avg
-  - Above Recent Avg
-  - Near Recent Avg
-  - Below Recent Avg
-  - Well Below Recent Avg
 - Seller-facing signal
-  - Favorable
-  - Worth Watching
-  - Typical
-  - Weak
-  - Developing
 
-Sell Listings and Buy Orders are analyzed separately because the same movement has different meaning depending on which side of the Trading Post market is being viewed.
+### Confidence & Coverage
+Copper&Claw also shows:
+- Confidence
+- Gap-aware coverage
+- Sample count inside the selected trend window
 
-### Compact Market Summary
+This helps avoid misleading analysis when local history is still limited.
 
-Each watched item can display a compact summary such as:
-
-`Listings: More Expensive +1.19% | Buy Orders: Higher +0.38% | Conf HIGH`
-
-This provides a quick market snapshot without requiring the Details / History section to remain expanded.
-
-### Confidence and Coverage
-
-Copper&Claw avoids presenting newly collected data as mature historical analysis.
-
-Analysis considers:
-
-- observation count inside the selected trend window
-- amount of locally collected history
-- selected trend window
-- whether sufficient history exists for the requested comparison
-- gap-aware coverage of the selected window
-- long offline periods without observations
-
-Current confidence levels include:
-
-- LOW
-- MEDIUM
-- HIGH
-
-The UI also displays:
-
-- gap-aware coverage
-- sample count for the selected trend window
-- selected history window
-
-Coverage discounts long periods where Copper&Claw was not actually observing the market while still accounting for historical retention behavior from older builds.
-
-Coverage duration is shown with additional precision where useful, such as `1d 7h` instead of only `1d`.
-
-This helps distinguish a mature analysis from one that is still developing.
-
-## Trading Post Item Search
-
-Copper&Claw builds a local searchable index of Trading Post items using the Guild Wars 2 public API.
-
-The index is cached locally, remains searchable between sessions, can rebuild when needed, and ranks exact matches before broader matches.
-
-Current cache file:
-
-`CopperAndClaw_TradingPostItemIndex.tsv`
-
-### Duplicate-Name / Stat Variants
-
-Some Guild Wars 2 Trading Post items share the same visible item name while using different item IDs and separate Trading Post listings.
-
-Copper&Claw detects available stat/attribute metadata for these items and uses it to distinguish variants directly in search results.
-
-For example, instead of several identical entries such as:
-
-`Festive Confetti Infusion (Item ID: ...)`
-
-search results can display:
-
-- `Festive Confetti Infusion - Power`
-- `Festive Confetti Infusion - Precision`
-- `Festive Confetti Infusion - Toughness`
-- `Festive Confetti Infusion - Vitality`
-- `Festive Confetti Infusion - Healing Power`
-- `Festive Confetti Infusion - Concentration`
-- `Festive Confetti Infusion - Expertise`
-- `Festive Confetti Infusion - Condition Damage`
-
-This makes it easier to select the exact Trading Post listing being watched without relying on item IDs alone.
-
-Player-facing labels are used where the API exposes internal attribute names.
-
-Current mappings include:
-
-- `ConditionDamage` → `Condition Damage`
-- `Healing` → `Healing Power`
-- `BoonDuration` → `Concentration`
-- `ConditionDuration` → `Expertise`
-- `AgonyResistance` → omitted from the visible label when it would only add clutter
-
-Variant labels are also included in search matching, allowing searches such as:
-
-`festive confetti concentration`
-
-to narrow toward the appropriate stat version.
-
-Older item-index cache files without variant metadata can still be read, but Copper&Claw will rebuild the index so newer variant information can be added.
+---
 
 ## Target Alerts
 
-A Sell Target represents the maximum sell listing price the user is willing to pay.
+When a watched item’s lowest sell listing reaches or drops below your Sell Target, Copper&Claw shows a celebration popup.
 
-If the current lowest sell listing reaches or drops below the configured target, Copper&Claw triggers a celebratory alert.
+<img width="75" height="75" alt="Targethitboxlarge" src="https://github.com/user-attachments/assets/38b269cf-c077-450d-a564-d85a5d150cde" />
 
-The alert includes:
-
-- TARGET REACHED!
+Alert includes:
+- **TARGET REACHED!**
 - item name
 - current sell price
-- user target price
-- animated confetti and celebration effects
-- Dismiss Party button
+- your target price
+- confetti / celebration effects
+- **Dismiss Party** button
 
-Multiple triggered targets are queued and shown one at a time.
+Multiple alerts are queued and shown one at a time.
 
-Dismissed alerts remain latched rather than immediately retriggering from the same already-reached price condition.
+---
 
-## Trend Windows
+## Variant-Aware Search
 
-Current trend-window options:
+Some Guild Wars 2 items share the same visible name but have different item IDs and separate Trading Post listings.
 
+Before:
+
+<img width="200" height="251" alt="preconfettifix" src="https://github.com/user-attachments/assets/779ad406-869c-40da-b44b-c354a54e129b" />
+
+After:
+
+<img width="200" height="251" alt="confettifix" src="https://github.com/user-attachments/assets/ea359ee5-82ba-4732-9ce5-aec38611f5c4" />
+
+Copper&Claw adds variant labels such as:
+- Power
+- Precision
+- Toughness
+- Vitality
+- Healing Power
+- Concentration
+- Expertise
+- Condition Damage
+
+This makes it easier to watch the correct Trading Post listing.
+
+---
+
+## Price History
+
+Copper&Claw builds its own local Trading Post history.
+
+<img width="75" height="75" alt="TPtrends" src="https://github.com/user-attachments/assets/7157a206-0656-4512-a5f6-2fa01192a7fa" />
+
+Current behavior:
+- preserves every successfully recorded observation
+- does **not** automatically discard or compact older observations
+- stores history locally for later trend analysis
+
+### Trend Windows
 - 15m
 - 30m
 - 1h
@@ -283,124 +143,64 @@ Current trend-window options:
 - 30d
 - 90d
 
-The selected window is persisted in:
+---
 
-`CopperAndClaw.ini`
+## Persistence
 
-Longer windows become more meaningful as Copper&Claw accumulates additional local history.
+Copper&Claw saves:
+- watch list
+- Sell Targets
+- settings
+- selected Trend Window
+- local Trading Post history
+- cached item-search index
 
-## Current Testing Results
+These persist across game restarts.
 
-The following have been tested successfully in-game:
+---
 
-- standalone Nexus addon load
-- `Copper&Claw` addon display name
-- `Copper&Claw` in-app heading
-- automatic 60-second refresh
-- manual per-item refresh
-- Refresh All
-- multiple watched items
-- watched-item persistence after full Guild Wars 2 restart
-- Sell Target editing
-- Sell Target persistence after full Guild Wars 2 restart
-- trend-window persistence after full Guild Wars 2 restart
-- cached item index loading without rebuild
-- local history continuity after restart
-- observation counts retained across restart
-- market analysis retained and rendered normally after restart
-- target alert triggering
-- queued target alerts
-- Dismiss Party behavior
-- compact watched-item UI
-- collapsed Details / History layout
-- separate Sell Listings / Buy Orders analysis
-- direction percentages
-- recent-average comparisons
-- price-position analysis
-- buyer and seller market signals
-- confidence and gap-aware coverage display
-- selected-window sample-count display
-- preserve-all historical observation behavior
-- local-history disclaimer
-- item search/index operation
-- duplicate-name Trading Post item detection
-- stat-variant identification
-- player-friendly variant labels
-- searchable stat variants
-- rebuilt variant-aware item-index cache
-- Sell and Buy history sparklines
-- historical min / avg / max display
-- clean Release x64 rebuild and fresh DLL load
-- final release-candidate smoke test
+## ⚠️ First-Time Item Indexing
 
-## Known Pre-Release Notes
+On first launch, Copper&Claw builds a local Trading Post item-search index from the Guild Wars 2 API.
 
-- Aurene's Bite is added only as a first-run starter watched item and can be removed normally.
-- Removed starter items stay removed after restart.
-- Copper&Claw preserves all newly recorded historical observations instead of automatically compacting older data.
-- The current Visual Studio project produces `Copper & Claw.dll`.
-- The Nexus addon display name is `Copper&Claw`.
-- Copper&Claw currently uses a unique negative Nexus addon signature for standalone/non-Raidcore use.
-- A Raidcore-hosted release would require the signature assigned by Raidcore.
-- All historical analysis is based only on locally collected observations.
-- New installations begin with no historical market data.
-- Target-alert background styling may receive additional cosmetic polish later.
-- The current build is a release candidate; public release/tag packaging is the remaining release step.
+<img width="554" height="270" alt="indexbuilding" src="https://github.com/user-attachments/assets/67b35d13-09af-4deb-9500-878b52da72b0" />
 
-## Build Environment
+While the index is building:
+- search results may be incomplete
+- variant labels may not appear yet
+- some items may be temporarily missing from autocomplete
 
-Current project configuration:
+If you see:
 
-- Visual Studio
-- x64
-- Dynamic Library
-- Platform Toolset: v143
-- C++17
-- Multi-Byte Character Set
-- Precompiled Headers: disabled
-- Release Runtime Library: `/MT`
-- Debug Runtime Library: `/MTd`
-- Windows subsystem
+`Building item search index...`
 
-Current Release DLL name:
+let it finish before judging search behavior.
 
-`Copper & Claw.dll`
+---
 
-## API
+## Current Notes
 
-Copper&Claw uses ArenaNet's public Guild Wars 2 API for Trading Post and item information.
+- Aurene’s Bite is used as a **first-run starter item**
+- It can be removed normally
+- Removed starter items stay removed after restart
+- All historical analysis is based on **locally collected observations**
+- New installs begin with **no prior historical market data**
+- The current DLL is built as `Copper & Claw.dll`
 
-Current API functionality includes:
+---
 
-- commerce prices
-- item information
-- Trading Post item discovery
-- searchable item-index construction
+## Installation
 
-HTTP requests use the:
+1. Download `Copper & Claw.dll`
+2. Place it in your Guild Wars 2 Nexus addon folder
+3. Launch Guild Wars 2
+4. Open Nexus and confirm **Copper&Claw** is loaded
+5. Open the Copper&Claw options panel
+6. Allow first-time item indexing to complete if needed
 
-`CopperAndClaw/1.0`
+Copper&Claw will create its settings, watch-list, history, and item-index files automatically.
 
-user agent.
-
-## Project Direction
-
-Copper&Claw was created by extracting the working Trading Post watcher framework originally developed inside FoodReminder-Nexus into a dedicated standalone addon.
-
-Copper&Claw is now maintained independently as the dedicated Trading Post project.
-
-Copper&Claw is intended to provide a stock-market-style view of Guild Wars 2 Trading Post information while keeping the interface understandable and avoiding unnecessary market jargon or clutter.
-
-Current development priorities emphasize:
-
-- accurate interpretation of locally collected price data
-- clear separation between Sell Listings and Buy Orders
-- cautious analysis when historical coverage is limited
-- persistent local price history without destructive automatic compaction
-- practical Trading Post alerts and watch-list functionality
-- clean in-game usability
-
-Future improvements may include additional UI polish, expanded market-analysis tools, and further Trading Post quality-of-life features.
+---
 
 ## Author
 
