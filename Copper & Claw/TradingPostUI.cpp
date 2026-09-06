@@ -10,16 +10,100 @@
 
 #include "imgui/imgui.h"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include "nexus/Nexus.h"
+
 #include "Settings.h"
 #include "TradingPostHistoryManager.h"
 #include "TradingPostItemIndexManager.h"
 #include "TradingPostPriceManager.h"
 #include "TradingPostWatchManager.h"
 
+//
+// Defined in entry.cpp. Nexus owns the pointed-to API table for the lifetime
+// of the loaded addon.
+//
+extern AddonAPI_t* APIDefs;
+
 namespace
 {
     int g_TradingPostTabLastVisibleFrame =
         -1000;
+
+    Texture_t* GetTradingPostItemIcon(
+        uint32_t itemID
+    )
+    {
+        if (
+            APIDefs == nullptr ||
+            APIDefs->Textures_GetOrCreateFromURL ==
+            nullptr
+            )
+        {
+            return nullptr;
+        }
+
+        TradingPostIndexedItem indexedItem;
+
+        if (
+            !TradingPostItemIndexManager::
+            TryGetItem(
+                itemID,
+                indexedItem
+            ) ||
+            indexedItem.iconUrl.empty()
+            )
+        {
+            return nullptr;
+        }
+
+        //
+        // Guild Wars 2 item metadata currently supplies render URLs in this
+        // form:
+        // https://render.guildwars2.com/file/.../...png
+        //
+        // Nexus wants the remote/base URL and endpoint separately.
+        //
+        static const std::string renderRemote =
+            "https://render.guildwars2.com";
+
+        if (
+            indexedItem.iconUrl.rfind(
+                renderRemote,
+                0
+            ) != 0
+            )
+        {
+            return nullptr;
+        }
+
+        const std::string endpoint =
+            indexedItem.iconUrl.substr(
+                renderRemote.size()
+            );
+
+        if (endpoint.empty())
+        {
+            return nullptr;
+        }
+
+        const std::string textureIdentifier =
+            "CopperAndClaw_ItemIcon_" +
+            std::to_string(
+                itemID
+            );
+
+        return
+            APIDefs->
+            Textures_GetOrCreateFromURL(
+                textureIdentifier.c_str(),
+                renderRemote.c_str(),
+                endpoint.c_str()
+            );
+    }
 
     std::string FormatGoldWithCommas(
         uint64_t gold
@@ -87,6 +171,281 @@ bool TradingPostUI::WasTabVisibleRecently()
     return
         currentImGuiFrame -
         g_TradingPostTabLastVisibleFrame <= 1;
+}
+
+void TradingPostUI::RenderUpdateNotice(
+    void* moduleHandle,
+    uint64_t currentVersionKey
+)
+{
+    if (
+        currentVersionKey == 0 ||
+        g_Settings
+        .acknowledgedUpdateNoticeVersion ==
+        currentVersionKey
+        )
+    {
+        return;
+    }
+
+    const ImVec2 displaySize =
+        ImGui::GetIO().
+        DisplaySize;
+
+    const float noticeWidth =
+        460.0f;
+
+    const float noticeHeight =
+        126.0f;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(
+            displaySize.x * 0.5f,
+            displaySize.y * 0.14f
+        ),
+        ImGuiCond_Always,
+        ImVec2(
+            0.5f,
+            0.0f
+        )
+    );
+
+    ImGui::SetNextWindowSize(
+        ImVec2(
+            noticeWidth,
+            noticeHeight
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::PushStyleVar(
+        ImGuiStyleVar_WindowPadding,
+        ImVec2(
+            18.0f,
+            14.0f
+        )
+    );
+
+    ImGui::PushStyleVar(
+        ImGuiStyleVar_WindowRounding,
+        7.0f
+    );
+
+    ImGui::PushStyleVar(
+        ImGuiStyleVar_WindowBorderSize,
+        1.0f
+    );
+
+    ImGui::PushStyleColor(
+        ImGuiCol_WindowBg,
+        ImVec4(
+            0.055f,
+            0.060f,
+            0.070f,
+            0.97f
+        )
+    );
+
+    ImGui::PushStyleColor(
+        ImGuiCol_Border,
+        ImVec4(
+            0.62f,
+            0.43f,
+            0.20f,
+            0.92f
+        )
+    );
+
+    const ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse;
+
+    if (
+        ImGui::Begin(
+            "##CopperAndClawUpdateNotice",
+            nullptr,
+            flags
+        )
+        )
+    {
+        ImDrawList* drawList =
+            ImGui::GetWindowDrawList();
+
+        const ImVec2 windowPos =
+            ImGui::GetWindowPos();
+
+        //
+        // Thin copper accent across the top keeps the notice visually tied
+        // to Copper&Claw without turning it into a large alert banner.
+        //
+        drawList->AddRectFilled(
+            ImVec2(
+                windowPos.x + 1.0f,
+                windowPos.y + 1.0f
+            ),
+            ImVec2(
+                windowPos.x +
+                noticeWidth - 1.0f,
+                windowPos.y + 4.0f
+            ),
+            ImGui::GetColorU32(
+                ImVec4(
+                    0.82f,
+                    0.55f,
+                    0.24f,
+                    1.00f
+                )
+            ),
+            6.0f
+        );
+
+        ImGui::SetCursorPosY(
+            15.0f
+        );
+
+        ImGui::SetWindowFontScale(
+            1.16f
+        );
+
+        ImGui::TextColored(
+            ImVec4(
+                0.95f,
+                0.72f,
+                0.38f,
+                1.00f
+            ),
+            "Copper&Claw Updated"
+        );
+
+        ImGui::SetWindowFontScale(
+            1.00f
+        );
+
+        ImGui::SetCursorPosY(
+            43.0f
+        );
+
+        ImGui::TextColored(
+            ImVec4(
+                0.86f,
+                0.86f,
+                0.88f,
+                1.00f
+            ),
+            "Some updates may rebuild the Trading Post item index."
+        );
+
+        ImGui::TextColored(
+            ImVec4(
+                0.66f,
+                0.67f,
+                0.70f,
+                1.00f
+            ),
+            "This happens automatically and may take a couple minutes."
+        );
+
+        const float buttonWidth =
+            96.0f;
+
+        const float buttonHeight =
+            27.0f;
+
+        ImGui::SetCursorPosX(
+            noticeWidth -
+            18.0f -
+            buttonWidth
+        );
+
+        ImGui::SetCursorPosY(
+            noticeHeight -
+            14.0f -
+            buttonHeight
+        );
+
+        ImGui::PushStyleVar(
+            ImGuiStyleVar_FrameRounding,
+            4.0f
+        );
+
+        ImGui::PushStyleColor(
+            ImGuiCol_Button,
+            ImVec4(
+                0.24f,
+                0.17f,
+                0.09f,
+                1.00f
+            )
+        );
+
+        ImGui::PushStyleColor(
+            ImGuiCol_ButtonHovered,
+            ImVec4(
+                0.36f,
+                0.25f,
+                0.12f,
+                1.00f
+            )
+        );
+
+        ImGui::PushStyleColor(
+            ImGuiCol_ButtonActive,
+            ImVec4(
+                0.46f,
+                0.31f,
+                0.14f,
+                1.00f
+            )
+        );
+
+        ImGui::PushStyleColor(
+            ImGuiCol_Text,
+            ImVec4(
+                0.96f,
+                0.82f,
+                0.58f,
+                1.00f
+            )
+        );
+
+        if (
+            ImGui::Button(
+                "Got it",
+                ImVec2(
+                    buttonWidth,
+                    buttonHeight
+                )
+            )
+            )
+        {
+            g_Settings
+                .acknowledgedUpdateNoticeVersion =
+                currentVersionKey;
+
+            Settings::Save(
+                moduleHandle
+            );
+        }
+
+        ImGui::PopStyleColor(
+            4
+        );
+
+        ImGui::PopStyleVar();
+    }
+
+    ImGui::End();
+
+    ImGui::PopStyleColor(
+        2
+    );
+
+    ImGui::PopStyleVar(
+        3
+    );
 }
 
 void TradingPostUI::RenderTargetOverlay()
@@ -3441,6 +3800,31 @@ void TradingPostUI::RenderTab(
             ImGui::TableSetColumnIndex(
                 0
             );
+
+            Texture_t* itemIcon =
+                GetTradingPostItemIcon(
+                    item.itemID
+                );
+
+            if (
+                itemIcon != nullptr &&
+                itemIcon->Resource != nullptr
+                )
+            {
+                ImGui::Image(
+                    (ImTextureID)
+                    itemIcon->Resource,
+                    ImVec2(
+                        28.0f,
+                        28.0f
+                    )
+                );
+
+                ImGui::SameLine(
+                    0.0f,
+                    8.0f
+                );
+            }
 
             ImGui::SetWindowFontScale(
                 1.13f

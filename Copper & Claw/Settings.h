@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 struct CopperAndClawSettings
 {
     // Trading Post trend window:
@@ -42,6 +44,12 @@ struct CopperAndClawSettings
     // 1 = 10
     // 2 = 20
     int backupKeepCountIndex = 1;
+
+    //
+    // Packed addon version for which the one-time post-update
+    // item-index notice has already been acknowledged.
+    //
+    uint64_t acknowledgedUpdateNoticeVersion = 0;
 };
 
 extern CopperAndClawSettings g_Settings;

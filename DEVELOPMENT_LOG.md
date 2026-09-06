@@ -29,6 +29,76 @@ A clean rebuild completed successfully and the updated version display was verif
 
 **Result: PASS**
 
+---
+
+## 2026-09-06 — Guild Wars 2 Item Icons
+
+Added official Guild Wars 2 item icons to watched-item rows without changing the compact watch-list layout.
+
+Implementation:
+
+- `TradingPostIndexedItem` now stores the Guild Wars 2 item icon URL
+- item metadata parsing now reads the API `icon` field
+- the local item-index cache was expanded to store item ID, name, variant label, and icon URL
+- older two-column and three-column caches remain readable
+- legacy caches are treated as stale so Copper&Claw can rebuild them automatically and populate icon URLs
+- watched items look up their indexed metadata by item ID
+- Nexus texture loading is used to request the official `render.guildwars2.com` icon
+- icons use a stable per-item texture identifier
+- watched-item rows display a subtle 28x28 icon beside the item name
+- no watch-list persistence format change was required
+
+A compile issue caused by Windows `min` / `max` macros after including the Nexus API header was corrected by defining `NOMINMAX` before `nexus/Nexus.h`.
+
+In-game validation confirmed icons render correctly beside watched items including Superior Sharpening Stone, Bowl of Sweet and Spicy Butternut Squash Soup, and Aurene's Bite.
+
+README screenshot:
+
+`screenshots/itemicon.jpg`
+
+**Result: PASS**
+
+---
+
+## 2026-09-06 — One-Time Post-Update Item-Index Notice
+
+Added a small one-time gameplay notice so players understand that some Copper&Claw updates may require the Trading Post item index to rebuild.
+
+Behavior:
+
+- shown after an addon version changes
+- shown only during gameplay
+- independent of the Copper&Claw options panel
+- explains that some updates may rebuild the Trading Post item index
+- explains that the rebuild starts automatically
+- current wording states that the rebuild may take a couple minutes
+- no progress bar is shown
+- the player acknowledges the notice with `Got it`
+- acknowledgement is persisted in `CopperAndClaw.ini`
+- the acknowledgement key is derived from the running addon version
+- the notice becomes eligible again automatically after a future version bump
+- no actual rebuild state is required for the notice to appear
+
+The first functional version used a normal ImGui title bar and duplicated the `Copper&Claw Updated` heading. It was redesigned into a compact Copper&Claw-style card with:
+
+- no title-bar chrome
+- dark background
+- thin copper border and top accent
+- copper/gold heading
+- muted explanatory text
+- styled `Got it` button
+- compact placement near the upper center of the game screen
+
+In-game testing confirmed the notice appears after resetting the acknowledged version value, saves acknowledgement when dismissed, and does not reappear for the same addon version afterward.
+
+README screenshot:
+
+`screenshots/updatenotification.jpg`
+
+**Result: PASS**
+
+---
+
 ## 2026-09-06 — Backup & Restore System
 
 Added a dedicated Backup & Restore tab for protecting Copper&Claw's locally collected data without cluttering the Trading Post interface.
@@ -319,10 +389,14 @@ The following systems are currently working in-game:
 - persistent Sell Targets
 - persisted Trend Window
 - cached searchable Trading Post item index
+- official Guild Wars 2 item icons beside watched items
+- icon URL caching and automatic legacy-cache refresh
 - variant-aware duplicate-name item search
 - player-friendly stat/variant labels
 - searchable stat variants
 - variant labels retained when adding watched items
+- one-time post-update item-index notice
+- per-version acknowledgement persistence for the update notice
 - local Trading Post history
 - preserve-all historical observation behavior
 - history continuity across game restarts
@@ -1056,9 +1130,14 @@ The current dark card background may receive additional cosmetic polish later.
 
 ### Item-index cache format
 
-The Trading Post item-index cache includes variant labels.
+The Trading Post item-index cache now includes:
 
-Older cache files without variant metadata remain readable, but they trigger a rebuild so the cache can be upgraded to the current format.
+- item ID
+- item name
+- variant label
+- Guild Wars 2 item icon URL
+
+Older two-column and three-column cache rows remain readable, but legacy caches trigger a background rebuild so the current metadata, including icon URLs, can be populated.
 
 ### Local history limitation
 
@@ -1101,6 +1180,10 @@ Replace only if Copper&Claw later receives an assigned Raidcore signature.
 - [x] verify Sell Target persistence
 - [x] verify Trend Window persistence
 - [x] verify cached item index
+- [x] verify watched-item Guild Wars 2 icons
+- [x] verify legacy item-index cache refresh for icon metadata
+- [x] verify one-time post-update item-index notice
+- [x] verify update-notice acknowledgement persistence
 - [x] verify variant-aware duplicate-name search after restart
 - [x] verify history continuity
 - [x] verify preserve-all history behavior

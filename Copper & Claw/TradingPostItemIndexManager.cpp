@@ -1337,6 +1337,7 @@ namespace
 
                     uint32_t itemID = 0;
                     std::string name;
+                    std::string iconUrl;
 
                     if (
                         ExtractJsonUInt(
@@ -1363,6 +1364,17 @@ namespace
                         item.variantLabel =
                             BuildVariantLabel(
                                 object
+                            );
+
+                        ExtractJsonString(
+                            object,
+                            "icon",
+                            iconUrl
+                        );
+
+                        item.iconUrl =
+                            std::move(
+                                iconUrl
                             );
 
                         items.push_back(
@@ -1565,12 +1577,40 @@ namespace
                 ' '
             );
 
+            std::string safeIconUrl =
+                record.item.iconUrl;
+
+            safeIconUrl.erase(
+                std::remove(
+                    safeIconUrl.begin(),
+                    safeIconUrl.end(),
+                    '\r'
+                ),
+                safeIconUrl.end()
+            );
+
+            std::replace(
+                safeIconUrl.begin(),
+                safeIconUrl.end(),
+                '\n',
+                ' '
+            );
+
+            std::replace(
+                safeIconUrl.begin(),
+                safeIconUrl.end(),
+                '\t',
+                ' '
+            );
+
             file
                 << record.item.itemID
                 << '\t'
                 << safeName
                 << '\t'
                 << safeVariant
+                << '\t'
+                << safeIconUrl
                 << '\n';
         }
 
@@ -1723,6 +1763,10 @@ namespace
                     std::string::npos
                     )
                 {
+                    //
+                    // Original two-column cache:
+                    // itemID, name
+                    //
                     legacyCacheFormat =
                         true;
 
@@ -1733,6 +1777,12 @@ namespace
                 }
                 else
                 {
+                    const size_t thirdSeparator =
+                        line.find(
+                            '\t',
+                            secondSeparator + 1
+                        );
+
                     item.name =
                         line.substr(
                             separator + 1,
@@ -1740,10 +1790,44 @@ namespace
                             separator - 1
                         );
 
-                    item.variantLabel =
-                        line.substr(
-                            secondSeparator + 1
-                        );
+                    if (
+                        thirdSeparator ==
+                        std::string::npos
+                        )
+                    {
+                        //
+                        // Previous three-column cache:
+                        // itemID, name, variantLabel
+                        //
+                        // It remains usable for search immediately, but mark it
+                        // stale so the background rebuild can add icon URLs.
+                        //
+                        legacyCacheFormat =
+                            true;
+
+                        item.variantLabel =
+                            line.substr(
+                                secondSeparator + 1
+                            );
+                    }
+                    else
+                    {
+                        //
+                        // Current four-column cache:
+                        // itemID, name, variantLabel, iconUrl
+                        //
+                        item.variantLabel =
+                            line.substr(
+                                secondSeparator + 1,
+                                thirdSeparator -
+                                secondSeparator - 1
+                            );
+
+                        item.iconUrl =
+                            line.substr(
+                                thirdSeparator + 1
+                            );
+                    }
                 }
 
                 if (
@@ -2426,6 +2510,50 @@ std::vector<
     }
 
     return results;
+}
+
+bool TradingPostItemIndexManager::TryGetItem(
+    uint32_t itemID,
+    TradingPostIndexedItem& outItem
+)
+{
+    if (itemID == 0)
+    {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(
+        g_IndexMutex
+    );
+
+    const auto it =
+        std::lower_bound(
+            g_Index.begin(),
+            g_Index.end(),
+            itemID,
+            [](
+                const IndexedRecord& record,
+                uint32_t value
+                )
+            {
+                return
+                    record.item.itemID <
+                    value;
+            }
+        );
+
+    if (
+        it == g_Index.end() ||
+        it->item.itemID != itemID
+        )
+    {
+        return false;
+    }
+
+    outItem =
+        it->item;
+
+    return true;
 }
 
 bool TradingPostItemIndexManager::IsReady()

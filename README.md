@@ -14,6 +14,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 ## Main Features
 
 - Watch multiple Trading Post items
+- Official Guild Wars 2 item icons beside watched items
 - Automatic price refresh every 60 seconds
 - Manual per-item refresh and Refresh All
 - Current **lowest sell listing**
@@ -30,6 +31,17 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Historical minimum / average / maximum prices
 - Dragon Bash-style **Target Reached** alerts
 - Built-in automatic **Backup & Restore** for local Copper&Claw data
+- One-time post-update notice when an item-index rebuild may be required
+
+---
+
+## Item Icons
+
+Watched items display their official Guild Wars 2 item icon directly beside the item name.
+
+<img src="screenshots/itemicon.jpg" alt="Copper&Claw watched items with Guild Wars 2 item icons" width="300">
+
+Icons are loaded from the Guild Wars 2 item data used by Copper&Claw's searchable Trading Post index.
 
 ---
 
@@ -232,6 +244,7 @@ While the index is building:
 
 - search results may be incomplete
 - variant labels may not appear yet
+- item icons may not appear yet
 - some items may temporarily be missing from autocomplete
 
 If you see:
@@ -239,6 +252,20 @@ If you see:
 `Building item search index...`
 
 allow it to finish before judging search behavior.
+
+---
+
+## Post-Update Item Index Notice
+
+Some Copper&Claw updates may require the Trading Post item index to rebuild.
+
+When this applies, Copper&Claw displays a one-time notice after the updated addon is loaded.
+
+<img src="screenshots/updatenotification.jpg" alt="Copper&Claw post-update item index notification" width="600">
+
+The rebuild starts automatically and may take a couple minutes.
+
+The notice only needs to be acknowledged once for each addon version.
 
 ---
 
@@ -253,6 +280,7 @@ Copper&Claw saves:
 - selected watch-list sort mode
 - backup settings
 - last restored backup information
+- acknowledged update-notice version
 - local Trading Post history
 - cached item-search index
 
@@ -275,4 +303,4 @@ Copper&Claw creates its local settings and data files automatically.
 
 ## Author
 
-**spectre9510**
+**spectre.9510**

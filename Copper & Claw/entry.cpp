@@ -221,6 +221,35 @@ void AddonRender()
         TradingPostUI::
         WasTabVisibleRecently();
 
+    if (isGameplay)
+    {
+        const uint64_t currentVersionKey =
+            (
+                static_cast<uint64_t>(
+                    AddonDef.Version.Major
+                    ) << 48
+                ) |
+            (
+                static_cast<uint64_t>(
+                    AddonDef.Version.Minor
+                    ) << 32
+                ) |
+            (
+                static_cast<uint64_t>(
+                    AddonDef.Version.Build
+                    ) << 16
+                ) |
+            static_cast<uint64_t>(
+                AddonDef.Version.Revision
+                );
+
+        TradingPostUI::
+            RenderUpdateNotice(
+                hSelf,
+                currentVersionKey
+            );
+    }
+
     if (
         isGameplay &&
         !tradingPostTabVisible

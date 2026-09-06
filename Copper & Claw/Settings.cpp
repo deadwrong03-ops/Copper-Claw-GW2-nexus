@@ -129,6 +129,15 @@ bool Settings::Load(
                     .backupKeepCountIndex =
                     std::stoi(value);
             }
+            else if (
+                key ==
+                "acknowledgedUpdateNoticeVersion"
+                )
+            {
+                g_Settings
+                    .acknowledgedUpdateNoticeVersion =
+                    std::stoull(value);
+            }
         }
         catch (...)
         {
@@ -221,6 +230,12 @@ bool Settings::Save(
         << "backupKeepCountIndex="
         << g_Settings
         .backupKeepCountIndex
+        << '\n';
+
+    file
+        << "acknowledgedUpdateNoticeVersion="
+        << g_Settings
+        .acknowledgedUpdateNoticeVersion
         << '\n';
 
     return true;

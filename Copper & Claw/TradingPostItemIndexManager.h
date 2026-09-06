@@ -16,6 +16,12 @@ struct TradingPostIndexedItem
     // that have separate item IDs / listings for different attributes.
     //
     std::string variantLabel;
+
+    //
+    // Guild Wars 2 render URL returned by /v2/items.
+    // Used by the UI to request the item's icon through Nexus.
+    //
+    std::string iconUrl;
 };
 
 namespace TradingPostItemIndexManager
@@ -54,6 +60,15 @@ namespace TradingPostItemIndexManager
     std::vector<TradingPostIndexedItem> Search(
         const std::string& query,
         size_t maxResults = 8
+    );
+
+    //
+    // Looks up one indexed Trading Post item by item ID.
+    // Used by the UI to retrieve metadata such as the GW2 item icon URL.
+    //
+    bool TryGetItem(
+        uint32_t itemID,
+        TradingPostIndexedItem& outItem
     );
 
     bool IsReady();
