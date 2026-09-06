@@ -6,7 +6,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 ## Status
 
-**Latest Release:** v0.1.1  
+**Latest Release:** v0.1.2  
 **Development:** Active
 
 ---

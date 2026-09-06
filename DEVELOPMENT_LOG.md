@@ -8,8 +8,32 @@ The project began by extracting the already-working Trading Post framework that 
 
 Display name: `Copper&Claw`  
 Filesystem/data prefix: `CopperAndClaw`  
-Latest published release: `v0.1.1`  
+Latest published release: `v0.1.2`  
 Development: `Active`
+
+---
+
+## 2026-09-06 — v0.1.2 Release Validation
+
+Prepared and validated the next Copper&Claw release build.
+
+Version changes:
+
+- Nexus addon version changed from `0.1.1` to `0.1.2`
+- Nexus reports the running addon as `0.1.2.0`
+- in-app footer changed to `Copper&Claw v0.1.2 - Development Build`
+
+In-game smoke testing confirmed:
+
+- the new version was recognized correctly by Nexus
+- the one-time post-update notice appeared automatically after the real version change
+- no manual reset of `acknowledgedUpdateNoticeVersion` was required
+- the notice still acknowledges and persists normally
+- watched-item Guild Wars 2 icons loaded automatically after a few seconds
+- the Trading Post watch list remained functional after the update
+- no blocking regression was observed during the v0.1.2 smoke test
+
+**Result: PASS**
 
 ---
 
@@ -435,7 +459,7 @@ The following systems are currently working in-game:
 
 **Current overall status: Core standalone functionality is working and the current build is a release candidate.**
 
-Copper&Claw has since published releases through `v0.1.1`.
+Copper&Claw has since published releases through `v0.1.2`.
 
 ---
 
@@ -1176,6 +1200,9 @@ Replace only if Copper&Claw later receives an assigned Raidcore signature.
 - [x] make Aurene's Bite a removable first-run starter item
 - [x] perform clean Release x64 rebuild
 - [x] verify final DLL loads through Nexus
+- [x] verify Nexus reports `0.1.2.0`
+- [x] verify v0.1.2 update notice triggers automatically after version change
+- [x] verify watched-item icons still load after the v0.1.2 update
 - [x] verify watch persistence
 - [x] verify Sell Target persistence
 - [x] verify Trend Window persistence
