@@ -226,7 +226,7 @@ The item-search cache is not included because Copper&Claw can rebuild it automat
 
 On first launch, Copper&Claw builds a searchable Trading Post item index using the Guild Wars 2 API.
 
-<img src="screenshots/itemindex.jpg" alt="Copper&Claw first-time Trading Post item indexing" width="300">
+<img src="screenshots/itemindex.jpg" alt="Copper&Claw first-time Trading Post item indexing" width="600">
 
 While the index is building:
 
