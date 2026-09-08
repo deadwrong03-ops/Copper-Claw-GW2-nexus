@@ -8,13 +8,54 @@ The project began by extracting the already-working Trading Post framework that 
 
 Display name: `Copper&Claw`  
 Filesystem/data prefix: `CopperAndClaw`  
-Latest published release: `v0.1.2`  
+Latest published release: `v0.1.3`  
 Development: `Active`
 
 Current development builds may contain features or improvements that have not yet been included in the latest published release.
 
 ---
 
+
+## 2026-09-08 — v0.1.3 Release Preparation
+
+Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
+
+### Version metadata
+
+Updated `entry.cpp`:
+
+- Nexus addon version: `0.1.3.0`
+- in-app footer: `Copper&Claw v0.1.3 - Development Build`
+- standalone/non-Raidcore signature remains `(uint32_t)-26090301`
+
+The signature comment was also corrected so it matches the existing project decision: keep the current standalone signature unless Copper&Claw later receives an assigned Raidcore signature.
+
+### v0.1.3 feature set
+
+This release includes the work completed after v0.1.2:
+
+- independent Buy Targets and Buy Target alerts
+- compact Sell / Buy target display with dedicated `Edit Targets`
+- Normal / Slim / Ultra Slim watch-list density modes
+- Slim as the default watch-list view
+- Sell / Buy Analysis sparklines that follow the selected Trend Window
+- standalone History UI removed while local history collection remains active
+- optional per-item Favorites
+- All Items / Favorites filtering
+- persistent favorite state
+- custom drawn favorite-star control
+- cleaner two-row Trading Post toolbar
+- label-first Trend Window / Sort / View / Show presentation
+
+### Release validation status
+
+The v0.1.3 source and documentation are prepared.
+
+Final release validation still requires a clean Release x64 rebuild and in-game smoke test of the actual `0.1.3.0` build before the Git tag / GitHub release is created.
+
+**Result: RELEASE PREPARED — FINAL SMOKE TEST PENDING**
+
+---
 
 ## 2026-09-08 — Watch-List UI Density, Analysis Sparklines, Favorites & Polish
 
@@ -665,7 +706,7 @@ The following systems are currently working in-game:
 
 **Current overall status: Core standalone functionality is working and the current build is a release candidate.**
 
-Copper&Claw has since published releases through `v0.1.2`.
+Copper&Claw has since published releases through `v0.1.3`.
 
 ---
 
@@ -1401,38 +1442,31 @@ Replace only if Copper&Claw later receives an assigned Raidcore signature.
 
 ---
 
-## Pre-Release Checklist
+## v0.1.3 Pre-Release Checklist
 
-- [x] make Aurene's Bite a removable first-run starter item
-- [x] perform clean Release x64 rebuild
-- [x] verify final DLL loads through Nexus
-- [x] verify Nexus reports `0.1.2.0`
-- [x] verify v0.1.2 update notice triggers automatically after version change
-- [x] verify watched-item icons still load after the v0.1.2 update
-- [x] verify watch persistence
-- [x] verify Sell Target persistence
-- [x] verify Trend Window persistence
-- [x] verify cached item index
-- [x] verify watched-item Guild Wars 2 icons
-- [x] verify legacy item-index cache refresh for icon metadata
-- [x] verify one-time post-update item-index notice
-- [x] verify update-notice acknowledgement persistence
-- [x] verify variant-aware duplicate-name search after restart
-- [x] verify history continuity
-- [x] verify preserve-all history behavior
-- [x] verify restored history continues appending
-- [x] verify observation counts survive restart
-- [x] verify Sell Listings analysis
-- [x] verify Buy Orders analysis
-- [x] verify confidence / gap-aware coverage display
-- [x] verify local-history disclaimer
-- [x] verify target alert
-- [x] verify queued alerts
-- [x] update `README.md`
-- [x] update `DEVELOPMENT_LOG.md`
-- [ ] commit
+- [x] bump `entry.cpp` version to `0.1.3.0`
+- [x] update in-app footer to `Copper&Claw v0.1.3 - Development Build`
+- [x] update `README.md` for v0.1.3
+- [x] update `DEVELOPMENT_LOG.md` for v0.1.3
+- [ ] perform clean **Release x64** rebuild
+- [ ] verify final DLL loads through Nexus
+- [ ] verify Nexus reports `0.1.3.0`
+- [ ] verify the v0.1.3 one-time update notice appears after the version change
+- [ ] verify watched-item icons repopulate normally
+- [ ] verify All Items / Favorites filtering
+- [ ] verify favorite state survives a Guild Wars 2 restart
+- [ ] verify Normal / Slim / Ultra Slim views
+- [ ] verify Trend Window / Sort / View / Show toolbar presentation
+- [ ] verify Sell / Buy sparklines follow the selected Trend Window
+- [ ] verify Sell Target behavior
+- [ ] verify Buy Target behavior
+- [ ] verify local history continues appending
+- [ ] verify Backup & Restore tab still opens normally
+- [ ] confirm no blocking regression during smoke test
+- [ ] commit release-prep changes
 - [ ] push
-- [ ] create release/tag when ready
+- [ ] create Git tag `v0.1.3`
+- [ ] create GitHub release `v0.1.3`
 
 ---
 

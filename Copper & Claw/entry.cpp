@@ -45,8 +45,8 @@ __declspec(dllexport)
 AddonDefinition_t* GetAddonDef()
 {
     //
-    // Provisional development signature.
-    // Replace/register before public release.
+    // Standalone/non-Raidcore signature.
+    // Replace only if Copper&Claw later receives an assigned Raidcore signature.
     //
     AddonDef.Signature =
         (uint32_t)-26090301;
@@ -59,7 +59,7 @@ AddonDefinition_t* GetAddonDef()
 
     AddonDef.Version.Major = 0;
     AddonDef.Version.Minor = 1;
-    AddonDef.Version.Build = 2;
+    AddonDef.Version.Build = 3;
     AddonDef.Version.Revision = 0;
 
     AddonDef.Author =
@@ -309,6 +309,6 @@ void AddonOptions()
     ImGui::Separator();
 
     ImGui::TextDisabled(
-        "Copper&Claw v0.1.2 - Development Build"
+        "Copper&Claw v0.1.3 - Development Build"
     );
 }
