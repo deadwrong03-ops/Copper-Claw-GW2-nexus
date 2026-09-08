@@ -321,6 +321,14 @@ namespace
                 << item.name
                 << '\n';
 
+            if (item.isFavorite)
+            {
+                file
+                    << "favorite="
+                    << item.itemID
+                    << '\n';
+            }
+
             const auto alertStateIt =
                 g_TargetAlertStates.find(
                     item.itemID
@@ -370,6 +378,11 @@ namespace
         g_WatchedItems.clear();
         g_TargetAlertStates.clear();
 
+        std::unordered_map<
+            uint32_t,
+            bool
+        > pendingFavoriteStates;
+
         const bool settingsFileExists =
             !g_SettingsPath.empty() &&
             std::filesystem::exists(
@@ -407,6 +420,39 @@ namespace
                     g_AutoWatchEnabled =
                         value == "1" ||
                         value == "true";
+
+                    continue;
+                }
+
+                if (
+                    line.rfind(
+                        "favorite=",
+                        0
+                    ) == 0
+                    )
+                {
+                    try
+                    {
+                        const uint32_t itemID =
+                            static_cast<uint32_t>(
+                                std::stoul(
+                                    line.substr(
+                                        9
+                                    )
+                                )
+                                );
+
+                        if (itemID != 0)
+                        {
+                            pendingFavoriteStates[
+                                itemID
+                            ] = true;
+                        }
+                    }
+                    catch (...)
+                    {
+                        // Ignore malformed saved favorite rows.
+                    }
 
                     continue;
                 }
@@ -629,6 +675,22 @@ namespace
                     // Ignore malformed saved rows.
                 }
 
+            }
+
+            for (
+                TradingPostWatchItem& item :
+                g_WatchedItems
+                )
+            {
+                const auto favoriteIt =
+                    pendingFavoriteStates.find(
+                        item.itemID
+                    );
+
+                item.isFavorite =
+                    favoriteIt !=
+                    pendingFavoriteStates.end() &&
+                    favoriteIt->second;
             }
         }
         else
@@ -1022,6 +1084,40 @@ std::vector<
 
     return
         g_WatchedItems;
+}
+
+void TradingPostWatchManager::SetFavorite(
+    uint32_t itemID,
+    bool favorite
+)
+{
+    if (itemID == 0)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(
+        g_WatchMutex
+    );
+
+    for (
+        TradingPostWatchItem& item :
+        g_WatchedItems
+        )
+    {
+        if (item.itemID == itemID)
+        {
+            if (item.isFavorite != favorite)
+            {
+                item.isFavorite =
+                    favorite;
+
+                SaveLocked();
+            }
+
+            return;
+        }
+    }
 }
 
 bool TradingPostWatchManager::AddItem(

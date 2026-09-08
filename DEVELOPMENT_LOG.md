@@ -15,6 +15,125 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+
+## 2026-09-08 — Watch-List UI Density, Analysis Sparklines, Favorites & Polish
+
+Completed a focused post-v0.1.2 Trading Post UI cleanup intended to reduce bulk without removing the underlying market-analysis functionality.
+
+### Watch-list density modes
+
+Added three selectable watch-list views:
+
+- **Normal** — roomier rows with additional item metadata
+- **Slim** — balanced compact layout and the default view
+- **Ultra Slim** — compact Item / Sell / Buy / Actions presentation
+
+The selected view density is persisted in `CopperAndClaw.ini`.
+
+All density modes retain access to watched-item actions and target editing.
+
+### Analysis sparklines
+
+Sell and Buy sparklines were moved into the right side of their respective Analysis sections so they use previously empty horizontal space instead of adding more vertical UI.
+
+Current presentation:
+
+- Sell Listing sparkline uses green Sell-side styling
+- Buy Order sparkline uses blue Buy-side styling
+- no center baseline
+- thicker, brighter lines for readability
+- sparkline data follows the currently selected **Trend Window**
+- graph dimensions remain consistent while the represented time period changes
+
+This keeps the graph and the surrounding market analysis aligned to the same selected period.
+
+### History UI removal
+
+The standalone History tab/panel inside watched-item Details was removed.
+
+Details now opens directly into Analysis.
+
+This was a UI-only simplification:
+
+- local Trading Post history collection remains active
+- existing history remains stored
+- history still powers trends, confidence, gap-aware coverage, volatility, historical statistics, and sparklines
+- preserve-all history behavior is unchanged
+
+### Watch-list Groups experiment
+
+A grouped/folder-style watch-list experiment was implemented and tested.
+
+The approach was rejected because moving items beneath separate stacked group headers made the list longer and introduced unnecessary organization work.
+
+Decision:
+
+- Groups were removed
+- no group assignment workflow is required
+- Copper&Claw keeps one continuous normal watch list
+
+### Favorites
+
+Groups were replaced with a simpler optional Favorites system.
+
+Behavior:
+
+- each watched item has a small star control
+- newly watched items are not favorited by default
+- **All Items** shows the normal complete watch list
+- **Favorites** filters the same list to starred items only
+- favorite state persists across restarts
+- no folders, categories, or mandatory organization are required
+
+The first star implementation used Unicode star characters, which were not supported correctly by the bundled font/source setup and rendered as `?`.
+
+The star was replaced with direct ImGui draw-list geometry.
+
+The initial filled-star implementation used a convex fill on a concave five-point star and looked visually uneven. It was corrected by filling the star with triangle fans from the center and retaining a clean outline.
+
+### Toolbar cleanup
+
+The growing toolbar was split into two rows to avoid crowding:
+
+Row 1:
+
+- Trend Window
+- Sort
+
+Row 2:
+
+- View
+- Show: All Items / Favorites
+
+A final label polish changed the controls to natural label-first presentation:
+
+- `Trend Window: [7d]`
+- `Sort: [Name A-Z]`
+- `View: [Normal]`
+- `Show: All Items / Favorites`
+
+The existing two-row structure was retained.
+
+### In-game validation
+
+Verified in-game:
+
+- Normal / Slim / Ultra Slim views render correctly
+- Slim remains the default
+- target editing remains available
+- Analysis sparklines render correctly
+- sparklines follow the selected Trend Window
+- removing the History UI does not remove the underlying analysis/history behavior
+- Favorites filtering works
+- drawn favorite stars render without Unicode/font issues
+- filled favorite star renders cleanly
+- two-row toolbar avoids crowding
+- final label-first toolbar presentation reads cleanly in-game
+
+**Result: PASS**
+
+---
+
 ## 2026-09-07 — Buy Target Alerts & Target UI Cleanup
 
 Added independent Buy Target support alongside the existing Sell Target system.

@@ -33,7 +33,9 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Gap-aware confidence and coverage
 - Colored **Volatility** classification
 - Sortable watch list
-- Sell / Buy price-history sparklines
+- **Normal / Slim / Ultra Slim** watch-list views
+- Optional per-item **Favorites** with an instant Favorites-only view
+- Sell / Buy price-history sparklines that follow the selected **Trend Window**
 - Historical minimum / average / maximum prices
 - Dragon Bash-style **Target Reached** alerts
 - Built-in automatic **Backup & Restore** for local Copper&Claw data
@@ -69,6 +71,22 @@ Current sort options:
 Price-rise, price-drop, and volatility sorting use the selected **Trend Window**.
 
 Volatility sorting uses the same gap-aware history requirements as the Volatility badge. Items still marked **DEVELOPING** are placed below items with mature volatility data.
+
+---
+
+## Watch List Views & Favorites
+
+Copper&Claw includes three watch-list density options:
+
+- **Normal** — roomier rows with additional item metadata
+- **Slim** — the default balanced layout
+- **Ultra Slim** — a compact Item / Sell / Buy / Actions layout
+
+All three views keep the core watch-list actions available.
+
+Items can also be marked as **Favorites** using the star beside the item. The normal **All Items** view remains one continuous watch list, while **Favorites** instantly filters the list to starred items only.
+
+Favorites are optional. Newly watched items do not require any organization or setup, and favorite state persists across restarts.
 
 ---
 
@@ -197,6 +215,8 @@ Current behavior:
 
 New installations begin with **no historical market data from before tracking started**.
 
+The old standalone History panel has been removed from the watch-list UI to keep Details focused on useful analysis. Historical observations are still collected normally and continue to power trends, confidence, coverage, volatility, statistics, and sparklines.
+
 ### Trend Windows
 
 - 15m
@@ -208,6 +228,8 @@ New installations begin with **no historical market data from before tracking st
 - 7d
 - 30d
 - 90d
+
+The Sell and Buy sparklines in Analysis use the currently selected **Trend Window**, so the graph and the surrounding market analysis refer to the same period.
 
 ---
 
@@ -308,12 +330,14 @@ The notice only needs to be acknowledged once for each addon version.
 Copper&Claw saves:
 
 - watched items
+- Favorites
 - Sell Targets
 - Buy Targets
 - Sell / Buy target alert state
 - settings
 - selected Trend Window
 - selected watch-list sort mode
+- selected watch-list view density
 - backup settings
 - last restored backup information
 - acknowledged update-notice version

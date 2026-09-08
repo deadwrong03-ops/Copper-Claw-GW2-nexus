@@ -1,4 +1,4 @@
-#include "TradingPostUI.h"
+﻿#include "TradingPostUI.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1312,6 +1312,13 @@ void TradingPostUI::RenderTab(
         "Biggest Price Rise",
         "Most Volatile",
         "Least Volatile"
+    };
+
+    const char* viewDensityLabels[] =
+    {
+        "Normal",
+        "Slim",
+        "Ultra Slim"
     };
 
     const uint64_t trendWindowSeconds =
@@ -2748,33 +2755,6 @@ void TradingPostUI::RenderTab(
                 ImGui::
                 GetWindowDrawList();
 
-            const ImU32 faintLineColor =
-                ImGui::
-                ColorConvertFloat4ToU32(
-                    ImVec4(
-                        1.0f,
-                        1.0f,
-                        1.0f,
-                        0.08f
-                    )
-                );
-
-            drawList->AddLine(
-                ImVec2(
-                    start.x,
-                    start.y +
-                    height * 0.5f
-                ),
-                ImVec2(
-                    start.x +
-                    width,
-                    start.y +
-                    height * 0.5f
-                ),
-                faintLineColor,
-                1.0f
-            );
-
             std::vector<ImVec2>
                 points;
 
@@ -2831,6 +2811,16 @@ void TradingPostUI::RenderTab(
                 );
             }
 
+            const ImVec4 brighterLineColor(
+                lineColor.x +
+                (1.0f - lineColor.x) * 0.18f,
+                lineColor.y +
+                (1.0f - lineColor.y) * 0.18f,
+                lineColor.z +
+                (1.0f - lineColor.z) * 0.18f,
+                1.0f
+            );
+
             drawList->AddPolyline(
                 points.data(),
                 static_cast<int>(
@@ -2838,10 +2828,10 @@ void TradingPostUI::RenderTab(
                     ),
                 ImGui::
                 ColorConvertFloat4ToU32(
-                    lineColor
+                    brighterLineColor
                 ),
                 false,
-                2.0f
+                3.0f
             );
         };
 
@@ -3086,52 +3076,64 @@ void TradingPostUI::RenderTab(
 
     ImGui::Spacing();
 
-    ImGui::SetNextItemWidth(
-        90.0f
-    );
+    ImGui::TextDisabled("Trend Window:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(90.0f);
 
     if (ImGui::Combo(
-        "Trend Window",
+        "##TrendWindow",
         &g_Settings.tradingPostTrendWindowIndex,
         trendWindowLabels,
-        static_cast<int>(
-            sizeof(
-                trendWindowLabels
-                ) /
-            sizeof(
-                trendWindowLabels[
-                    0
-                ]
-                )
-            )
-    ))
+        static_cast<int>(sizeof(trendWindowLabels) / sizeof(trendWindowLabels[0]))))
     {
         Settings::Save(moduleHandle);
     }
 
+    ImGui::SameLine(0.0f, 14.0f);
+    ImGui::TextDisabled("Sort:");
     ImGui::SameLine();
-
-    ImGui::SetNextItemWidth(
-        145.0f
-    );
+    ImGui::SetNextItemWidth(145.0f);
 
     if (ImGui::Combo(
-        "Sort Watch List",
+        "##SortWatchList",
         &g_Settings.tradingPostWatchSortMode,
         watchSortLabels,
-        static_cast<int>(
-            sizeof(
-                watchSortLabels
-                ) /
-            sizeof(
-                watchSortLabels[
-                    0
-                ]
-                )
-            )
-    ))
+        static_cast<int>(sizeof(watchSortLabels) / sizeof(watchSortLabels[0]))))
     {
         Settings::Save(moduleHandle);
+    }
+
+    ImGui::Spacing();
+
+    ImGui::TextDisabled("View:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100.0f);
+
+    if (ImGui::Combo(
+        "##ViewDensity",
+        &g_Settings.tradingPostViewDensityIndex,
+        viewDensityLabels,
+        static_cast<int>(sizeof(viewDensityLabels) / sizeof(viewDensityLabels[0]))))
+    {
+        Settings::Save(moduleHandle);
+    }
+
+    ImGui::SameLine(0.0f, 14.0f);
+    ImGui::TextDisabled("Show:");
+    ImGui::SameLine();
+
+    static bool showFavoritesOnly = false;
+
+    if (ImGui::RadioButton("All Items", !showFavoritesOnly))
+    {
+        showFavoritesOnly = false;
+    }
+
+    ImGui::SameLine(0.0f, 10.0f);
+
+    if (ImGui::RadioButton("Favorites", showFavoritesOnly))
+    {
+        showFavoritesOnly = true;
     }
 
     ImGui::Spacing();
@@ -3627,1298 +3629,1497 @@ void TradingPostUI::RenderTab(
             "No watched items."
         );
     }
-
-    for (
-        const TradingPostWatchItem& item :
-        watchedItems
-        )
+    else if (showFavoritesOnly)
     {
-        ImGui::PushID(
-            static_cast<int>(
-                item.itemID
-                )
-        );
-
-        TradingPostPrice price;
-
-        const bool hasPrice =
-            TradingPostPriceManager::
-            TryGetPrice(
-                item.itemID,
-                price
-            );
-
-        const std::vector<
-            TradingPostHistoryPoint
-        > history =
-            TradingPostHistoryManager::
-            GetHistory(
-                item.itemID
-            );
-
-        const TrendInfo sellTrend =
-            CalculateTrend(
-                history,
-                true,
-                trendWindowSeconds
-            );
-
-        const TrendInfo buyTrend =
-            CalculateTrend(
-                history,
-                false,
-                trendWindowSeconds
-            );
-
-        std::string sellText =
-            "Loading...";
-
-        std::string buyText =
-            "Loading...";
-
-        uint64_t ageSeconds = 0;
-
-        if (hasPrice)
-        {
-            sellText =
-                FormatCoinValue(
-                    price.sellUnitPrice
-                );
-
-            buyText =
-                FormatCoinValue(
-                    price.buyUnitPrice
-                );
-
-            if (
-                price.lastUpdatedUnixSeconds >
-                0
-                )
-            {
-                const uint64_t nowUnixSeconds =
-                    static_cast<uint64_t>(
-                        std::chrono::
-                        duration_cast<
-                        std::chrono::seconds
-                        >(
-                            std::chrono::
-                            system_clock::
-                            now().
-                            time_since_epoch()
-                        ).count()
-                        );
-
-                ageSeconds =
-                    nowUnixSeconds >=
-                    price.lastUpdatedUnixSeconds
-                    ? nowUnixSeconds -
-                    price.lastUpdatedUnixSeconds
-                    : 0;
-            }
-        }
-        else
-        {
-            TradingPostPriceManager::
-                RequestPrice(
-                    item.itemID
-                );
-        }
-
-        uint64_t targetCopper =
-            item.targetSellCopper;
-
-        int targetGold =
-            static_cast<int>(
-                targetCopper /
-                10000ULL
-                );
-
-        int targetSilver =
-            static_cast<int>(
-                (
-                    targetCopper %
-                    10000ULL
-                    ) /
-                100ULL
-                );
-
-        int targetCopperOnly =
-            static_cast<int>(
-                targetCopper %
-                100ULL
-                );
-
-        bool targetChanged =
-            false;
-
-        uint64_t buyTargetCopper =
-            item.targetBuyCopper;
-
-        int buyTargetGold =
-            static_cast<int>(
-                buyTargetCopper /
-                10000ULL
-                );
-
-        int buyTargetSilver =
-            static_cast<int>(
-                (
-                    buyTargetCopper %
-                    10000ULL
-                    ) /
-                100ULL
-                );
-
-        int buyTargetCopperOnly =
-            static_cast<int>(
-                buyTargetCopper %
-                100ULL
-                );
-
-        bool buyTargetChanged =
-            false;
-
-        const bool targetReached =
-            item.targetSellCopper > 0 &&
-            hasPrice &&
-            price.available &&
-            price.sellUnitPrice > 0 &&
-            static_cast<uint64_t>(
-                price.sellUnitPrice
-                ) <=
-            item.targetSellCopper;
-
-        const bool buyTargetReached =
-            item.targetBuyCopper > 0 &&
-            hasPrice &&
-            price.available &&
-            price.buyUnitPrice > 0 &&
-            static_cast<uint64_t>(
-                price.buyUnitPrice
-                ) >=
-            item.targetBuyCopper;
-
-        std::string targetSummary =
-            "TARGET: -";
-
-        if (item.targetSellCopper > 0)
-        {
-            targetSummary =
-                "TARGET: " +
-                FormatCoinValue(
-                    item.targetSellCopper
-                );
-        }
-
-        const std::string sellTargetValueText =
-            item.targetSellCopper > 0
-            ? FormatCoinValue(
-                item.targetSellCopper
-            )
-            : "-";
-
-        const std::string buyTargetValueText =
-            item.targetBuyCopper > 0
-            ? FormatCoinValue(
-                item.targetBuyCopper
-            )
-            : "-";
-
-        const bool activeSellTargetForItem =
-            hasActiveTargetAlert &&
-            activeTargetAlert.itemID ==
-            item.itemID &&
-            activeTargetAlert.type ==
-            TradingPostTargetAlertType::Sell;
-
-        const bool activeBuyTargetForItem =
-            hasActiveTargetAlert &&
-            activeTargetAlert.itemID ==
-            item.itemID &&
-            activeTargetAlert.type ==
-            TradingPostTargetAlertType::Buy;
-
-        const float targetPulse =
-            0.5f +
-            0.5f *
-            std::sin(
-                static_cast<float>(
-                    ImGui::GetTime()
-                    ) *
-                5.0f
-            );
-
-        bool openEditTargetsPopup =
-            false;
-
-        ImGui::PushStyleVar(
-            ImGuiStyleVar_CellPadding,
-            ImVec2(
-                8.0f,
-                5.0f
-            )
-        );
-
-        if (
-            ImGui::BeginTable(
-                "##CompactWatchItem",
-                5,
-                ImGuiTableFlags_SizingStretchProp |
-                ImGuiTableFlags_NoSavedSettings
-            )
-            )
-        {
-            ImGui::TableSetupColumn(
-                "Item",
-                ImGuiTableColumnFlags_WidthStretch,
-                2.20f
-            );
-
-            ImGui::TableSetupColumn(
-                "Sell",
-                ImGuiTableColumnFlags_WidthStretch,
-                1.10f
-            );
-
-            ImGui::TableSetupColumn(
-                "Buy",
-                ImGuiTableColumnFlags_WidthStretch,
-                1.10f
-            );
-
-            ImGui::TableSetupColumn(
-                "Targets",
-                ImGuiTableColumnFlags_WidthFixed,
-                285.0f
-            );
-
-            ImGui::TableSetupColumn(
-                "Actions",
-                ImGuiTableColumnFlags_WidthFixed,
-                220.0f
-            );
-
-            //
-            // Row 1: item name, live prices, Sell Target summary, actions.
-            //
-            ImGui::TableNextRow();
-
-            ImGui::TableSetColumnIndex(
-                0
-            );
-
-            Texture_t* itemIcon =
-                GetTradingPostItemIcon(
-                    item.itemID
-                );
-
-            if (
-                itemIcon != nullptr &&
-                itemIcon->Resource != nullptr
-                )
-            {
-                ImGui::Image(
-                    (ImTextureID)
-                    itemIcon->Resource,
-                    ImVec2(
-                        28.0f,
-                        28.0f
+        const bool hasFavorite =
+            std::any_of(
+                watchedItems.begin(),
+                watchedItems.end(),
+                [](
+                    const TradingPostWatchItem& item
                     )
-                );
-
-                ImGui::SameLine(
-                    0.0f,
-                    8.0f
-                );
-            }
-
-            ImGui::SetWindowFontScale(
-                1.13f
+                {
+                    return
+                        item.isFavorite;
+                }
             );
 
-            ImGui::TextColored(
-                itemNameColor,
-                "%s",
-                item.name.c_str()
-            );
-
-            ImGui::SetWindowFontScale(
-                1.00f
-            );
-
-            ImGui::TableSetColumnIndex(
-                1
-            );
-
+        if (!hasFavorite)
+        {
             ImGui::TextDisabled(
-                "Sell"
+                "No favorites yet. Switch to All Items and click the star beside an item."
+            );
+        }
+    }
+
+    auto RenderWatchItem =
+        [&](
+            const TradingPostWatchItem& item
+            )
+        {
+            ImGui::PushID(
+                static_cast<int>(
+                    item.itemID
+                    )
             );
 
-            ImGui::SameLine(
-                0.0f,
-                5.0f
-            );
+            auto RenderFavoriteButton =
+                [&]()
+                {
+                    const float buttonSize =
+                        18.0f;
 
-            ImGui::TextColored(
-                sellColor,
-                "%s",
-                sellText.c_str()
-            );
+                    const ImVec2 buttonPos =
+                        ImGui::GetCursorScreenPos();
 
-            ImGui::TableSetColumnIndex(
-                2
-            );
-
-            ImGui::TextDisabled(
-                "Buy"
-            );
-
-            ImGui::SameLine(
-                0.0f,
-                5.0f
-            );
-
-            ImGui::TextColored(
-                buyColor,
-                "%s",
-                buyText.c_str()
-            );
-
-            ImGui::TableSetColumnIndex(
-                3
-            );
-
-            if (activeSellTargetForItem)
-            {
-                ImGui::TableSetBgColor(
-                    ImGuiTableBgTarget_CellBg,
-                    ImGui::GetColorU32(
-                        ImVec4(
-                            0.10f,
-                            0.30f +
-                            0.08f * targetPulse,
-                            0.08f,
-                            0.58f +
-                            0.16f * targetPulse
+                    ImGui::InvisibleButton(
+                        "##Favorite",
+                        ImVec2(
+                            buttonSize,
+                            buttonSize
                         )
+                    );
+
+                    const bool hovered =
+                        ImGui::IsItemHovered();
+
+                    if (ImGui::IsItemClicked())
+                    {
+                        TradingPostWatchManager::
+                            SetFavorite(
+                                item.itemID,
+                                !item.isFavorite
+                            );
+                    }
+
+                    ImDrawList* drawList =
+                        ImGui::GetWindowDrawList();
+
+                    const ImVec2 center(
+                        buttonPos.x +
+                        buttonSize * 0.5f,
+                        buttonPos.y +
+                        buttonSize * 0.5f
+                    );
+
+                    const float outerRadius =
+                        6.5f;
+
+                    const float innerRadius =
+                        3.0f;
+
+                    ImVec2 starPoints[10];
+
+                    constexpr float pi =
+                        3.14159265358979323846f;
+
+                    for (
+                        int pointIndex = 0;
+                        pointIndex < 10;
+                        ++pointIndex
+                        )
+                    {
+                        const float radius =
+                            pointIndex % 2 == 0
+                            ? outerRadius
+                            : innerRadius;
+
+                        const float angle =
+                            -pi * 0.5f +
+                            static_cast<float>(
+                                pointIndex
+                                ) *
+                            pi /
+                            5.0f;
+
+                        starPoints[
+                            pointIndex
+                        ] =
+                            ImVec2(
+                                center.x +
+                                std::cos(
+                                    angle
+                                ) *
+                                radius,
+                                center.y +
+                                std::sin(
+                                    angle
+                                ) *
+                                radius
+                            );
+                    }
+
+                    if (item.isFavorite)
+                    {
+                        const ImU32 favoriteFillColor =
+                            IM_COL32(
+                                255,
+                                190,
+                                32,
+                                255
+                            );
+
+                        for (
+                            int pointIndex = 0;
+                            pointIndex < 10;
+                            ++pointIndex
+                            )
+                        {
+                            const int nextPointIndex =
+                                (
+                                    pointIndex + 1
+                                    ) %
+                                10;
+
+                            drawList->AddTriangleFilled(
+                                center,
+                                starPoints[
+                                    pointIndex
+                                ],
+                                starPoints[
+                                    nextPointIndex
+                                ],
+                                favoriteFillColor
+                            );
+                        }
+
+                        drawList->AddPolyline(
+                            starPoints,
+                            10,
+                            IM_COL32(
+                                255,
+                                222,
+                                92,
+                                255
+                            ),
+                            true,
+                            1.0f
+                        );
+                    }
+                    else
+                    {
+                        drawList->AddPolyline(
+                            starPoints,
+                            10,
+                            hovered
+                            ? IM_COL32(
+                                220,
+                                220,
+                                220,
+                                255
+                            )
+                            : IM_COL32(
+                                145,
+                                145,
+                                150,
+                                255
+                            ),
+                            true,
+                            1.4f
+                        );
+                    }
+
+                    if (hovered)
+                    {
+                        ImGui::SetTooltip(
+                            item.isFavorite
+                            ? "Remove from Favorites"
+                            : "Add to Favorites"
+                        );
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        5.0f
+                    );
+                };
+
+            TradingPostPrice price;
+
+            const bool hasPrice =
+                TradingPostPriceManager::
+                TryGetPrice(
+                    item.itemID,
+                    price
+                );
+
+            const std::vector<
+                TradingPostHistoryPoint
+            > history =
+                TradingPostHistoryManager::
+                GetHistory(
+                    item.itemID
+                );
+
+            const TrendInfo sellTrend =
+                CalculateTrend(
+                    history,
+                    true,
+                    trendWindowSeconds
+                );
+
+            const TrendInfo buyTrend =
+                CalculateTrend(
+                    history,
+                    false,
+                    trendWindowSeconds
+                );
+
+            std::string sellText =
+                "Loading...";
+
+            std::string buyText =
+                "Loading...";
+
+            uint64_t ageSeconds = 0;
+
+            if (hasPrice)
+            {
+                sellText =
+                    FormatCoinValue(
+                        price.sellUnitPrice
+                    );
+
+                buyText =
+                    FormatCoinValue(
+                        price.buyUnitPrice
+                    );
+
+                if (
+                    price.lastUpdatedUnixSeconds >
+                    0
                     )
-                );
-            }
+                {
+                    const uint64_t nowUnixSeconds =
+                        static_cast<uint64_t>(
+                            std::chrono::
+                            duration_cast<
+                            std::chrono::seconds
+                            >(
+                                std::chrono::
+                                system_clock::
+                                now().
+                                time_since_epoch()
+                            ).count()
+                            );
 
-            ImGui::TextDisabled(
-                "Sell Target"
-            );
-
-            ImGui::SameLine(
-                0.0f,
-                8.0f
-            );
-
-            if (item.targetSellCopper > 0)
-            {
-                ImGui::TextColored(
-                    sellColor,
-                    "%s",
-                    sellTargetValueText.c_str()
-                );
-            }
-            else
-            {
-                ImGui::TextDisabled(
-                    "-"
-                );
-            }
-
-            ImGui::SameLine(
-                0.0f,
-                10.0f
-            );
-
-            if (
-                item.targetSellCopper ==
-                0
-                )
-            {
-                ImGui::TextDisabled(
-                    "NO TARGET"
-                );
-            }
-            else if (!hasPrice)
-            {
-                ImGui::TextDisabled(
-                    "WAITING"
-                );
-            }
-            else if (targetReached)
-            {
-                ImGui::TextColored(
-                    goodColor,
-                    "TARGET REACHED"
-                );
+                    ageSeconds =
+                        nowUnixSeconds >=
+                        price.lastUpdatedUnixSeconds
+                        ? nowUnixSeconds -
+                        price.lastUpdatedUnixSeconds
+                        : 0;
+                }
             }
             else
             {
-                ImGui::TextColored(
-                    attentionColor,
-                    "WAIT"
-                );
-            }
-
-            ImGui::TableSetColumnIndex(
-                4
-            );
-
-            if (
-                ImGui::SmallButton(
-                    "Edit Targets"
-                )
-                )
-            {
-                openEditTargetsPopup =
-                    true;
-            }
-
-            ImGui::SameLine();
-
-            if (
-                ImGui::SmallButton(
-                    "Refresh"
-                )
-                )
-            {
-                TradingPostWatchManager::
-                    RefreshItem(
+                TradingPostPriceManager::
+                    RequestPrice(
                         item.itemID
                     );
             }
 
-            if (!item.isDefault)
-            {
-                ImGui::SameLine();
+            uint64_t targetCopper =
+                item.targetSellCopper;
 
+            int targetGold =
+                static_cast<int>(
+                    targetCopper /
+                    10000ULL
+                    );
+
+            int targetSilver =
+                static_cast<int>(
+                    (
+                        targetCopper %
+                        10000ULL
+                        ) /
+                    100ULL
+                    );
+
+            int targetCopperOnly =
+                static_cast<int>(
+                    targetCopper %
+                    100ULL
+                    );
+
+            bool targetChanged =
+                false;
+
+            uint64_t buyTargetCopper =
+                item.targetBuyCopper;
+
+            int buyTargetGold =
+                static_cast<int>(
+                    buyTargetCopper /
+                    10000ULL
+                    );
+
+            int buyTargetSilver =
+                static_cast<int>(
+                    (
+                        buyTargetCopper %
+                        10000ULL
+                        ) /
+                    100ULL
+                    );
+
+            int buyTargetCopperOnly =
+                static_cast<int>(
+                    buyTargetCopper %
+                    100ULL
+                    );
+
+            bool buyTargetChanged =
+                false;
+
+            const bool targetReached =
+                item.targetSellCopper > 0 &&
+                hasPrice &&
+                price.available &&
+                price.sellUnitPrice > 0 &&
+                static_cast<uint64_t>(
+                    price.sellUnitPrice
+                    ) <=
+                item.targetSellCopper;
+
+            const bool buyTargetReached =
+                item.targetBuyCopper > 0 &&
+                hasPrice &&
+                price.available &&
+                price.buyUnitPrice > 0 &&
+                static_cast<uint64_t>(
+                    price.buyUnitPrice
+                    ) >=
+                item.targetBuyCopper;
+
+            std::string targetSummary =
+                "TARGET: -";
+
+            if (item.targetSellCopper > 0)
+            {
+                targetSummary =
+                    "TARGET: " +
+                    FormatCoinValue(
+                        item.targetSellCopper
+                    );
+            }
+
+            const std::string sellTargetValueText =
+                item.targetSellCopper > 0
+                ? FormatCoinValue(
+                    item.targetSellCopper
+                )
+                : "-";
+
+            const std::string buyTargetValueText =
+                item.targetBuyCopper > 0
+                ? FormatCoinValue(
+                    item.targetBuyCopper
+                )
+                : "-";
+
+            const bool activeSellTargetForItem =
+                hasActiveTargetAlert &&
+                activeTargetAlert.itemID ==
+                item.itemID &&
+                activeTargetAlert.type ==
+                TradingPostTargetAlertType::Sell;
+
+            const bool activeBuyTargetForItem =
+                hasActiveTargetAlert &&
+                activeTargetAlert.itemID ==
+                item.itemID &&
+                activeTargetAlert.type ==
+                TradingPostTargetAlertType::Buy;
+
+            const float targetPulse =
+                0.5f +
+                0.5f *
+                std::sin(
+                    static_cast<float>(
+                        ImGui::GetTime()
+                        ) *
+                    5.0f
+                );
+
+            bool openEditTargetsPopup =
+                false;
+
+            const bool normalView =
+                g_Settings.tradingPostViewDensityIndex == 0;
+
+            const bool ultraSlimView =
+                g_Settings.tradingPostViewDensityIndex == 2;
+
+            const ImVec2 rowCellPadding =
+                normalView
+                ? ImVec2(
+                    8.0f,
+                    7.0f
+                )
+                : (
+                    ultraSlimView
+                    ? ImVec2(
+                        4.0f,
+                        2.0f
+                    )
+                    : ImVec2(
+                        6.0f,
+                        4.0f
+                    )
+                    );
+
+            ImGui::PushStyleVar(
+                ImGuiStyleVar_CellPadding,
+                rowCellPadding
+            );
+
+            if (ultraSlimView)
+            {
                 if (
-                    ImGui::SmallButton(
-                        "Remove"
+                    ImGui::BeginTable(
+                        "##UltraSlimWatchItem",
+                        4,
+                        ImGuiTableFlags_SizingStretchProp |
+                        ImGuiTableFlags_NoSavedSettings
                     )
                     )
                 {
-                    TradingPostWatchManager::
-                        RemoveItem(
+                    ImGui::TableSetupColumn(
+                        "Item",
+                        ImGuiTableColumnFlags_WidthStretch,
+                        2.40f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Sell",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        112.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Buy",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        112.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Actions",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        248.0f
+                    );
+
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(
+                        0
+                    );
+
+                    RenderFavoriteButton();
+
+                    Texture_t* itemIcon =
+                        GetTradingPostItemIcon(
                             item.itemID
                         );
-                }
-            }
 
-            //
-            // Row 2: quiet metadata + Buy Target summary.
-            //
-            ImGui::TableNextRow();
-
-            ImGui::TableSetColumnIndex(
-                0
-            );
-
-            if (hasPrice)
-            {
-                ImGui::TextDisabled(
-                    "Item ID %u  |  Updated %llu sec ago",
-                    item.itemID,
-                    ageSeconds
-                );
-            }
-            else
-            {
-                ImGui::TextDisabled(
-                    "Item ID %u  |  Price data loading...",
-                    item.itemID
-                );
-            }
-
-            ImGui::TableSetColumnIndex(
-                3
-            );
-
-            if (activeBuyTargetForItem)
-            {
-                ImGui::TableSetBgColor(
-                    ImGuiTableBgTarget_CellBg,
-                    ImGui::GetColorU32(
-                        ImVec4(
-                            0.05f,
-                            0.16f +
-                            0.06f * targetPulse,
-                            0.34f +
-                            0.08f * targetPulse,
-                            0.54f +
-                            0.18f * targetPulse
+                    if (
+                        itemIcon != nullptr &&
+                        itemIcon->Resource != nullptr
                         )
-                    )
-                );
-            }
+                    {
+                        ImGui::Image(
+                            (ImTextureID)
+                            itemIcon->Resource,
+                            ImVec2(
+                                20.0f,
+                                20.0f
+                            )
+                        );
 
-            ImGui::TextDisabled(
-                "Buy Target"
-            );
+                        ImGui::SameLine(
+                            0.0f,
+                            5.0f
+                        );
+                    }
 
-            ImGui::SameLine(
-                0.0f,
-                8.0f
-            );
+                    ImGui::TextColored(
+                        itemNameColor,
+                        "%s",
+                        item.name.c_str()
+                    );
 
-            if (item.targetBuyCopper > 0)
-            {
-                ImGui::TextColored(
-                    buyColor,
-                    "%s",
-                    buyTargetValueText.c_str()
-                );
+                    ImGui::TableSetColumnIndex(
+                        1
+                    );
+
+                    ImGui::TextColored(
+                        sellColor,
+                        "%s",
+                        sellText.c_str()
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        2
+                    );
+
+                    ImGui::TextColored(
+                        buyColor,
+                        "%s",
+                        buyText.c_str()
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        3
+                    );
+
+                    if (
+                        ImGui::SmallButton(
+                            "Targets"
+                        )
+                        )
+                    {
+                        openEditTargetsPopup =
+                            true;
+                    }
+
+                    ImGui::SameLine();
+
+                    if (
+                        ImGui::SmallButton(
+                            "Refresh"
+                        )
+                        )
+                    {
+                        TradingPostWatchManager::
+                            RefreshItem(
+                                item.itemID
+                            );
+                    }
+
+                    if (!item.isDefault)
+                    {
+                        ImGui::SameLine();
+
+                        if (
+                            ImGui::SmallButton(
+                                "Remove"
+                            )
+                            )
+                        {
+                            TradingPostWatchManager::
+                                RemoveItem(
+                                    item.itemID
+                                );
+                        }
+                    }
+
+                    ImGui::EndTable();
+                }
             }
             else
             {
-                ImGui::TextDisabled(
-                    "-"
-                );
-            }
-
-            ImGui::SameLine(
-                0.0f,
-                10.0f
-            );
-
-            if (
-                item.targetBuyCopper ==
-                0
-                )
-            {
-                ImGui::TextDisabled(
-                    "NO TARGET"
-                );
-            }
-            else if (!hasPrice)
-            {
-                ImGui::TextDisabled(
-                    "WAITING"
-                );
-            }
-            else if (buyTargetReached)
-            {
-                ImGui::TextColored(
-                    goodColor,
-                    "TARGET REACHED"
-                );
-            }
-            else
-            {
-                ImGui::TextColored(
-                    attentionColor,
-                    "WAIT"
-                );
-            }
-
-            ImGui::EndTable();
-        }
-
-        ImGui::PopStyleVar();
-
-        if (openEditTargetsPopup)
-        {
-            ImGui::OpenPopup(
-                "##EditTargetsPopup"
-            );
-        }
-
-        //
-        // Targets stay compact during normal viewing. The numeric g/s/c
-        // controls only appear while this item is being edited.
-        //
-        ImGui::SetNextWindowSize(
-            ImVec2(
-                430.0f,
-                0.0f
-            ),
-            ImGuiCond_Appearing
-        );
-
-        if (
-            ImGui::BeginPopup(
-                "##EditTargetsPopup"
-            )
-            )
-        {
-            ImGui::PushStyleVar(
-                ImGuiStyleVar_FrameRounding,
-                4.0f
-            );
-
-            ImGui::SetWindowFontScale(
-                1.10f
-            );
-
-            ImGui::TextColored(
-                itemNameColor,
-                "%s",
-                item.name.c_str()
-            );
-
-            ImGui::SetWindowFontScale(
-                1.00f
-            );
-
-            ImGui::TextDisabled(
-                "Set alert prices for this watched item."
-            );
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            if (
-                ImGui::BeginTable(
-                    "##TargetEditorTable",
-                    5,
-                    ImGuiTableFlags_SizingFixedFit |
-                    ImGuiTableFlags_NoSavedSettings
-                )
-                )
-            {
-                ImGui::TableSetupColumn(
-                    "Target",
-                    ImGuiTableColumnFlags_WidthFixed,
-                    82.0f
-                );
-
-                ImGui::TableSetupColumn(
-                    "Gold",
-                    ImGuiTableColumnFlags_WidthFixed,
-                    92.0f
-                );
-
-                ImGui::TableSetupColumn(
-                    "Silver",
-                    ImGuiTableColumnFlags_WidthFixed,
-                    72.0f
-                );
-
-                ImGui::TableSetupColumn(
-                    "Copper",
-                    ImGuiTableColumnFlags_WidthFixed,
-                    72.0f
-                );
-
-                ImGui::TableSetupColumn(
-                    "Clear",
-                    ImGuiTableColumnFlags_WidthFixed,
-                    58.0f
-                );
-
-                //
-                // Sell Target
-                //
-                ImGui::TableNextRow();
-
-                ImGui::TableSetColumnIndex(
-                    0
-                );
-
-                ImGui::TextColored(
-                    sellColor,
-                    "Sell Target"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    1
-                );
-
-                ImGui::SetNextItemWidth(
-                    62.0f
-                );
-
                 if (
-                    ImGui::InputInt(
-                        "##EditSellTargetGold",
-                        &targetGold,
-                        0,
+                    ImGui::BeginTable(
+                        "##CompactWatchItem",
+                        6,
+                        ImGuiTableFlags_SizingStretchProp |
+                        ImGuiTableFlags_NoSavedSettings
+                    )
+                    )
+                {
+                    ImGui::TableSetupColumn(
+                        "Item",
+                        ImGuiTableColumnFlags_WidthStretch,
+                        2.20f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Sell",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        118.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Buy",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        118.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Sell Target",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        180.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Buy Target",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        180.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Actions",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        215.0f
+                    );
+
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(
                         0
-                    )
-                    )
-                {
-                    targetChanged =
-                        true;
-                }
+                    );
 
-                ImGui::SameLine(
-                    0.0f,
-                    3.0f
-                );
+                    RenderFavoriteButton();
 
-                ImGui::TextDisabled(
-                    "g"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    2
-                );
-
-                ImGui::SetNextItemWidth(
-                    43.0f
-                );
-
-                if (
-                    ImGui::InputInt(
-                        "##EditSellTargetSilver",
-                        &targetSilver,
-                        0,
-                        0
-                    )
-                    )
-                {
-                    targetChanged =
-                        true;
-                }
-
-                ImGui::SameLine(
-                    0.0f,
-                    3.0f
-                );
-
-                ImGui::TextDisabled(
-                    "s"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    3
-                );
-
-                ImGui::SetNextItemWidth(
-                    43.0f
-                );
-
-                if (
-                    ImGui::InputInt(
-                        "##EditSellTargetCopper",
-                        &targetCopperOnly,
-                        0,
-                        0
-                    )
-                    )
-                {
-                    targetChanged =
-                        true;
-                }
-
-                ImGui::SameLine(
-                    0.0f,
-                    3.0f
-                );
-
-                ImGui::TextDisabled(
-                    "c"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    4
-                );
-
-                if (
-                    ImGui::SmallButton(
-                        "Clear##SellTarget"
-                    )
-                    )
-                {
-                    targetGold = 0;
-                    targetSilver = 0;
-                    targetCopperOnly = 0;
-
-                    targetChanged =
-                        true;
-                }
-
-                //
-                // Buy Target
-                //
-                ImGui::TableNextRow();
-
-                ImGui::TableSetColumnIndex(
-                    0
-                );
-
-                ImGui::TextColored(
-                    buyColor,
-                    "Buy Target"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    1
-                );
-
-                ImGui::SetNextItemWidth(
-                    62.0f
-                );
-
-                if (
-                    ImGui::InputInt(
-                        "##EditBuyTargetGold",
-                        &buyTargetGold,
-                        0,
-                        0
-                    )
-                    )
-                {
-                    buyTargetChanged =
-                        true;
-                }
-
-                ImGui::SameLine(
-                    0.0f,
-                    3.0f
-                );
-
-                ImGui::TextDisabled(
-                    "g"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    2
-                );
-
-                ImGui::SetNextItemWidth(
-                    43.0f
-                );
-
-                if (
-                    ImGui::InputInt(
-                        "##EditBuyTargetSilver",
-                        &buyTargetSilver,
-                        0,
-                        0
-                    )
-                    )
-                {
-                    buyTargetChanged =
-                        true;
-                }
-
-                ImGui::SameLine(
-                    0.0f,
-                    3.0f
-                );
-
-                ImGui::TextDisabled(
-                    "s"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    3
-                );
-
-                ImGui::SetNextItemWidth(
-                    43.0f
-                );
-
-                if (
-                    ImGui::InputInt(
-                        "##EditBuyTargetCopper",
-                        &buyTargetCopperOnly,
-                        0,
-                        0
-                    )
-                    )
-                {
-                    buyTargetChanged =
-                        true;
-                }
-
-                ImGui::SameLine(
-                    0.0f,
-                    3.0f
-                );
-
-                ImGui::TextDisabled(
-                    "c"
-                );
-
-                ImGui::TableSetColumnIndex(
-                    4
-                );
-
-                if (
-                    ImGui::SmallButton(
-                        "Clear##BuyTarget"
-                    )
-                    )
-                {
-                    buyTargetGold = 0;
-                    buyTargetSilver = 0;
-                    buyTargetCopperOnly = 0;
-
-                    buyTargetChanged =
-                        true;
-                }
-
-                ImGui::EndTable();
-            }
-
-            if (targetGold < 0)
-            {
-                targetGold = 0;
-            }
-
-            if (targetSilver < 0)
-            {
-                targetSilver = 0;
-            }
-
-            if (targetSilver > 99)
-            {
-                targetSilver = 99;
-            }
-
-            if (targetCopperOnly < 0)
-            {
-                targetCopperOnly = 0;
-            }
-
-            if (targetCopperOnly > 99)
-            {
-                targetCopperOnly = 99;
-            }
-
-            if (buyTargetGold < 0)
-            {
-                buyTargetGold = 0;
-            }
-
-            if (buyTargetSilver < 0)
-            {
-                buyTargetSilver = 0;
-            }
-
-            if (buyTargetSilver > 99)
-            {
-                buyTargetSilver = 99;
-            }
-
-            if (buyTargetCopperOnly < 0)
-            {
-                buyTargetCopperOnly = 0;
-            }
-
-            if (buyTargetCopperOnly > 99)
-            {
-                buyTargetCopperOnly = 99;
-            }
-
-            if (targetChanged)
-            {
-                const uint64_t newTargetCopper =
-                    static_cast<uint64_t>(
-                        targetGold
-                        ) *
-                    10000ULL +
-                    static_cast<uint64_t>(
-                        targetSilver
-                        ) *
-                    100ULL +
-                    static_cast<uint64_t>(
-                        targetCopperOnly
+                    Texture_t* itemIcon =
+                        GetTradingPostItemIcon(
+                            item.itemID
                         );
 
-                TradingPostWatchManager::
-                    SetTargetSellPrice(
-                        item.itemID,
-                        newTargetCopper
-                    );
-            }
+                    if (
+                        itemIcon != nullptr &&
+                        itemIcon->Resource != nullptr
+                        )
+                    {
+                        const float iconSize =
+                            normalView
+                            ? 28.0f
+                            : 24.0f;
 
-            if (buyTargetChanged)
-            {
-                const uint64_t newBuyTargetCopper =
-                    static_cast<uint64_t>(
-                        buyTargetGold
-                        ) *
-                    10000ULL +
-                    static_cast<uint64_t>(
-                        buyTargetSilver
-                        ) *
-                    100ULL +
-                    static_cast<uint64_t>(
-                        buyTargetCopperOnly
+                        ImGui::Image(
+                            (ImTextureID)
+                            itemIcon->Resource,
+                            ImVec2(
+                                iconSize,
+                                iconSize
+                            )
                         );
 
-                TradingPostWatchManager::
-                    SetTargetBuyPrice(
-                        item.itemID,
-                        newBuyTargetCopper
+                        ImGui::SameLine(
+                            0.0f,
+                            normalView
+                            ? 9.0f
+                            : 7.0f
+                        );
+                    }
+
+                    ImGui::SetWindowFontScale(
+                        normalView
+                        ? 1.12f
+                        : 1.08f
                     );
-            }
 
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
+                    ImGui::TextColored(
+                        itemNameColor,
+                        "%s",
+                        item.name.c_str()
+                    );
 
-            const float doneButtonWidth =
-                96.0f;
+                    ImGui::SetWindowFontScale(
+                        1.00f
+                    );
 
-            ImGui::SetCursorPosX(
-                (
-                    ImGui::GetWindowSize().x -
-                    doneButtonWidth
-                    ) *
-                0.5f
-            );
+                    if (normalView)
+                    {
+                        if (hasPrice)
+                        {
+                            ImGui::TextDisabled(
+                                "ID %u  |  Updated %llu sec ago",
+                                item.itemID,
+                                ageSeconds
+                            );
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "ID %u  |  Price loading...",
+                                item.itemID
+                            );
+                        }
+                    }
 
-            if (
-                ImGui::Button(
-                    "Done",
-                    ImVec2(
-                        doneButtonWidth,
-                        26.0f
-                    )
-                )
-                )
-            {
-                ImGui::CloseCurrentPopup();
+                    ImGui::TableSetColumnIndex(
+                        1
+                    );
+
+                    ImGui::TextDisabled(
+                        "Sell"
+                    );
+
+                    ImGui::SameLine(
+                        0.0f,
+                        4.0f
+                    );
+
+                    ImGui::TextColored(
+                        sellColor,
+                        "%s",
+                        sellText.c_str()
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        2
+                    );
+
+                    ImGui::TextDisabled(
+                        "Buy"
+                    );
+
+                    ImGui::SameLine(
+                        0.0f,
+                        4.0f
+                    );
+
+                    ImGui::TextColored(
+                        buyColor,
+                        "%s",
+                        buyText.c_str()
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        3
+                    );
+
+                    if (activeSellTargetForItem)
+                    {
+                        ImGui::TableSetBgColor(
+                            ImGuiTableBgTarget_CellBg,
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    0.10f,
+                                    0.30f +
+                                    0.08f * targetPulse,
+                                    0.08f,
+                                    0.58f +
+                                    0.16f * targetPulse
+                                )
+                            )
+                        );
+                    }
+
+                    ImGui::TextDisabled(
+                        "Sell "
+                    );
+
+                    ImGui::SameLine(
+                        0.0f,
+                        2.0f
+                    );
+
+                    if (item.targetSellCopper > 0)
+                    {
+                        ImGui::TextColored(
+                            sellColor,
+                            "%s",
+                            sellTargetValueText.c_str()
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled(
+                            "-"
+                        );
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        6.0f
+                    );
+
+                    if (item.targetSellCopper == 0)
+                    {
+                        ImGui::TextDisabled(
+                            "NO TARGET"
+                        );
+                    }
+                    else if (!hasPrice)
+                    {
+                        ImGui::TextDisabled(
+                            "WAITING"
+                        );
+                    }
+                    else if (targetReached)
+                    {
+                        ImGui::TextColored(
+                            goodColor,
+                            "HIT"
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextColored(
+                            attentionColor,
+                            "WAIT"
+                        );
+                    }
+
+                    ImGui::TableSetColumnIndex(
+                        4
+                    );
+
+                    if (activeBuyTargetForItem)
+                    {
+                        ImGui::TableSetBgColor(
+                            ImGuiTableBgTarget_CellBg,
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    0.05f,
+                                    0.16f +
+                                    0.06f * targetPulse,
+                                    0.34f +
+                                    0.08f * targetPulse,
+                                    0.54f +
+                                    0.18f * targetPulse
+                                )
+                            )
+                        );
+                    }
+
+                    ImGui::TextDisabled(
+                        "Buy "
+                    );
+
+                    ImGui::SameLine(
+                        0.0f,
+                        2.0f
+                    );
+
+                    if (item.targetBuyCopper > 0)
+                    {
+                        ImGui::TextColored(
+                            buyColor,
+                            "%s",
+                            buyTargetValueText.c_str()
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled(
+                            "-"
+                        );
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        6.0f
+                    );
+
+                    if (item.targetBuyCopper == 0)
+                    {
+                        ImGui::TextDisabled(
+                            "NO TARGET"
+                        );
+                    }
+                    else if (!hasPrice)
+                    {
+                        ImGui::TextDisabled(
+                            "WAITING"
+                        );
+                    }
+                    else if (buyTargetReached)
+                    {
+                        ImGui::TextColored(
+                            goodColor,
+                            "HIT"
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextColored(
+                            attentionColor,
+                            "WAIT"
+                        );
+                    }
+
+                    ImGui::TableSetColumnIndex(
+                        5
+                    );
+
+                    if (
+                        ImGui::SmallButton(
+                            "Edit Targets"
+                        )
+                        )
+                    {
+                        openEditTargetsPopup =
+                            true;
+                    }
+
+                    ImGui::SameLine();
+
+                    if (
+                        ImGui::SmallButton(
+                            "Refresh"
+                        )
+                        )
+                    {
+                        TradingPostWatchManager::
+                            RefreshItem(
+                                item.itemID
+                            );
+                    }
+
+                    if (!item.isDefault)
+                    {
+                        ImGui::SameLine();
+
+                        if (
+                            ImGui::SmallButton(
+                                "Remove"
+                            )
+                            )
+                        {
+                            TradingPostWatchManager::
+                                RemoveItem(
+                                    item.itemID
+                                );
+                        }
+                    }
+
+                    ImGui::EndTable();
+                }
             }
 
             ImGui::PopStyleVar();
 
-            ImGui::EndPopup();
-        }
+            if (openEditTargetsPopup)
+            {
+                ImGui::OpenPopup(
+                    "##EditTargetsPopup"
+                );
+            }
 
-        uint64_t historySpanSeconds = 0;
-
-        if (history.size() >= 2)
-        {
-            const uint64_t newestTimestamp =
-                history.back().
-                timestampUnixSeconds;
-
-            const uint64_t oldestTimestamp =
-                history.front().
-                timestampUnixSeconds;
-
-            historySpanSeconds =
-                newestTimestamp >= oldestTimestamp
-                ? newestTimestamp - oldestTimestamp
-                : 0;
-        }
-
-        const size_t minimumAnalysisSamples =
-            15;
-
-        const WindowCoverageInfo windowCoverage =
-            CalculateGapAwareCoverage(
-                history,
-                trendWindowSeconds
+            //
+            // Targets stay compact during normal viewing. The numeric g/s/c
+            // controls only appear while this item is being edited.
+            //
+            ImGui::SetNextWindowSize(
+                ImVec2(
+                    430.0f,
+                    0.0f
+                ),
+                ImGuiCond_Appearing
             );
 
-        const double selectedWindowCoverage =
-            windowCoverage.coverage;
-
-        const bool marketAnalysisReady =
-            windowCoverage.sampleCount >=
-            minimumAnalysisSamples &&
-            selectedWindowCoverage >= 0.75 &&
-            sellTrend.available &&
-            buyTrend.available;
-
-        const bool volatilityAnalysisReady =
-            windowCoverage.sampleCount >=
-            minimumAnalysisSamples &&
-            selectedWindowCoverage >= 0.75;
-
-        const VolatilityInfo volatility =
-            CalculateVolatility(
-                history,
-                trendWindowSeconds,
-                volatilityAnalysisReady
-            );
-
-        const TrendInfo observedSellTrend =
-            sellTrend.available
-            ? sellTrend
-            : CalculateObservedTrend(
-                history,
-                true
-            );
-
-        const TrendInfo observedBuyTrend =
-            buyTrend.available
-            ? buyTrend
-            : CalculateObservedTrend(
-                history,
-                false
-            );
-
-        if (
-            hasPrice &&
-            price.available &&
-            price.sellUnitPrice > 0
-            )
-        {
-            const std::string spanText =
-                FormatHistorySpan(
-                    windowCoverage.coveredSeconds
+            if (
+                ImGui::BeginPopup(
+                    "##EditTargetsPopup"
+                )
+                )
+            {
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_FrameRounding,
+                    4.0f
                 );
 
-            const std::string windowText =
-                FormatHistorySpan(
+                ImGui::SetWindowFontScale(
+                    1.10f
+                );
+
+                ImGui::TextColored(
+                    itemNameColor,
+                    "%s",
+                    item.name.c_str()
+                );
+
+                ImGui::SetWindowFontScale(
+                    1.00f
+                );
+
+                ImGui::TextDisabled(
+                    "Set alert prices for this watched item."
+                );
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                if (
+                    ImGui::BeginTable(
+                        "##TargetEditorTable",
+                        5,
+                        ImGuiTableFlags_SizingFixedFit |
+                        ImGuiTableFlags_NoSavedSettings
+                    )
+                    )
+                {
+                    ImGui::TableSetupColumn(
+                        "Target",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        82.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Gold",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        92.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Silver",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        72.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Copper",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        72.0f
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "Clear",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        58.0f
+                    );
+
+                    //
+                    // Sell Target
+                    //
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(
+                        0
+                    );
+
+                    ImGui::TextColored(
+                        sellColor,
+                        "Sell Target"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        1
+                    );
+
+                    ImGui::SetNextItemWidth(
+                        62.0f
+                    );
+
+                    if (
+                        ImGui::InputInt(
+                            "##EditSellTargetGold",
+                            &targetGold,
+                            0,
+                            0
+                        )
+                        )
+                    {
+                        targetChanged =
+                            true;
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        3.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "g"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        2
+                    );
+
+                    ImGui::SetNextItemWidth(
+                        43.0f
+                    );
+
+                    if (
+                        ImGui::InputInt(
+                            "##EditSellTargetSilver",
+                            &targetSilver,
+                            0,
+                            0
+                        )
+                        )
+                    {
+                        targetChanged =
+                            true;
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        3.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "s"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        3
+                    );
+
+                    ImGui::SetNextItemWidth(
+                        43.0f
+                    );
+
+                    if (
+                        ImGui::InputInt(
+                            "##EditSellTargetCopper",
+                            &targetCopperOnly,
+                            0,
+                            0
+                        )
+                        )
+                    {
+                        targetChanged =
+                            true;
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        3.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "c"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        4
+                    );
+
+                    if (
+                        ImGui::SmallButton(
+                            "Clear##SellTarget"
+                        )
+                        )
+                    {
+                        targetGold = 0;
+                        targetSilver = 0;
+                        targetCopperOnly = 0;
+
+                        targetChanged =
+                            true;
+                    }
+
+                    //
+                    // Buy Target
+                    //
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(
+                        0
+                    );
+
+                    ImGui::TextColored(
+                        buyColor,
+                        "Buy Target"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        1
+                    );
+
+                    ImGui::SetNextItemWidth(
+                        62.0f
+                    );
+
+                    if (
+                        ImGui::InputInt(
+                            "##EditBuyTargetGold",
+                            &buyTargetGold,
+                            0,
+                            0
+                        )
+                        )
+                    {
+                        buyTargetChanged =
+                            true;
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        3.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "g"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        2
+                    );
+
+                    ImGui::SetNextItemWidth(
+                        43.0f
+                    );
+
+                    if (
+                        ImGui::InputInt(
+                            "##EditBuyTargetSilver",
+                            &buyTargetSilver,
+                            0,
+                            0
+                        )
+                        )
+                    {
+                        buyTargetChanged =
+                            true;
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        3.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "s"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        3
+                    );
+
+                    ImGui::SetNextItemWidth(
+                        43.0f
+                    );
+
+                    if (
+                        ImGui::InputInt(
+                            "##EditBuyTargetCopper",
+                            &buyTargetCopperOnly,
+                            0,
+                            0
+                        )
+                        )
+                    {
+                        buyTargetChanged =
+                            true;
+                    }
+
+                    ImGui::SameLine(
+                        0.0f,
+                        3.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "c"
+                    );
+
+                    ImGui::TableSetColumnIndex(
+                        4
+                    );
+
+                    if (
+                        ImGui::SmallButton(
+                            "Clear##BuyTarget"
+                        )
+                        )
+                    {
+                        buyTargetGold = 0;
+                        buyTargetSilver = 0;
+                        buyTargetCopperOnly = 0;
+
+                        buyTargetChanged =
+                            true;
+                    }
+
+                    ImGui::EndTable();
+                }
+
+                if (targetGold < 0)
+                {
+                    targetGold = 0;
+                }
+
+                if (targetSilver < 0)
+                {
+                    targetSilver = 0;
+                }
+
+                if (targetSilver > 99)
+                {
+                    targetSilver = 99;
+                }
+
+                if (targetCopperOnly < 0)
+                {
+                    targetCopperOnly = 0;
+                }
+
+                if (targetCopperOnly > 99)
+                {
+                    targetCopperOnly = 99;
+                }
+
+                if (buyTargetGold < 0)
+                {
+                    buyTargetGold = 0;
+                }
+
+                if (buyTargetSilver < 0)
+                {
+                    buyTargetSilver = 0;
+                }
+
+                if (buyTargetSilver > 99)
+                {
+                    buyTargetSilver = 99;
+                }
+
+                if (buyTargetCopperOnly < 0)
+                {
+                    buyTargetCopperOnly = 0;
+                }
+
+                if (buyTargetCopperOnly > 99)
+                {
+                    buyTargetCopperOnly = 99;
+                }
+
+                if (targetChanged)
+                {
+                    const uint64_t newTargetCopper =
+                        static_cast<uint64_t>(
+                            targetGold
+                            ) *
+                        10000ULL +
+                        static_cast<uint64_t>(
+                            targetSilver
+                            ) *
+                        100ULL +
+                        static_cast<uint64_t>(
+                            targetCopperOnly
+                            );
+
+                    TradingPostWatchManager::
+                        SetTargetSellPrice(
+                            item.itemID,
+                            newTargetCopper
+                        );
+                }
+
+                if (buyTargetChanged)
+                {
+                    const uint64_t newBuyTargetCopper =
+                        static_cast<uint64_t>(
+                            buyTargetGold
+                            ) *
+                        10000ULL +
+                        static_cast<uint64_t>(
+                            buyTargetSilver
+                            ) *
+                        100ULL +
+                        static_cast<uint64_t>(
+                            buyTargetCopperOnly
+                            );
+
+                    TradingPostWatchManager::
+                        SetTargetBuyPrice(
+                            item.itemID,
+                            newBuyTargetCopper
+                        );
+                }
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                const float doneButtonWidth =
+                    96.0f;
+
+                ImGui::SetCursorPosX(
+                    (
+                        ImGui::GetWindowSize().x -
+                        doneButtonWidth
+                        ) *
+                    0.5f
+                );
+
+                if (
+                    ImGui::Button(
+                        "Done",
+                        ImVec2(
+                            doneButtonWidth,
+                            26.0f
+                        )
+                    )
+                    )
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+
+                ImGui::PopStyleVar();
+
+                ImGui::EndPopup();
+            }
+
+            uint64_t historySpanSeconds = 0;
+
+            if (history.size() >= 2)
+            {
+                const uint64_t newestTimestamp =
+                    history.back().
+                    timestampUnixSeconds;
+
+                const uint64_t oldestTimestamp =
+                    history.front().
+                    timestampUnixSeconds;
+
+                historySpanSeconds =
+                    newestTimestamp >= oldestTimestamp
+                    ? newestTimestamp - oldestTimestamp
+                    : 0;
+            }
+
+            const size_t minimumAnalysisSamples =
+                15;
+
+            const WindowCoverageInfo windowCoverage =
+                CalculateGapAwareCoverage(
+                    history,
                     trendWindowSeconds
                 );
 
-            const char* listingDirection =
-                "Stable";
+            const double selectedWindowCoverage =
+                windowCoverage.coverage;
 
-            if (
-                observedSellTrend.available &&
-                observedSellTrend.trend ==
-                PriceTrend::Up
-                )
-            {
-                listingDirection =
-                    "More Expensive";
-            }
-            else if (
-                observedSellTrend.available &&
-                observedSellTrend.trend ==
-                PriceTrend::Down
-                )
-            {
-                listingDirection =
-                    "Cheaper";
-            }
-            else if (!observedSellTrend.available)
-            {
-                listingDirection =
-                    "Developing";
-            }
+            const bool marketAnalysisReady =
+                windowCoverage.sampleCount >=
+                minimumAnalysisSamples &&
+                selectedWindowCoverage >= 0.75 &&
+                sellTrend.available &&
+                buyTrend.available;
 
-            const char* buyOrderDirection =
-                "Stable";
+            const bool volatilityAnalysisReady =
+                windowCoverage.sampleCount >=
+                minimumAnalysisSamples &&
+                selectedWindowCoverage >= 0.75;
 
-            if (
-                observedBuyTrend.available &&
-                observedBuyTrend.trend ==
-                PriceTrend::Up
-                )
-            {
-                buyOrderDirection =
-                    "Higher";
-            }
-            else if (
-                observedBuyTrend.available &&
-                observedBuyTrend.trend ==
-                PriceTrend::Down
-                )
-            {
-                buyOrderDirection =
-                    "Lower";
-            }
-            else if (!observedBuyTrend.available)
-            {
-                buyOrderDirection =
-                    "Developing";
-            }
-
-            const char* confidenceLabel =
-                marketAnalysisReady &&
-                selectedWindowCoverage >= 0.90
-                ? "HIGH"
-                : (
-                    marketAnalysisReady
-                    ? "MED"
-                    : "LOW"
-                    );
-
-            std::string listingSummary =
-                listingDirection;
-
-            if (observedSellTrend.available)
-            {
-                char percentBuffer[32] = {};
-
-                std::snprintf(
-                    percentBuffer,
-                    sizeof(percentBuffer),
-                    " %+.2f%%",
-                    observedSellTrend.percentChange
+            const VolatilityInfo volatility =
+                CalculateVolatility(
+                    history,
+                    trendWindowSeconds,
+                    volatilityAnalysisReady
                 );
 
-                listingSummary +=
-                    percentBuffer;
-            }
-
-            std::string buyOrderSummary =
-                buyOrderDirection;
-
-            if (observedBuyTrend.available)
-            {
-                char percentBuffer[32] = {};
-
-                std::snprintf(
-                    percentBuffer,
-                    sizeof(percentBuffer),
-                    " %+.2f%%",
-                    observedBuyTrend.percentChange
+            const TrendInfo observedSellTrend =
+                sellTrend.available
+                ? sellTrend
+                : CalculateObservedTrend(
+                    history,
+                    true
                 );
 
-                buyOrderSummary +=
-                    percentBuffer;
-            }
-
-            ImGui::TextDisabled(
-                "Listings: %s  |  Buy Orders: %s  |  Conf %s  |  %s / %s",
-                listingSummary.c_str(),
-                buyOrderSummary.c_str(),
-                confidenceLabel,
-                spanText.c_str(),
-                windowText.c_str()
-            );
-        }
-
-        const std::string detailsHeader =
-            "Details / History (" +
-            std::to_string(
-                history.size()
-            ) +
-            " observations)###DetailsHistory" +
-            std::to_string(
-                item.itemID
-            );
-
-        const bool detailsOpen =
-            ImGui::CollapsingHeader(
-                detailsHeader.c_str()
-            );
-
-        if (detailsOpen)
-        {
-            ImGui::Indent(
-                18.0f
-            );
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
+            const TrendInfo observedBuyTrend =
+                buyTrend.available
+                ? buyTrend
+                : CalculateObservedTrend(
+                    history,
+                    false
+                );
 
             if (
+                !ultraSlimView &&
                 hasPrice &&
                 price.available &&
                 price.sellUnitPrice > 0
                 )
             {
-                const DealWindowStats sellStats =
-                    CalculateDealWindowStats(
-                        history,
-                        trendWindowSeconds
-                    );
-
-                const DealWindowStats buyStats =
-                    CalculateBuyWindowStats(
-                        history,
-                        trendWindowSeconds
-                    );
-
                 const std::string spanText =
                     FormatHistorySpan(
                         windowCoverage.coveredSeconds
@@ -4929,29 +5130,8 @@ void TradingPostUI::RenderTab(
                         trendWindowSeconds
                     );
 
-                const int coveragePercent =
-                    static_cast<int>(
-                        selectedWindowCoverage *
-                        100.0 +
-                        0.5
-                        );
-
-                ImGui::TextUnformatted(
-                    "Market Analysis"
-                );
-
-                ImGui::Separator();
-
-                ImGui::TextColored(
-                    sellColor,
-                    "SELL LISTINGS"
-                );
-
                 const char* listingDirection =
                     "Stable";
-
-                ImVec4 listingDirectionColor =
-                    attentionColor;
 
                 if (
                     observedSellTrend.available &&
@@ -4960,10 +5140,7 @@ void TradingPostUI::RenderTab(
                     )
                 {
                     listingDirection =
-                        "Getting More Expensive";
-
-                    listingDirectionColor =
-                        trendDownColor;
+                        "More Expensive";
                 }
                 else if (
                     observedSellTrend.available &&
@@ -4972,70 +5149,383 @@ void TradingPostUI::RenderTab(
                     )
                 {
                     listingDirection =
-                        "Getting Cheaper";
-
-                    listingDirectionColor =
-                        goodColor;
+                        "Cheaper";
                 }
                 else if (!observedSellTrend.available)
                 {
                     listingDirection =
                         "Developing";
-
-                    listingDirectionColor =
-                        mutedColor;
                 }
 
-                ImGui::TextDisabled(
-                    "Direction"
-                );
+                const char* buyOrderDirection =
+                    "Stable";
 
-                ImGui::SameLine(
-                    125.0f
-                );
+                if (
+                    observedBuyTrend.available &&
+                    observedBuyTrend.trend ==
+                    PriceTrend::Up
+                    )
+                {
+                    buyOrderDirection =
+                        "Higher";
+                }
+                else if (
+                    observedBuyTrend.available &&
+                    observedBuyTrend.trend ==
+                    PriceTrend::Down
+                    )
+                {
+                    buyOrderDirection =
+                        "Lower";
+                }
+                else if (!observedBuyTrend.available)
+                {
+                    buyOrderDirection =
+                        "Developing";
+                }
+
+                const char* confidenceLabel =
+                    marketAnalysisReady &&
+                    selectedWindowCoverage >= 0.90
+                    ? "HIGH"
+                    : (
+                        marketAnalysisReady
+                        ? "MED"
+                        : "LOW"
+                        );
+
+                std::string listingSummary =
+                    listingDirection;
 
                 if (observedSellTrend.available)
                 {
-                    ImGui::TextColored(
-                        listingDirectionColor,
-                        "%s  (%+.2f%%)",
-                        listingDirection,
+                    char percentBuffer[32] = {};
+
+                    std::snprintf(
+                        percentBuffer,
+                        sizeof(percentBuffer),
+                        " %+.2f%%",
                         observedSellTrend.percentChange
+                    );
+
+                    listingSummary +=
+                        percentBuffer;
+                }
+
+                std::string buyOrderSummary =
+                    buyOrderDirection;
+
+                if (observedBuyTrend.available)
+                {
+                    char percentBuffer[32] = {};
+
+                    std::snprintf(
+                        percentBuffer,
+                        sizeof(percentBuffer),
+                        " %+.2f%%",
+                        observedBuyTrend.percentChange
+                    );
+
+                    buyOrderSummary +=
+                        percentBuffer;
+                }
+
+                ImGui::TextDisabled(
+                    "Listings %s  |  Buy %s  |  %s  |  %s/%s",
+                    listingSummary.c_str(),
+                    buyOrderSummary.c_str(),
+                    confidenceLabel,
+                    spanText.c_str(),
+                    windowText.c_str()
+                );
+            }
+
+            const std::string detailsHeader =
+                "Details (" +
+                std::to_string(
+                    history.size()
+                ) +
+                ")###DetailsHistory" +
+                std::to_string(
+                    item.itemID
+                );
+
+            const bool detailsOpen =
+                ImGui::CollapsingHeader(
+                    detailsHeader.c_str()
+                );
+
+            if (detailsOpen)
+            {
+                ImGui::Indent(
+                    18.0f
+                );
+
+                ImGui::Dummy(
+                    ImVec2(
+                        0.0f,
+                        3.0f
+                    )
+                );
+
+                if (hasPrice)
+                {
+                    ImGui::TextDisabled(
+                        "Item ID %u  |  Updated %llu sec ago",
+                        item.itemID,
+                        ageSeconds
                     );
                 }
                 else
                 {
-                    ImGui::TextColored(
-                        listingDirectionColor,
-                        "%s",
-                        listingDirection
+                    ImGui::TextDisabled(
+                        "Item ID %u  |  Price data loading...",
+                        item.itemID
                     );
                 }
 
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
                 if (
-                    !marketAnalysisReady ||
-                    !sellStats.available
+                    hasPrice &&
+                    price.available &&
+                    price.sellUnitPrice > 0
                     )
                 {
+                    const DealWindowStats sellStats =
+                        CalculateDealWindowStats(
+                            history,
+                            trendWindowSeconds
+                        );
+
+                    const DealWindowStats buyStats =
+                        CalculateBuyWindowStats(
+                            history,
+                            trendWindowSeconds
+                        );
+
+                    const std::string spanText =
+                        FormatHistorySpan(
+                            windowCoverage.coveredSeconds
+                        );
+
+                    const std::string windowText =
+                        FormatHistorySpan(
+                            trendWindowSeconds
+                        );
+
+                    const int coveragePercent =
+                        static_cast<int>(
+                            selectedWindowCoverage *
+                            100.0 +
+                            0.5
+                            );
+
+                    std::vector<float>
+                        analysisBuyHistoryGold;
+
+                    std::vector<float>
+                        analysisSellHistoryGold;
+
+                    analysisBuyHistoryGold.reserve(
+                        history.size()
+                    );
+
+                    analysisSellHistoryGold.reserve(
+                        history.size()
+                    );
+
+                    uint64_t analysisSparklineStartTimestamp =
+                        0;
+
+                    if (
+                        !history.empty() &&
+                        history.back().
+                        timestampUnixSeconds >
+                        trendWindowSeconds
+                        )
+                    {
+                        analysisSparklineStartTimestamp =
+                            history.back().
+                            timestampUnixSeconds -
+                            trendWindowSeconds;
+                    }
+
+                    for (
+                        const TradingPostHistoryPoint&
+                        point :
+                        history
+                        )
+                    {
+                        if (
+                            point.timestampUnixSeconds <
+                            analysisSparklineStartTimestamp
+                            )
+                        {
+                            continue;
+                        }
+
+                        analysisBuyHistoryGold.push_back(
+                            static_cast<float>(
+                                point.buyUnitPrice
+                                ) /
+                            10000.0f
+                        );
+
+                        analysisSellHistoryGold.push_back(
+                            static_cast<float>(
+                                point.sellUnitPrice
+                                ) /
+                            10000.0f
+                        );
+                    }
+
+                    ImGui::TextUnformatted(
+                        "Market Analysis"
+                    );
+
+                    ImGui::Separator();
+
+                    const float sellSectionTopY =
+                        ImGui::GetCursorPosY();
+
+                    ImGui::TextColored(
+                        sellColor,
+                        "SELL LISTINGS"
+                    );
+
+                    const char* listingDirection =
+                        "Stable";
+
+                    ImVec4 listingDirectionColor =
+                        attentionColor;
+
+                    if (
+                        observedSellTrend.available &&
+                        observedSellTrend.trend ==
+                        PriceTrend::Up
+                        )
+                    {
+                        listingDirection =
+                            "Getting More Expensive";
+
+                        listingDirectionColor =
+                            trendDownColor;
+                    }
+                    else if (
+                        observedSellTrend.available &&
+                        observedSellTrend.trend ==
+                        PriceTrend::Down
+                        )
+                    {
+                        listingDirection =
+                            "Getting Cheaper";
+
+                        listingDirectionColor =
+                            goodColor;
+                    }
+                    else if (!observedSellTrend.available)
+                    {
+                        listingDirection =
+                            "Developing";
+
+                        listingDirectionColor =
+                            mutedColor;
+                    }
+
                     ImGui::TextDisabled(
-                        "Tracked Avg"
+                        "Direction"
                     );
 
                     ImGui::SameLine(
                         125.0f
                     );
 
+                    if (observedSellTrend.available)
+                    {
+                        ImGui::TextColored(
+                            listingDirectionColor,
+                            "%s  (%+.2f%%)",
+                            listingDirection,
+                            observedSellTrend.percentChange
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextColored(
+                            listingDirectionColor,
+                            "%s",
+                            listingDirection
+                        );
+                    }
+
                     if (
-                        sellStats.available &&
-                        sellStats.averageSell > 0
+                        !marketAnalysisReady ||
+                        !sellStats.available
                         )
                     {
-                        const std::string trackedSellAverage =
-                            FormatCoinValue(
-                                sellStats.averageSell
-                            );
+                        ImGui::TextDisabled(
+                            "Tracked Avg"
+                        );
 
-                        const double sellVsTrackedAverage =
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        if (
+                            sellStats.available &&
+                            sellStats.averageSell > 0
+                            )
+                        {
+                            const std::string trackedSellAverage =
+                                FormatCoinValue(
+                                    sellStats.averageSell
+                                );
+
+                            const double sellVsTrackedAverage =
+                                (
+                                    static_cast<double>(
+                                        price.sellUnitPrice
+                                        ) -
+                                    static_cast<double>(
+                                        sellStats.averageSell
+                                        )
+                                    ) /
+                                static_cast<double>(
+                                    sellStats.averageSell
+                                    ) *
+                                100.0;
+
+                            ImGui::Text(
+                                "%s  (%+.2f%%)",
+                                trackedSellAverage.c_str(),
+                                sellVsTrackedAverage
+                            );
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "Developing"
+                            );
+                        }
+
+                        ImGui::TextDisabled(
+                            "For Buyers"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::TextDisabled(
+                            "Developing"
+                        );
+                    }
+                    else
+                    {
+                        const double sellVsAverage =
                             (
                                 static_cast<double>(
                                     price.sellUnitPrice
@@ -5049,269 +5539,317 @@ void TradingPostUI::RenderTab(
                                 ) *
                             100.0;
 
+                        const char* sellPosition =
+                            "Near Recent Avg";
+
+                        ImVec4 sellPositionColor =
+                            attentionColor;
+
+                        if (sellVsAverage <= -3.0)
+                        {
+                            sellPosition =
+                                "Well Below Recent Avg";
+
+                            sellPositionColor =
+                                goodColor;
+                        }
+                        else if (sellVsAverage <= -1.0)
+                        {
+                            sellPosition =
+                                "Below Recent Avg";
+
+                            sellPositionColor =
+                                goodColor;
+                        }
+                        else if (sellVsAverage >= 3.0)
+                        {
+                            sellPosition =
+                                "Well Above Recent Avg";
+
+                            sellPositionColor =
+                                trendDownColor;
+                        }
+                        else if (sellVsAverage >= 1.0)
+                        {
+                            sellPosition =
+                                "Above Recent Avg";
+
+                            sellPositionColor =
+                                trendDownColor;
+                        }
+
+                        const char* buyerSignal =
+                            "Typical";
+
+                        ImVec4 buyerSignalColor =
+                            attentionColor;
+
+                        if (
+                            price.sellUnitPrice <=
+                            sellStats.lowerQuartileSell
+                            )
+                        {
+                            buyerSignal =
+                                observedSellTrend.trend ==
+                                PriceTrend::Up
+                                ? "Worth Watching"
+                                : "Favorable";
+
+                            buyerSignalColor =
+                                observedSellTrend.trend ==
+                                PriceTrend::Up
+                                ? attentionColor
+                                : goodColor;
+                        }
+                        else if (
+                            price.sellUnitPrice >=
+                            sellStats.upperQuartileSell
+                            )
+                        {
+                            buyerSignal =
+                                "Caution";
+
+                            buyerSignalColor =
+                                trendDownColor;
+                        }
+
+                        const std::string sellAverageText =
+                            FormatCoinValue(
+                                sellStats.averageSell
+                            );
+
+                        ImGui::TextDisabled(
+                            "Recent Avg"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
                         ImGui::Text(
                             "%s  (%+.2f%%)",
-                            trackedSellAverage.c_str(),
-                            sellVsTrackedAverage
+                            sellAverageText.c_str(),
+                            sellVsAverage
+                        );
+
+                        ImGui::TextDisabled(
+                            "Price Position"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::TextColored(
+                            sellPositionColor,
+                            "%s",
+                            sellPosition
+                        );
+
+                        ImGui::TextDisabled(
+                            "For Buyers"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::TextColored(
+                            buyerSignalColor,
+                            "%s",
+                            buyerSignal
+                        );
+                    }
+
+                    if (
+                        analysisSellHistoryGold.size() >= 2
+                        )
+                    {
+                        const float sellSectionBottomY =
+                            ImGui::GetCursorPosY();
+
+                        const float sellSparklineWidth =
+                            std::max(
+                                250.0f,
+                                ImGui::GetWindowWidth() -
+                                470.0f -
+                                26.0f
+                            );
+
+                        const float sellSparklineX =
+                            470.0f;
+
+                        ImGui::SetCursorPos(
+                            ImVec2(
+                                sellSparklineX,
+                                sellSectionTopY +
+                                19.0f
+                            )
+                        );
+
+                        DrawSparkline(
+                            "##SellAnalysisSparkline",
+                            analysisSellHistoryGold,
+                            sellColor,
+                            sellSparklineWidth,
+                            38.0f
+                        );
+
+                        ImGui::SetCursorPosY(
+                            sellSectionBottomY
+                        );
+                    }
+
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    const float buySectionTopY =
+                        ImGui::GetCursorPosY();
+
+                    ImGui::TextColored(
+                        buyColor,
+                        "BUY ORDERS"
+                    );
+
+                    const char* orderDirection =
+                        "Stable";
+
+                    ImVec4 orderDirectionColor =
+                        attentionColor;
+
+                    if (
+                        observedBuyTrend.available &&
+                        observedBuyTrend.trend ==
+                        PriceTrend::Up
+                        )
+                    {
+                        orderDirection =
+                            "Buyers Offering More";
+
+                        orderDirectionColor =
+                            goodColor;
+                    }
+                    else if (
+                        observedBuyTrend.available &&
+                        observedBuyTrend.trend ==
+                        PriceTrend::Down
+                        )
+                    {
+                        orderDirection =
+                            "Buyers Offering Less";
+
+                        orderDirectionColor =
+                            trendDownColor;
+                    }
+                    else if (!observedBuyTrend.available)
+                    {
+                        orderDirection =
+                            "Developing";
+
+                        orderDirectionColor =
+                            mutedColor;
+                    }
+
+                    ImGui::TextDisabled(
+                        "Direction"
+                    );
+
+                    ImGui::SameLine(
+                        125.0f
+                    );
+
+                    if (observedBuyTrend.available)
+                    {
+                        ImGui::TextColored(
+                            orderDirectionColor,
+                            "%s  (%+.2f%%)",
+                            orderDirection,
+                            observedBuyTrend.percentChange
                         );
                     }
                     else
                     {
+                        ImGui::TextColored(
+                            orderDirectionColor,
+                            "%s",
+                            orderDirection
+                        );
+                    }
+
+                    if (
+                        !marketAnalysisReady ||
+                        !buyStats.available ||
+                        price.buyUnitPrice == 0
+                        )
+                    {
+                        ImGui::TextDisabled(
+                            "Tracked Avg"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        if (
+                            buyStats.available &&
+                            buyStats.averageSell > 0 &&
+                            price.buyUnitPrice > 0
+                            )
+                        {
+                            const std::string trackedBuyAverage =
+                                FormatCoinValue(
+                                    buyStats.averageSell
+                                );
+
+                            const double buyVsTrackedAverage =
+                                (
+                                    static_cast<double>(
+                                        price.buyUnitPrice
+                                        ) -
+                                    static_cast<double>(
+                                        buyStats.averageSell
+                                        )
+                                    ) /
+                                static_cast<double>(
+                                    buyStats.averageSell
+                                    ) *
+                                100.0;
+
+                            ImGui::Text(
+                                "%s  (%+.2f%%)",
+                                trackedBuyAverage.c_str(),
+                                buyVsTrackedAverage
+                            );
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "Developing"
+                            );
+                        }
+
+                        ImGui::TextDisabled(
+                            "For Sellers"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
                         ImGui::TextDisabled(
                             "Developing"
                         );
-                    }
 
-                    ImGui::TextDisabled(
-                        "For Buyers"
-                    );
+                        ImGui::Spacing();
 
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextDisabled(
-                        "Developing"
-                    );
-                }
-                else
-                {
-                    const double sellVsAverage =
-                        (
-                            static_cast<double>(
-                                price.sellUnitPrice
-                                ) -
-                            static_cast<double>(
-                                sellStats.averageSell
-                                )
-                            ) /
-                        static_cast<double>(
-                            sellStats.averageSell
-                            ) *
-                        100.0;
-
-                    const char* sellPosition =
-                        "Near Recent Avg";
-
-                    ImVec4 sellPositionColor =
-                        attentionColor;
-
-                    if (sellVsAverage <= -3.0)
-                    {
-                        sellPosition =
-                            "Well Below Recent Avg";
-
-                        sellPositionColor =
-                            goodColor;
-                    }
-                    else if (sellVsAverage <= -1.0)
-                    {
-                        sellPosition =
-                            "Below Recent Avg";
-
-                        sellPositionColor =
-                            goodColor;
-                    }
-                    else if (sellVsAverage >= 3.0)
-                    {
-                        sellPosition =
-                            "Well Above Recent Avg";
-
-                        sellPositionColor =
-                            trendDownColor;
-                    }
-                    else if (sellVsAverage >= 1.0)
-                    {
-                        sellPosition =
-                            "Above Recent Avg";
-
-                        sellPositionColor =
-                            trendDownColor;
-                    }
-
-                    const char* buyerSignal =
-                        "Typical";
-
-                    ImVec4 buyerSignalColor =
-                        attentionColor;
-
-                    if (
-                        price.sellUnitPrice <=
-                        sellStats.lowerQuartileSell
-                        )
-                    {
-                        buyerSignal =
-                            observedSellTrend.trend ==
-                            PriceTrend::Up
-                            ? "Worth Watching"
-                            : "Favorable";
-
-                        buyerSignalColor =
-                            observedSellTrend.trend ==
-                            PriceTrend::Up
-                            ? attentionColor
-                            : goodColor;
-                    }
-                    else if (
-                        price.sellUnitPrice >=
-                        sellStats.upperQuartileSell
-                        )
-                    {
-                        buyerSignal =
-                            "Caution";
-
-                        buyerSignalColor =
-                            trendDownColor;
-                    }
-
-                    const std::string sellAverageText =
-                        FormatCoinValue(
-                            sellStats.averageSell
+                        ImGui::TextDisabled(
+                            "Analysis is based only on locally collected history."
                         );
-
-                    ImGui::TextDisabled(
-                        "Recent Avg"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::Text(
-                        "%s  (%+.2f%%)",
-                        sellAverageText.c_str(),
-                        sellVsAverage
-                    );
-
-                    ImGui::TextDisabled(
-                        "Price Position"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextColored(
-                        sellPositionColor,
-                        "%s",
-                        sellPosition
-                    );
-
-                    ImGui::TextDisabled(
-                        "For Buyers"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextColored(
-                        buyerSignalColor,
-                        "%s",
-                        buyerSignal
-                    );
-                }
-
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
-
-                ImGui::TextColored(
-                    buyColor,
-                    "BUY ORDERS"
-                );
-
-                const char* orderDirection =
-                    "Stable";
-
-                ImVec4 orderDirectionColor =
-                    attentionColor;
-
-                if (
-                    observedBuyTrend.available &&
-                    observedBuyTrend.trend ==
-                    PriceTrend::Up
-                    )
-                {
-                    orderDirection =
-                        "Buyers Offering More";
-
-                    orderDirectionColor =
-                        goodColor;
-                }
-                else if (
-                    observedBuyTrend.available &&
-                    observedBuyTrend.trend ==
-                    PriceTrend::Down
-                    )
-                {
-                    orderDirection =
-                        "Buyers Offering Less";
-
-                    orderDirectionColor =
-                        trendDownColor;
-                }
-                else if (!observedBuyTrend.available)
-                {
-                    orderDirection =
-                        "Developing";
-
-                    orderDirectionColor =
-                        mutedColor;
-                }
-
-                ImGui::TextDisabled(
-                    "Direction"
-                );
-
-                ImGui::SameLine(
-                    125.0f
-                );
-
-                if (observedBuyTrend.available)
-                {
-                    ImGui::TextColored(
-                        orderDirectionColor,
-                        "%s  (%+.2f%%)",
-                        orderDirection,
-                        observedBuyTrend.percentChange
-                    );
-                }
-                else
-                {
-                    ImGui::TextColored(
-                        orderDirectionColor,
-                        "%s",
-                        orderDirection
-                    );
-                }
-
-                if (
-                    !marketAnalysisReady ||
-                    !buyStats.available ||
-                    price.buyUnitPrice == 0
-                    )
-                {
-                    ImGui::TextDisabled(
-                        "Tracked Avg"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    if (
-                        buyStats.available &&
-                        buyStats.averageSell > 0 &&
-                        price.buyUnitPrice > 0
-                        )
+                    }
+                    else
                     {
-                        const std::string trackedBuyAverage =
-                            FormatCoinValue(
-                                buyStats.averageSell
-                            );
-
-                        const double buyVsTrackedAverage =
+                        const double buyVsAverage =
                             (
                                 static_cast<double>(
                                     price.buyUnitPrice
@@ -5325,662 +5863,434 @@ void TradingPostUI::RenderTab(
                                 ) *
                             100.0;
 
+                        const char* buyPosition =
+                            "Near Recent Avg";
+
+                        ImVec4 buyPositionColor =
+                            attentionColor;
+
+                        if (buyVsAverage >= 3.0)
+                        {
+                            buyPosition =
+                                "Well Above Recent Avg";
+
+                            buyPositionColor =
+                                goodColor;
+                        }
+                        else if (buyVsAverage >= 1.0)
+                        {
+                            buyPosition =
+                                "Above Recent Avg";
+
+                            buyPositionColor =
+                                goodColor;
+                        }
+                        else if (buyVsAverage <= -3.0)
+                        {
+                            buyPosition =
+                                "Well Below Recent Avg";
+
+                            buyPositionColor =
+                                trendDownColor;
+                        }
+                        else if (buyVsAverage <= -1.0)
+                        {
+                            buyPosition =
+                                "Below Recent Avg";
+
+                            buyPositionColor =
+                                trendDownColor;
+                        }
+
+                        const char* sellerSignal =
+                            "Typical";
+
+                        ImVec4 sellerSignalColor =
+                            attentionColor;
+
+                        if (
+                            price.buyUnitPrice >=
+                            buyStats.upperQuartileSell
+                            )
+                        {
+                            sellerSignal =
+                                "Favorable";
+
+                            sellerSignalColor =
+                                goodColor;
+                        }
+                        else if (
+                            price.buyUnitPrice <=
+                            buyStats.lowerQuartileSell
+                            )
+                        {
+                            sellerSignal =
+                                observedBuyTrend.trend ==
+                                PriceTrend::Up
+                                ? "Worth Watching"
+                                : "Weak";
+
+                            sellerSignalColor =
+                                observedBuyTrend.trend ==
+                                PriceTrend::Up
+                                ? attentionColor
+                                : trendDownColor;
+                        }
+
+                        const std::string buyAverageText =
+                            FormatCoinValue(
+                                buyStats.averageSell
+                            );
+
+                        ImGui::TextDisabled(
+                            "Recent Avg"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
                         ImGui::Text(
                             "%s  (%+.2f%%)",
-                            trackedBuyAverage.c_str(),
-                            buyVsTrackedAverage
+                            buyAverageText.c_str(),
+                            buyVsAverage
                         );
-                    }
-                    else
-                    {
+
                         ImGui::TextDisabled(
-                            "Developing"
+                            "Price Position"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::TextColored(
+                            buyPositionColor,
+                            "%s",
+                            buyPosition
+                        );
+
+                        ImGui::TextDisabled(
+                            "For Sellers"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::TextColored(
+                            sellerSignalColor,
+                            "%s",
+                            sellerSignal
                         );
                     }
 
-                    ImGui::TextDisabled(
-                        "For Sellers"
-                    );
+                    if (
+                        analysisBuyHistoryGold.size() >= 2
+                        )
+                    {
+                        const float buySectionBottomY =
+                            ImGui::GetCursorPosY();
 
-                    ImGui::SameLine(
-                        125.0f
-                    );
+                        const float buySparklineWidth =
+                            std::max(
+                                250.0f,
+                                ImGui::GetWindowWidth() -
+                                470.0f -
+                                26.0f
+                            );
 
-                    ImGui::TextDisabled(
-                        "Developing"
-                    );
+                        const float buySparklineX =
+                            470.0f;
+
+                        ImGui::SetCursorPos(
+                            ImVec2(
+                                buySparklineX,
+                                buySectionTopY +
+                                19.0f
+                            )
+                        );
+
+                        DrawSparkline(
+                            "##BuyAnalysisSparkline",
+                            analysisBuyHistoryGold,
+                            buyColor,
+                            buySparklineWidth,
+                            38.0f
+                        );
+
+                        ImGui::SetCursorPosY(
+                            buySectionBottomY
+                        );
+                    }
 
                     ImGui::Spacing();
 
+                    const char* confidenceLabel =
+                        marketAnalysisReady &&
+                        selectedWindowCoverage >= 0.90
+                        ? "HIGH"
+                        : (
+                            marketAnalysisReady
+                            ? "MEDIUM"
+                            : "LOW"
+                            );
+
+                    ImVec4 confidenceColor =
+                        marketAnalysisReady
+                        ? (
+                            selectedWindowCoverage >= 0.90
+                            ? goodColor
+                            : attentionColor
+                            )
+                        : mutedColor;
+
                     ImGui::TextDisabled(
-                        "Analysis is based only on locally collected history."
+                        "Confidence"
                     );
+
+                    ImGui::SameLine(
+                        125.0f
+                    );
+
+                    ImGui::TextColored(
+                        confidenceColor,
+                        "%s",
+                        confidenceLabel
+                    );
+
+                    ImGui::TextDisabled(
+                        "Coverage"
+                    );
+
+                    ImGui::SameLine(
+                        125.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "%s of %s (%d%%)",
+                        spanText.c_str(),
+                        windowText.c_str(),
+                        coveragePercent
+                    );
+
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip(
+                            "Gap-aware coverage. Long periods without observations are discounted; normal history compaction is accounted for."
+                        );
+                    }
+
+                    ImGui::TextDisabled(
+                        "Samples"
+                    );
+
+                    ImGui::SameLine(
+                        125.0f
+                    );
+
+                    ImGui::TextDisabled(
+                        "%llu",
+                        static_cast<
+                        unsigned long long
+                        >(
+                            windowCoverage.sampleCount
+                            )
+                    );
+
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip(
+                            "Observations inside the selected trend window."
+                        );
+                    }
+
+                    const char* volatilityLabel =
+                        "DEVELOPING";
+
+                    ImVec4 volatilityColor =
+                        mutedColor;
+
+                    if (volatility.available)
+                    {
+                        switch (volatility.level)
+                        {
+                        case VolatilityLevel::Calm:
+                            volatilityLabel =
+                                "CALM";
+
+                            volatilityColor =
+                                ImVec4(
+                                    0.40f,
+                                    0.88f,
+                                    0.62f,
+                                    1.00f
+                                );
+                            break;
+
+                        case VolatilityLevel::Normal:
+                            volatilityLabel =
+                                "NORMAL";
+
+                            volatilityColor =
+                                ImVec4(
+                                    0.45f,
+                                    0.76f,
+                                    1.00f,
+                                    1.00f
+                                );
+                            break;
+
+                        case VolatilityLevel::Active:
+                            volatilityLabel =
+                                "ACTIVE";
+
+                            volatilityColor =
+                                attentionColor;
+                            break;
+
+                        case VolatilityLevel::Wild:
+                            volatilityLabel =
+                                "WILD";
+
+                            volatilityColor =
+                                ImVec4(
+                                    1.00f,
+                                    0.42f,
+                                    0.24f,
+                                    1.00f
+                                );
+                            break;
+
+                        default:
+                            break;
+                        }
+                    }
+
+                    ImGui::TextDisabled(
+                        "Volatility"
+                    );
+
+                    ImGui::SameLine(
+                        125.0f
+                    );
+
+                    DrawStatusBadge(
+                        volatilityLabel,
+                        volatilityColor
+                    );
+
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip(
+                            "How widely sell-listing prices have moved during the selected Trend Window. DEVELOPING is shown until Copper&Claw has enough gap-aware history."
+                        );
+                    }
+
+                    if (
+                        price.buyUnitPrice > 0 &&
+                        price.sellUnitPrice >=
+                        price.buyUnitPrice
+                        )
+                    {
+                        const uint64_t spreadCopper =
+                            static_cast<uint64_t>(
+                                price.sellUnitPrice -
+                                price.buyUnitPrice
+                                );
+
+                        const double spreadPercent =
+                            static_cast<double>(
+                                spreadCopper
+                                ) /
+                            static_cast<double>(
+                                price.sellUnitPrice
+                                ) *
+                            100.0;
+
+                        const std::string spreadText =
+                            FormatCoinValue(
+                                spreadCopper
+                            );
+
+                        ImGui::TextDisabled(
+                            "Spread"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::TextDisabled(
+                            "%s (%.2f%%)",
+                            spreadText.c_str(),
+                            spreadPercent
+                        );
+                    }
                 }
                 else
                 {
-                    const double buyVsAverage =
-                        (
-                            static_cast<double>(
-                                price.buyUnitPrice
-                                ) -
-                            static_cast<double>(
-                                buyStats.averageSell
-                                )
-                            ) /
-                        static_cast<double>(
-                            buyStats.averageSell
-                            ) *
-                        100.0;
-
-                    const char* buyPosition =
-                        "Near Recent Avg";
-
-                    ImVec4 buyPositionColor =
-                        attentionColor;
-
-                    if (buyVsAverage >= 3.0)
-                    {
-                        buyPosition =
-                            "Well Above Recent Avg";
-
-                        buyPositionColor =
-                            goodColor;
-                    }
-                    else if (buyVsAverage >= 1.0)
-                    {
-                        buyPosition =
-                            "Above Recent Avg";
-
-                        buyPositionColor =
-                            goodColor;
-                    }
-                    else if (buyVsAverage <= -3.0)
-                    {
-                        buyPosition =
-                            "Well Below Recent Avg";
-
-                        buyPositionColor =
-                            trendDownColor;
-                    }
-                    else if (buyVsAverage <= -1.0)
-                    {
-                        buyPosition =
-                            "Below Recent Avg";
-
-                        buyPositionColor =
-                            trendDownColor;
-                    }
-
-                    const char* sellerSignal =
-                        "Typical";
-
-                    ImVec4 sellerSignalColor =
-                        attentionColor;
-
-                    if (
-                        price.buyUnitPrice >=
-                        buyStats.upperQuartileSell
-                        )
-                    {
-                        sellerSignal =
-                            "Favorable";
-
-                        sellerSignalColor =
-                            goodColor;
-                    }
-                    else if (
-                        price.buyUnitPrice <=
-                        buyStats.lowerQuartileSell
-                        )
-                    {
-                        sellerSignal =
-                            observedBuyTrend.trend ==
-                            PriceTrend::Up
-                            ? "Worth Watching"
-                            : "Weak";
-
-                        sellerSignalColor =
-                            observedBuyTrend.trend ==
-                            PriceTrend::Up
-                            ? attentionColor
-                            : trendDownColor;
-                    }
-
-                    const std::string buyAverageText =
-                        FormatCoinValue(
-                            buyStats.averageSell
-                        );
-
                     ImGui::TextDisabled(
-                        "Recent Avg"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::Text(
-                        "%s  (%+.2f%%)",
-                        buyAverageText.c_str(),
-                        buyVsAverage
-                    );
-
-                    ImGui::TextDisabled(
-                        "Price Position"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextColored(
-                        buyPositionColor,
-                        "%s",
-                        buyPosition
-                    );
-
-                    ImGui::TextDisabled(
-                        "For Sellers"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextColored(
-                        sellerSignalColor,
-                        "%s",
-                        sellerSignal
+                        "Market analysis is waiting for current price data."
                     );
                 }
 
-                ImGui::Spacing();
 
-                const char* confidenceLabel =
-                    marketAnalysisReady &&
-                    selectedWindowCoverage >= 0.90
-                    ? "HIGH"
-                    : (
-                        marketAnalysisReady
-                        ? "MEDIUM"
-                        : "LOW"
-                        );
-
-                ImVec4 confidenceColor =
-                    marketAnalysisReady
-                    ? (
-                        selectedWindowCoverage >= 0.90
-                        ? goodColor
-                        : attentionColor
-                        )
-                    : mutedColor;
-
-                ImGui::TextDisabled(
-                    "Confidence"
+                ImGui::Unindent(
+                    18.0f
                 );
 
-                ImGui::SameLine(
-                    125.0f
-                );
-
-                ImGui::TextColored(
-                    confidenceColor,
-                    "%s",
-                    confidenceLabel
-                );
-
-                ImGui::TextDisabled(
-                    "Coverage"
-                );
-
-                ImGui::SameLine(
-                    125.0f
-                );
-
-                ImGui::TextDisabled(
-                    "%s of %s (%d%%)",
-                    spanText.c_str(),
-                    windowText.c_str(),
-                    coveragePercent
-                );
-
-                if (ImGui::IsItemHovered())
-                {
-                    ImGui::SetTooltip(
-                        "Gap-aware coverage. Long periods without observations are discounted; normal history compaction is accounted for."
-                    );
-                }
-
-                ImGui::TextDisabled(
-                    "Samples"
-                );
-
-                ImGui::SameLine(
-                    125.0f
-                );
-
-                ImGui::TextDisabled(
-                    "%llu",
-                    static_cast<
-                    unsigned long long
-                    >(
-                        windowCoverage.sampleCount
-                        )
-                );
-
-                if (ImGui::IsItemHovered())
-                {
-                    ImGui::SetTooltip(
-                        "Observations inside the selected trend window."
-                    );
-                }
-
-                const char* volatilityLabel =
-                    "DEVELOPING";
-
-                ImVec4 volatilityColor =
-                    mutedColor;
-
-                if (volatility.available)
-                {
-                    switch (volatility.level)
-                    {
-                    case VolatilityLevel::Calm:
-                        volatilityLabel =
-                            "CALM";
-
-                        volatilityColor =
-                            ImVec4(
-                                0.40f,
-                                0.88f,
-                                0.62f,
-                                1.00f
-                            );
-                        break;
-
-                    case VolatilityLevel::Normal:
-                        volatilityLabel =
-                            "NORMAL";
-
-                        volatilityColor =
-                            ImVec4(
-                                0.45f,
-                                0.76f,
-                                1.00f,
-                                1.00f
-                            );
-                        break;
-
-                    case VolatilityLevel::Active:
-                        volatilityLabel =
-                            "ACTIVE";
-
-                        volatilityColor =
-                            attentionColor;
-                        break;
-
-                    case VolatilityLevel::Wild:
-                        volatilityLabel =
-                            "WILD";
-
-                        volatilityColor =
-                            ImVec4(
-                                1.00f,
-                                0.42f,
-                                0.24f,
-                                1.00f
-                            );
-                        break;
-
-                    default:
-                        break;
-                    }
-                }
-
-                ImGui::TextDisabled(
-                    "Volatility"
-                );
-
-                ImGui::SameLine(
-                    125.0f
-                );
-
-                DrawStatusBadge(
-                    volatilityLabel,
-                    volatilityColor
-                );
-
-                if (ImGui::IsItemHovered())
-                {
-                    ImGui::SetTooltip(
-                        "How widely sell-listing prices have moved during the selected Trend Window. DEVELOPING is shown until Copper&Claw has enough gap-aware history."
-                    );
-                }
-
-                if (
-                    price.buyUnitPrice > 0 &&
-                    price.sellUnitPrice >=
-                    price.buyUnitPrice
+                //
+                // Minimal separation: keep the expanded content visually attached
+                // to its watched item, then clearly end it before the next item.
+                //
+                ImGui::Dummy(
+                    ImVec2(
+                        0.0f,
+                        8.0f
                     )
-                {
-                    const uint64_t spreadCopper =
-                        static_cast<uint64_t>(
-                            price.sellUnitPrice -
-                            price.buyUnitPrice
-                            );
+                );
 
-                    const double spreadPercent =
-                        static_cast<double>(
-                            spreadCopper
-                            ) /
-                        static_cast<double>(
-                            price.sellUnitPrice
-                            ) *
-                        100.0;
+                ImGui::Separator();
 
-                    const std::string spreadText =
-                        FormatCoinValue(
-                            spreadCopper
-                        );
-
-                    ImGui::TextDisabled(
-                        "Spread"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextDisabled(
-                        "%s (%.2f%%)",
-                        spreadText.c_str(),
-                        spreadPercent
-                    );
-                }
-            }
-
-            ImGui::Spacing();
-
-            if (history.empty())
-            {
-                ImGui::TextDisabled(
-                    "No saved price observations yet."
+                ImGui::Dummy(
+                    ImVec2(
+                        0.0f,
+                        10.0f
+                    )
                 );
             }
             else
             {
-                uint32_t minBuy =
-                    history.front().
-                    buyUnitPrice;
+                ImGui::Separator();
 
-                uint32_t maxBuy =
-                    history.front().
-                    buyUnitPrice;
-
-                uint32_t minSell =
-                    history.front().
-                    sellUnitPrice;
-
-                uint32_t maxSell =
-                    history.front().
-                    sellUnitPrice;
-
-                uint64_t totalBuy = 0;
-                uint64_t totalSell = 0;
-
-                for (
-                    const TradingPostHistoryPoint&
-                    point :
-                    history
+                ImGui::Dummy(
+                    ImVec2(
+                        0.0f,
+                        6.0f
                     )
-                {
-                    if (
-                        point.buyUnitPrice <
-                        minBuy
-                        )
-                    {
-                        minBuy =
-                            point.buyUnitPrice;
-                    }
-
-                    if (
-                        point.buyUnitPrice >
-                        maxBuy
-                        )
-                    {
-                        maxBuy =
-                            point.buyUnitPrice;
-                    }
-
-                    if (
-                        point.sellUnitPrice <
-                        minSell
-                        )
-                    {
-                        minSell =
-                            point.sellUnitPrice;
-                    }
-
-                    if (
-                        point.sellUnitPrice >
-                        maxSell
-                        )
-                    {
-                        maxSell =
-                            point.sellUnitPrice;
-                    }
-
-                    totalBuy +=
-                        point.buyUnitPrice;
-
-                    totalSell +=
-                        point.sellUnitPrice;
-                }
-
-                const uint64_t averageBuy =
-                    totalBuy /
-                    static_cast<uint64_t>(
-                        history.size()
-                        );
-
-                const uint64_t averageSell =
-                    totalSell /
-                    static_cast<uint64_t>(
-                        history.size()
-                        );
-
-                const std::string minBuyText =
-                    FormatCoinValue(
-                        minBuy
-                    );
-
-                const std::string maxBuyText =
-                    FormatCoinValue(
-                        maxBuy
-                    );
-
-                const std::string averageBuyText =
-                    FormatCoinValue(
-                        averageBuy
-                    );
-
-                const std::string minSellText =
-                    FormatCoinValue(
-                        minSell
-                    );
-
-                const std::string maxSellText =
-                    FormatCoinValue(
-                        maxSell
-                    );
-
-                const std::string averageSellText =
-                    FormatCoinValue(
-                        averageSell
-                    );
-
-                std::vector<float>
-                    buyHistoryGold;
-
-                std::vector<float>
-                    sellHistoryGold;
-
-                buyHistoryGold.reserve(
-                    history.size()
                 );
-
-                sellHistoryGold.reserve(
-                    history.size()
-                );
-
-                for (
-                    const TradingPostHistoryPoint&
-                    point :
-                    history
-                    )
-                {
-                    buyHistoryGold.push_back(
-                        static_cast<float>(
-                            point.buyUnitPrice
-                            ) /
-                        10000.0f
-                    );
-
-                    sellHistoryGold.push_back(
-                        static_cast<float>(
-                            point.sellUnitPrice
-                            ) /
-                        10000.0f
-                    );
-                }
-
-                if (
-                    ImGui::BeginTable(
-                        "##HistoryDetails",
-                        2,
-                        ImGuiTableFlags_SizingStretchProp |
-                        ImGuiTableFlags_NoSavedSettings
-                    )
-                    )
-                {
-                    ImGui::TableSetupColumn(
-                        "Charts",
-                        ImGuiTableColumnFlags_WidthStretch,
-                        1.00f
-                    );
-
-                    ImGui::TableSetupColumn(
-                        "Stats",
-                        ImGuiTableColumnFlags_WidthFixed,
-                        190.0f
-                    );
-
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(
-                        0
-                    );
-
-                    ImGui::TextColored(
-                        sellColor,
-                        "Sell history"
-                    );
-
-                    DrawSparkline(
-                        "##SellHistorySparkline",
-                        sellHistoryGold,
-                        sellColor,
-                        ImGui::GetContentRegionAvail().x,
-                        38.0f
-                    );
-
-                    ImGui::Spacing();
-
-                    ImGui::TextColored(
-                        buyColor,
-                        "Buy history"
-                    );
-
-                    DrawSparkline(
-                        "##BuyHistorySparkline",
-                        buyHistoryGold,
-                        buyColor,
-                        ImGui::GetContentRegionAvail().x,
-                        38.0f
-                    );
-
-                    ImGui::TableSetColumnIndex(
-                        1
-                    );
-
-                    ImGui::TextColored(
-                        sellColor,
-                        "Sell"
-                    );
-
-                    ImGui::Text(
-                        "Min  %s",
-                        minSellText.c_str()
-                    );
-
-                    ImGui::Text(
-                        "Avg  %s",
-                        averageSellText.c_str()
-                    );
-
-                    ImGui::Text(
-                        "Max  %s",
-                        maxSellText.c_str()
-                    );
-
-                    ImGui::Spacing();
-
-                    ImGui::TextColored(
-                        buyColor,
-                        "Buy"
-                    );
-
-                    ImGui::Text(
-                        "Min  %s",
-                        minBuyText.c_str()
-                    );
-
-                    ImGui::Text(
-                        "Avg  %s",
-                        averageBuyText.c_str()
-                    );
-
-                    ImGui::Text(
-                        "Max  %s",
-                        maxBuyText.c_str()
-                    );
-
-                    ImGui::EndTable();
-                }
             }
 
-            ImGui::Unindent(
-                18.0f
-            );
+            ImGui::PopID();
+        };
+
+    for (
+        const TradingPostWatchItem& item :
+        watchedItems
+        )
+    {
+        if (
+            showFavoritesOnly &&
+            !item.isFavorite
+            )
+        {
+            continue;
         }
 
-        ImGui::Dummy(
-            ImVec2(
-                0.0f,
-                3.0f
-            )
+        RenderWatchItem(
+            item
         );
-
-        ImGui::Separator();
-
-        ImGui::Dummy(
-            ImVec2(
-                0.0f,
-                5.0f
-            )
-        );
-
-        ImGui::PopID();
     }
 
     ImGui::TextUnformatted(

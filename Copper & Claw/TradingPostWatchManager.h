@@ -19,6 +19,12 @@ struct TradingPostWatchItem
     uint64_t targetBuyCopper = 0;
 
     //
+    // Optional user favorite. Favorites do not change watch behavior;
+    // they only allow the UI to show a clean Favorites-only view.
+    //
+    bool isFavorite = false;
+
+    //
     // Retained for UI/source compatibility.
     // Copper&Claw no longer has a permanently protected watched item;
     // normal loaded/added items, including the first-run Aurene's Bite
@@ -58,6 +64,11 @@ namespace TradingPostWatchManager
     std::vector<
         TradingPostWatchItem
     > GetItems();
+
+    void SetFavorite(
+        uint32_t itemID,
+        bool favorite
+    );
 
     bool AddItem(
         uint32_t itemID,

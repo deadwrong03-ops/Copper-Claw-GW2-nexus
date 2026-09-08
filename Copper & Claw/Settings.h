@@ -29,6 +29,14 @@ struct CopperAndClawSettings
     // remains in its original added order.
     int tradingPostWatchSortMode = 0;
 
+    // Trading Post watch-list view density:
+    // 0 = Normal
+    // 1 = Slim
+    // 2 = Ultra Slim
+    //
+    // Slim is the current/default layout.
+    int tradingPostViewDensityIndex = 1;
+
     // Automatic backup settings:
     // interval:
     // 0 = 6h

@@ -104,6 +104,15 @@ bool Settings::Load(
             }
             else if (
                 key ==
+                "tradingPostViewDensityIndex"
+                )
+            {
+                g_Settings
+                    .tradingPostViewDensityIndex =
+                    std::stoi(value);
+            }
+            else if (
+                key ==
                 "backupAutoEnabled"
                 )
             {
@@ -160,6 +169,13 @@ bool Settings::Load(
             6
         );
 
+    g_Settings.tradingPostViewDensityIndex =
+        std::clamp(
+            g_Settings.tradingPostViewDensityIndex,
+            0,
+            2
+        );
+
     g_Settings.backupIntervalIndex =
         std::clamp(
             g_Settings.backupIntervalIndex,
@@ -209,6 +225,12 @@ bool Settings::Save(
         << "tradingPostWatchSortMode="
         << g_Settings
         .tradingPostWatchSortMode
+        << '\n';
+
+    file
+        << "tradingPostViewDensityIndex="
+        << g_Settings
+        .tradingPostViewDensityIndex
         << '\n';
 
     file
