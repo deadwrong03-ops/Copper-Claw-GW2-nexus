@@ -962,14 +962,28 @@ void TradingPostUI::RenderTargetOverlay()
             1.00f
         );
 
-        const std::string sellText =
+        const bool isBuyTargetAlert =
+            alert.type ==
+            TradingPostTargetAlertType::Buy;
+
+        const uint64_t currentPriceCopper =
+            isBuyTargetAlert
+            ? alert.buyUnitPrice
+            : alert.sellUnitPrice;
+
+        const uint64_t currentTargetCopper =
+            isBuyTargetAlert
+            ? alert.targetBuyCopper
+            : alert.targetSellCopper;
+
+        const std::string currentPriceText =
             FormatCoinValue(
-                alert.sellUnitPrice
+                currentPriceCopper
             );
 
         const std::string targetText =
             FormatCoinValue(
-                alert.targetSellCopper
+                currentTargetCopper
             );
 
         ImGui::SetCursorPosY(
@@ -991,55 +1005,64 @@ void TradingPostUI::RenderTargetOverlay()
                 0
             );
 
-            const char* currentSellLabel =
-                "CURRENT SELL";
+            const char* currentPriceLabel =
+                isBuyTargetAlert
+                ? "CURRENT BUY"
+                : "CURRENT SELL";
 
-            const float currentSellLabelWidth =
+            const float currentPriceLabelWidth =
                 ImGui::CalcTextSize(
-                    currentSellLabel
+                    currentPriceLabel
                 ).x;
 
             ImGui::SetCursorPosX(
                 ImGui::GetCursorPosX() +
                 (
                     ImGui::GetColumnWidth() -
-                    currentSellLabelWidth
+                    currentPriceLabelWidth
                     ) *
                 0.5f
             );
 
             ImGui::TextDisabled(
                 "%s",
-                currentSellLabel
+                currentPriceLabel
             );
 
             ImGui::SetWindowFontScale(
                 1.12f
             );
 
-            const float sellWidth =
+            const float currentPriceWidth =
                 ImGui::CalcTextSize(
-                    sellText.c_str()
+                    currentPriceText.c_str()
                 ).x;
 
             ImGui::SetCursorPosX(
                 ImGui::GetCursorPosX() +
                 (
                     ImGui::GetColumnWidth() -
-                    sellWidth
+                    currentPriceWidth
                     ) *
                 0.5f
             );
 
             ImGui::TextColored(
-                ImVec4(
+                isBuyTargetAlert
+                ? ImVec4(
+                    0.45f,
+                    0.75f,
+                    1.00f,
+                    1.00f
+                )
+                : ImVec4(
                     0.45f,
                     0.92f,
                     0.56f,
                     1.00f
                 ),
                 "%s",
-                sellText.c_str()
+                currentPriceText.c_str()
             );
 
             ImGui::SetWindowFontScale(
@@ -2827,7 +2850,7 @@ void TradingPostUI::RenderTab(
     );
 
     ImGui::TextDisabled(
-        "Watch lowest sell listings and alert when an item reaches your Sell Target."
+        "Watch sell listings and buy orders, and alert when either target is reached."
     );
 
     TradingPostTargetAlert activeTargetAlert;
@@ -2841,6 +2864,10 @@ void TradingPostUI::RenderTab(
     if (hasActiveTargetAlert)
     {
         ImGui::Spacing();
+
+        const bool isBuyTargetAlert =
+            activeTargetAlert.type ==
+            TradingPostTargetAlertType::Buy;
 
         ImGui::PushStyleVar(
             ImGuiStyleVar_ChildRounding,
@@ -2857,7 +2884,14 @@ void TradingPostUI::RenderTab(
 
         ImGui::PushStyleColor(
             ImGuiCol_ChildBg,
-            ImVec4(
+            isBuyTargetAlert
+            ? ImVec4(
+                0.04f,
+                0.07f,
+                0.12f,
+                0.92f
+            )
+            : ImVec4(
                 0.07f,
                 0.10f,
                 0.04f,
@@ -2867,7 +2901,14 @@ void TradingPostUI::RenderTab(
 
         ImGui::PushStyleColor(
             ImGuiCol_Border,
-            ImVec4(
+            isBuyTargetAlert
+            ? ImVec4(
+                0.35f,
+                0.68f,
+                1.00f,
+                1.00f
+            )
+            : ImVec4(
                 0.68f,
                 0.80f,
                 0.14f,
@@ -2902,20 +2943,35 @@ void TradingPostUI::RenderTab(
             activeTargetAlert.name.c_str()
         );
 
-        const std::string sellText =
+        const uint64_t activePriceCopper =
+            isBuyTargetAlert
+            ? activeTargetAlert.buyUnitPrice
+            : activeTargetAlert.sellUnitPrice;
+
+        const uint64_t activeTargetCopper =
+            isBuyTargetAlert
+            ? activeTargetAlert.targetBuyCopper
+            : activeTargetAlert.targetSellCopper;
+
+        const std::string activePriceText =
             FormatCoinValue(
-                activeTargetAlert.sellUnitPrice
+                activePriceCopper
             );
 
         const std::string targetText =
             FormatCoinValue(
-                activeTargetAlert.targetSellCopper
+                activeTargetCopper
             );
 
         ImGui::TextColored(
-            sellColor,
-            "Sell: %s",
-            sellText.c_str()
+            isBuyTargetAlert
+            ? buyColor
+            : sellColor,
+            "%s: %s",
+            isBuyTargetAlert
+            ? "Buy"
+            : "Sell",
+            activePriceText.c_str()
         );
 
         ImGui::SameLine(
@@ -3695,6 +3751,33 @@ void TradingPostUI::RenderTab(
         bool targetChanged =
             false;
 
+        uint64_t buyTargetCopper =
+            item.targetBuyCopper;
+
+        int buyTargetGold =
+            static_cast<int>(
+                buyTargetCopper /
+                10000ULL
+                );
+
+        int buyTargetSilver =
+            static_cast<int>(
+                (
+                    buyTargetCopper %
+                    10000ULL
+                    ) /
+                100ULL
+                );
+
+        int buyTargetCopperOnly =
+            static_cast<int>(
+                buyTargetCopper %
+                100ULL
+                );
+
+        bool buyTargetChanged =
+            false;
+
         const bool targetReached =
             item.targetSellCopper > 0 &&
             hasPrice &&
@@ -3704,6 +3787,16 @@ void TradingPostUI::RenderTab(
                 price.sellUnitPrice
                 ) <=
             item.targetSellCopper;
+
+        const bool buyTargetReached =
+            item.targetBuyCopper > 0 &&
+            hasPrice &&
+            price.available &&
+            price.buyUnitPrice > 0 &&
+            static_cast<uint64_t>(
+                price.buyUnitPrice
+                ) >=
+            item.targetBuyCopper;
 
         std::string targetSummary =
             "TARGET: -";
@@ -3716,6 +3809,47 @@ void TradingPostUI::RenderTab(
                     item.targetSellCopper
                 );
         }
+
+        const std::string sellTargetValueText =
+            item.targetSellCopper > 0
+            ? FormatCoinValue(
+                item.targetSellCopper
+            )
+            : "-";
+
+        const std::string buyTargetValueText =
+            item.targetBuyCopper > 0
+            ? FormatCoinValue(
+                item.targetBuyCopper
+            )
+            : "-";
+
+        const bool activeSellTargetForItem =
+            hasActiveTargetAlert &&
+            activeTargetAlert.itemID ==
+            item.itemID &&
+            activeTargetAlert.type ==
+            TradingPostTargetAlertType::Sell;
+
+        const bool activeBuyTargetForItem =
+            hasActiveTargetAlert &&
+            activeTargetAlert.itemID ==
+            item.itemID &&
+            activeTargetAlert.type ==
+            TradingPostTargetAlertType::Buy;
+
+        const float targetPulse =
+            0.5f +
+            0.5f *
+            std::sin(
+                static_cast<float>(
+                    ImGui::GetTime()
+                    ) *
+                5.0f
+            );
+
+        bool openEditTargetsPopup =
+            false;
 
         ImGui::PushStyleVar(
             ImGuiStyleVar_CellPadding,
@@ -3737,65 +3871,37 @@ void TradingPostUI::RenderTab(
             ImGui::TableSetupColumn(
                 "Item",
                 ImGuiTableColumnFlags_WidthStretch,
-                2.15f
+                2.20f
             );
 
             ImGui::TableSetupColumn(
                 "Sell",
                 ImGuiTableColumnFlags_WidthStretch,
-                1.15f
+                1.10f
             );
 
             ImGui::TableSetupColumn(
                 "Buy",
                 ImGuiTableColumnFlags_WidthStretch,
-                1.15f
+                1.10f
             );
 
             ImGui::TableSetupColumn(
-                "SellTarget",
+                "Targets",
                 ImGuiTableColumnFlags_WidthFixed,
-                205.0f
+                285.0f
             );
 
             ImGui::TableSetupColumn(
-                "StatusActions",
+                "Actions",
                 ImGuiTableColumnFlags_WidthFixed,
-                180.0f
+                220.0f
             );
 
+            //
+            // Row 1: item name, live prices, Sell Target summary, actions.
+            //
             ImGui::TableNextRow();
-
-            if (
-                hasActiveTargetAlert &&
-                activeTargetAlert.itemID ==
-                item.itemID
-                )
-            {
-                const float rowPulse =
-                    0.5f +
-                    0.5f *
-                    std::sin(
-                        static_cast<float>(
-                            ImGui::GetTime()
-                            ) *
-                        5.0f
-                    );
-
-                ImGui::TableSetBgColor(
-                    ImGuiTableBgTarget_RowBg0,
-                    ImGui::GetColorU32(
-                        ImVec4(
-                            0.12f,
-                            0.30f +
-                            0.08f * rowPulse,
-                            0.08f,
-                            0.52f +
-                            0.18f * rowPulse
-                        )
-                    )
-                );
-            }
 
             ImGui::TableSetColumnIndex(
                 0
@@ -3841,70 +3947,6 @@ void TradingPostUI::RenderTab(
             );
 
             ImGui::TableSetColumnIndex(
-                3
-            );
-
-            ImGui::TextDisabled(
-                "Sell Target"
-            );
-
-            ImGui::TableSetColumnIndex(
-                4
-            );
-
-            if (
-                item.targetSellCopper ==
-                0
-                )
-            {
-                ImGui::TextDisabled(
-                    "NO TARGET"
-                );
-            }
-            else if (!hasPrice)
-            {
-                ImGui::TextDisabled(
-                    "WAITING"
-                );
-            }
-            else if (targetReached)
-            {
-                ImGui::TextColored(
-                    goodColor,
-                    "TARGET REACHED"
-                );
-            }
-            else
-            {
-                ImGui::TextColored(
-                    attentionColor,
-                    "WAIT"
-                );
-            }
-
-            ImGui::TableNextRow();
-
-            ImGui::TableSetColumnIndex(
-                0
-            );
-
-            if (hasPrice)
-            {
-                ImGui::TextDisabled(
-                    "Item ID %u  |  Updated %llu sec ago",
-                    item.itemID,
-                    ageSeconds
-                );
-            }
-            else
-            {
-                ImGui::TextDisabled(
-                    "Item ID %u  |  Price data loading...",
-                    item.itemID
-                );
-            }
-
-            ImGui::TableSetColumnIndex(
                 1
             );
 
@@ -3946,144 +3988,97 @@ void TradingPostUI::RenderTab(
                 3
             );
 
-            ImGui::SetNextItemWidth(
-                52.0f
+            if (activeSellTargetForItem)
+            {
+                ImGui::TableSetBgColor(
+                    ImGuiTableBgTarget_CellBg,
+                    ImGui::GetColorU32(
+                        ImVec4(
+                            0.10f,
+                            0.30f +
+                            0.08f * targetPulse,
+                            0.08f,
+                            0.58f +
+                            0.16f * targetPulse
+                        )
+                    )
+                );
+            }
+
+            ImGui::TextDisabled(
+                "Sell Target"
+            );
+
+            ImGui::SameLine(
+                0.0f,
+                8.0f
+            );
+
+            if (item.targetSellCopper > 0)
+            {
+                ImGui::TextColored(
+                    sellColor,
+                    "%s",
+                    sellTargetValueText.c_str()
+                );
+            }
+            else
+            {
+                ImGui::TextDisabled(
+                    "-"
+                );
+            }
+
+            ImGui::SameLine(
+                0.0f,
+                10.0f
             );
 
             if (
-                ImGui::InputInt(
-                    "##TargetGold",
-                    &targetGold,
-                    0,
-                    0
-                )
+                item.targetSellCopper ==
+                0
                 )
             {
-                targetChanged =
-                    true;
+                ImGui::TextDisabled(
+                    "NO TARGET"
+                );
             }
-
-            ImGui::SameLine(
-                0.0f,
-                3.0f
-            );
-
-            ImGui::TextDisabled(
-                "g"
-            );
-
-            ImGui::SameLine(
-                0.0f,
-                5.0f
-            );
-
-            ImGui::SetNextItemWidth(
-                38.0f
-            );
-
-            if (
-                ImGui::InputInt(
-                    "##TargetSilver",
-                    &targetSilver,
-                    0,
-                    0
-                )
-                )
+            else if (!hasPrice)
             {
-                targetChanged =
-                    true;
+                ImGui::TextDisabled(
+                    "WAITING"
+                );
             }
-
-            ImGui::SameLine(
-                0.0f,
-                3.0f
-            );
-
-            ImGui::TextDisabled(
-                "s"
-            );
-
-            ImGui::SameLine(
-                0.0f,
-                5.0f
-            );
-
-            ImGui::SetNextItemWidth(
-                38.0f
-            );
-
-            if (
-                ImGui::InputInt(
-                    "##TargetCopper",
-                    &targetCopperOnly,
-                    0,
-                    0
-                )
-                )
+            else if (targetReached)
             {
-                targetChanged =
-                    true;
+                ImGui::TextColored(
+                    goodColor,
+                    "TARGET REACHED"
+                );
             }
-
-            ImGui::SameLine(
-                0.0f,
-                3.0f
-            );
-
-            ImGui::TextDisabled(
-                "c"
-            );
-
-            if (targetGold < 0)
+            else
             {
-                targetGold = 0;
-            }
-
-            if (targetSilver < 0)
-            {
-                targetSilver = 0;
-            }
-
-            if (targetSilver > 99)
-            {
-                targetSilver = 99;
-            }
-
-            if (targetCopperOnly < 0)
-            {
-                targetCopperOnly = 0;
-            }
-
-            if (targetCopperOnly > 99)
-            {
-                targetCopperOnly = 99;
-            }
-
-            if (targetChanged)
-            {
-                const uint64_t newTargetCopper =
-                    static_cast<uint64_t>(
-                        targetGold
-                        ) *
-                    10000ULL +
-                    static_cast<uint64_t>(
-                        targetSilver
-                        ) *
-                    100ULL +
-                    static_cast<uint64_t>(
-                        targetCopperOnly
-                        );
-
-                TradingPostWatchManager::
-                    SetTargetSellPrice(
-                        item.itemID,
-                        newTargetCopper
-                    );
+                ImGui::TextColored(
+                    attentionColor,
+                    "WAIT"
+                );
             }
 
             ImGui::TableSetColumnIndex(
                 4
             );
+
+            if (
+                ImGui::SmallButton(
+                    "Edit Targets"
+                )
+                )
+            {
+                openEditTargetsPopup =
+                    true;
+            }
+
+            ImGui::SameLine();
 
             if (
                 ImGui::SmallButton(
@@ -4114,10 +4109,581 @@ void TradingPostUI::RenderTab(
                 }
             }
 
+            //
+            // Row 2: quiet metadata + Buy Target summary.
+            //
+            ImGui::TableNextRow();
+
+            ImGui::TableSetColumnIndex(
+                0
+            );
+
+            if (hasPrice)
+            {
+                ImGui::TextDisabled(
+                    "Item ID %u  |  Updated %llu sec ago",
+                    item.itemID,
+                    ageSeconds
+                );
+            }
+            else
+            {
+                ImGui::TextDisabled(
+                    "Item ID %u  |  Price data loading...",
+                    item.itemID
+                );
+            }
+
+            ImGui::TableSetColumnIndex(
+                3
+            );
+
+            if (activeBuyTargetForItem)
+            {
+                ImGui::TableSetBgColor(
+                    ImGuiTableBgTarget_CellBg,
+                    ImGui::GetColorU32(
+                        ImVec4(
+                            0.05f,
+                            0.16f +
+                            0.06f * targetPulse,
+                            0.34f +
+                            0.08f * targetPulse,
+                            0.54f +
+                            0.18f * targetPulse
+                        )
+                    )
+                );
+            }
+
+            ImGui::TextDisabled(
+                "Buy Target"
+            );
+
+            ImGui::SameLine(
+                0.0f,
+                8.0f
+            );
+
+            if (item.targetBuyCopper > 0)
+            {
+                ImGui::TextColored(
+                    buyColor,
+                    "%s",
+                    buyTargetValueText.c_str()
+                );
+            }
+            else
+            {
+                ImGui::TextDisabled(
+                    "-"
+                );
+            }
+
+            ImGui::SameLine(
+                0.0f,
+                10.0f
+            );
+
+            if (
+                item.targetBuyCopper ==
+                0
+                )
+            {
+                ImGui::TextDisabled(
+                    "NO TARGET"
+                );
+            }
+            else if (!hasPrice)
+            {
+                ImGui::TextDisabled(
+                    "WAITING"
+                );
+            }
+            else if (buyTargetReached)
+            {
+                ImGui::TextColored(
+                    goodColor,
+                    "TARGET REACHED"
+                );
+            }
+            else
+            {
+                ImGui::TextColored(
+                    attentionColor,
+                    "WAIT"
+                );
+            }
+
             ImGui::EndTable();
         }
 
         ImGui::PopStyleVar();
+
+        if (openEditTargetsPopup)
+        {
+            ImGui::OpenPopup(
+                "##EditTargetsPopup"
+            );
+        }
+
+        //
+        // Targets stay compact during normal viewing. The numeric g/s/c
+        // controls only appear while this item is being edited.
+        //
+        ImGui::SetNextWindowSize(
+            ImVec2(
+                430.0f,
+                0.0f
+            ),
+            ImGuiCond_Appearing
+        );
+
+        if (
+            ImGui::BeginPopup(
+                "##EditTargetsPopup"
+            )
+            )
+        {
+            ImGui::PushStyleVar(
+                ImGuiStyleVar_FrameRounding,
+                4.0f
+            );
+
+            ImGui::SetWindowFontScale(
+                1.10f
+            );
+
+            ImGui::TextColored(
+                itemNameColor,
+                "%s",
+                item.name.c_str()
+            );
+
+            ImGui::SetWindowFontScale(
+                1.00f
+            );
+
+            ImGui::TextDisabled(
+                "Set alert prices for this watched item."
+            );
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if (
+                ImGui::BeginTable(
+                    "##TargetEditorTable",
+                    5,
+                    ImGuiTableFlags_SizingFixedFit |
+                    ImGuiTableFlags_NoSavedSettings
+                )
+                )
+            {
+                ImGui::TableSetupColumn(
+                    "Target",
+                    ImGuiTableColumnFlags_WidthFixed,
+                    82.0f
+                );
+
+                ImGui::TableSetupColumn(
+                    "Gold",
+                    ImGuiTableColumnFlags_WidthFixed,
+                    92.0f
+                );
+
+                ImGui::TableSetupColumn(
+                    "Silver",
+                    ImGuiTableColumnFlags_WidthFixed,
+                    72.0f
+                );
+
+                ImGui::TableSetupColumn(
+                    "Copper",
+                    ImGuiTableColumnFlags_WidthFixed,
+                    72.0f
+                );
+
+                ImGui::TableSetupColumn(
+                    "Clear",
+                    ImGuiTableColumnFlags_WidthFixed,
+                    58.0f
+                );
+
+                //
+                // Sell Target
+                //
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(
+                    0
+                );
+
+                ImGui::TextColored(
+                    sellColor,
+                    "Sell Target"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    1
+                );
+
+                ImGui::SetNextItemWidth(
+                    62.0f
+                );
+
+                if (
+                    ImGui::InputInt(
+                        "##EditSellTargetGold",
+                        &targetGold,
+                        0,
+                        0
+                    )
+                    )
+                {
+                    targetChanged =
+                        true;
+                }
+
+                ImGui::SameLine(
+                    0.0f,
+                    3.0f
+                );
+
+                ImGui::TextDisabled(
+                    "g"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    2
+                );
+
+                ImGui::SetNextItemWidth(
+                    43.0f
+                );
+
+                if (
+                    ImGui::InputInt(
+                        "##EditSellTargetSilver",
+                        &targetSilver,
+                        0,
+                        0
+                    )
+                    )
+                {
+                    targetChanged =
+                        true;
+                }
+
+                ImGui::SameLine(
+                    0.0f,
+                    3.0f
+                );
+
+                ImGui::TextDisabled(
+                    "s"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    3
+                );
+
+                ImGui::SetNextItemWidth(
+                    43.0f
+                );
+
+                if (
+                    ImGui::InputInt(
+                        "##EditSellTargetCopper",
+                        &targetCopperOnly,
+                        0,
+                        0
+                    )
+                    )
+                {
+                    targetChanged =
+                        true;
+                }
+
+                ImGui::SameLine(
+                    0.0f,
+                    3.0f
+                );
+
+                ImGui::TextDisabled(
+                    "c"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    4
+                );
+
+                if (
+                    ImGui::SmallButton(
+                        "Clear##SellTarget"
+                    )
+                    )
+                {
+                    targetGold = 0;
+                    targetSilver = 0;
+                    targetCopperOnly = 0;
+
+                    targetChanged =
+                        true;
+                }
+
+                //
+                // Buy Target
+                //
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(
+                    0
+                );
+
+                ImGui::TextColored(
+                    buyColor,
+                    "Buy Target"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    1
+                );
+
+                ImGui::SetNextItemWidth(
+                    62.0f
+                );
+
+                if (
+                    ImGui::InputInt(
+                        "##EditBuyTargetGold",
+                        &buyTargetGold,
+                        0,
+                        0
+                    )
+                    )
+                {
+                    buyTargetChanged =
+                        true;
+                }
+
+                ImGui::SameLine(
+                    0.0f,
+                    3.0f
+                );
+
+                ImGui::TextDisabled(
+                    "g"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    2
+                );
+
+                ImGui::SetNextItemWidth(
+                    43.0f
+                );
+
+                if (
+                    ImGui::InputInt(
+                        "##EditBuyTargetSilver",
+                        &buyTargetSilver,
+                        0,
+                        0
+                    )
+                    )
+                {
+                    buyTargetChanged =
+                        true;
+                }
+
+                ImGui::SameLine(
+                    0.0f,
+                    3.0f
+                );
+
+                ImGui::TextDisabled(
+                    "s"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    3
+                );
+
+                ImGui::SetNextItemWidth(
+                    43.0f
+                );
+
+                if (
+                    ImGui::InputInt(
+                        "##EditBuyTargetCopper",
+                        &buyTargetCopperOnly,
+                        0,
+                        0
+                    )
+                    )
+                {
+                    buyTargetChanged =
+                        true;
+                }
+
+                ImGui::SameLine(
+                    0.0f,
+                    3.0f
+                );
+
+                ImGui::TextDisabled(
+                    "c"
+                );
+
+                ImGui::TableSetColumnIndex(
+                    4
+                );
+
+                if (
+                    ImGui::SmallButton(
+                        "Clear##BuyTarget"
+                    )
+                    )
+                {
+                    buyTargetGold = 0;
+                    buyTargetSilver = 0;
+                    buyTargetCopperOnly = 0;
+
+                    buyTargetChanged =
+                        true;
+                }
+
+                ImGui::EndTable();
+            }
+
+            if (targetGold < 0)
+            {
+                targetGold = 0;
+            }
+
+            if (targetSilver < 0)
+            {
+                targetSilver = 0;
+            }
+
+            if (targetSilver > 99)
+            {
+                targetSilver = 99;
+            }
+
+            if (targetCopperOnly < 0)
+            {
+                targetCopperOnly = 0;
+            }
+
+            if (targetCopperOnly > 99)
+            {
+                targetCopperOnly = 99;
+            }
+
+            if (buyTargetGold < 0)
+            {
+                buyTargetGold = 0;
+            }
+
+            if (buyTargetSilver < 0)
+            {
+                buyTargetSilver = 0;
+            }
+
+            if (buyTargetSilver > 99)
+            {
+                buyTargetSilver = 99;
+            }
+
+            if (buyTargetCopperOnly < 0)
+            {
+                buyTargetCopperOnly = 0;
+            }
+
+            if (buyTargetCopperOnly > 99)
+            {
+                buyTargetCopperOnly = 99;
+            }
+
+            if (targetChanged)
+            {
+                const uint64_t newTargetCopper =
+                    static_cast<uint64_t>(
+                        targetGold
+                        ) *
+                    10000ULL +
+                    static_cast<uint64_t>(
+                        targetSilver
+                        ) *
+                    100ULL +
+                    static_cast<uint64_t>(
+                        targetCopperOnly
+                        );
+
+                TradingPostWatchManager::
+                    SetTargetSellPrice(
+                        item.itemID,
+                        newTargetCopper
+                    );
+            }
+
+            if (buyTargetChanged)
+            {
+                const uint64_t newBuyTargetCopper =
+                    static_cast<uint64_t>(
+                        buyTargetGold
+                        ) *
+                    10000ULL +
+                    static_cast<uint64_t>(
+                        buyTargetSilver
+                        ) *
+                    100ULL +
+                    static_cast<uint64_t>(
+                        buyTargetCopperOnly
+                        );
+
+                TradingPostWatchManager::
+                    SetTargetBuyPrice(
+                        item.itemID,
+                        newBuyTargetCopper
+                    );
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            const float doneButtonWidth =
+                96.0f;
+
+            ImGui::SetCursorPosX(
+                (
+                    ImGui::GetWindowSize().x -
+                    doneButtonWidth
+                    ) *
+                0.5f
+            );
+
+            if (
+                ImGui::Button(
+                    "Done",
+                    ImVec2(
+                        doneButtonWidth,
+                        26.0f
+                    )
+                )
+                )
+            {
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::PopStyleVar();
+
+            ImGui::EndPopup();
+        }
 
         uint64_t historySpanSeconds = 0;
 

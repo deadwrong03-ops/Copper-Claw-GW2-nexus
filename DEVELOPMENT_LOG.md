@@ -11,7 +11,94 @@ Filesystem/data prefix: `CopperAndClaw`
 Latest published release: `v0.1.2`  
 Development: `Active`
 
+Current development builds may contain features or improvements that have not yet been included in the latest published release.
+
 ---
+
+## 2026-09-07 — Buy Target Alerts & Target UI Cleanup
+
+Added independent Buy Target support alongside the existing Sell Target system.
+
+### Buy Target behavior
+
+- each watched item can now store an independent Buy Target in addition to its Sell Target
+- Buy Targets trigger when the current highest buy order is greater than or equal to the configured Buy Target
+- Sell Targets continue to trigger when the current lowest sell listing is less than or equal to the configured Sell Target
+- Sell and Buy targets use independent armed/reached state
+- Sell and Buy alerts can both exist for the same watched item without interfering with each other
+- Buy Targets re-arm only after a later observed highest buy order falls below the configured target
+- Sell Targets retain their existing re-arm behavior
+- Sell and Buy target hits share the existing queued alert system and are shown one at a time
+
+### Persistence / compatibility
+
+- watched items now persist both Sell Target and Buy Target values
+- the watch-file format was extended without breaking older saved watch lists
+- older watch rows containing only Sell Target data remain readable
+- older alert-latch rows remain readable
+- Buy Target values persist across Guild Wars 2 restarts
+- reached/latched target state persists across restart
+- the already-visible celebration banner itself does not persist across restart, preventing an old price-hit celebration from being resurrected after relaunch
+
+### Alert presentation
+
+- target alerts now identify whether the triggered side is Sell or Buy
+- Sell alerts continue to show `CURRENT SELL`
+- Buy alerts show `CURRENT BUY`
+- both alert types show `YOUR TARGET`
+- Buy prices use the existing blue Buy-side color
+- Sell prices keep the existing green Sell-side color
+- compact in-panel alerts identify the triggered side
+- Buy Target hits use blue highlighting
+- Sell Target hits use green highlighting
+- whole watched-item row highlighting was removed
+- only the specific triggered Sell Target or Buy Target block is highlighted, avoiding ambiguity
+
+### Target editor cleanup
+
+The initial Buy Target implementation made each watched-item row too busy because both Sell and Buy targets permanently displayed separate gold/silver/copper input controls.
+
+The target UI was simplified so normal watch rows are primarily read-only:
+
+- Sell Target shows its formatted target value and status
+- Buy Target shows its formatted target value and status
+- the six gold/silver/copper input boxes are hidden during normal viewing
+- a dedicated `Edit Targets` button opens the editor only when needed
+- Refresh and Remove remain available on the main row
+- the Actions column was widened so all buttons remain fully visible
+
+The Edit Targets popup was then polished:
+
+- wider popup
+- Sell Target and Buy Target use aligned rows
+- gold / silver / copper inputs line up cleanly
+- each target has its own `Clear` action
+- `Done` is centered
+- target editing remains independent for Sell and Buy
+
+### In-game validation
+
+Verified in-game:
+
+- Buy Target controls appear and save correctly
+- Buy Target triggers from a qualifying highest-buy observation
+- Sell and Buy targets remain independent
+- compact Buy Target alert identifies `Buy`
+- Buy Target block highlights blue without highlighting the Sell Target block
+- large gameplay alert displays `CURRENT BUY / YOUR TARGET`
+- Sell Target alert behavior remains intact
+- Buy Target value persists through restart
+- latched target state persists through restart
+- celebration banner does not persist through restart
+- compact target display is substantially less cluttered
+- Edit Targets popup opens correctly
+- Refresh and Remove remain fully visible
+- polished Edit Targets popup renders correctly
+
+**Result: PASS**
+
+---
+
 
 ## 2026-09-06 — v0.1.2 Release Validation
 

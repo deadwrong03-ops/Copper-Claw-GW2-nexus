@@ -4,12 +4,19 @@
 #include <string>
 #include <vector>
 
+enum class TradingPostTargetAlertType
+{
+    Sell,
+    Buy
+};
+
 struct TradingPostWatchItem
 {
     uint32_t itemID = 0;
     std::string name;
 
     uint64_t targetSellCopper = 0;
+    uint64_t targetBuyCopper = 0;
 
     //
     // Retained for UI/source compatibility.
@@ -22,12 +29,18 @@ struct TradingPostWatchItem
 
 struct TradingPostTargetAlert
 {
+    TradingPostTargetAlertType type =
+        TradingPostTargetAlertType::Sell;
+
     uint32_t itemID = 0;
 
     std::string name;
 
     uint64_t sellUnitPrice = 0;
     uint64_t targetSellCopper = 0;
+
+    uint64_t buyUnitPrice = 0;
+    uint64_t targetBuyCopper = 0;
 
     uint64_t triggeredUnixSeconds = 0;
 };
@@ -60,6 +73,11 @@ namespace TradingPostWatchManager
         uint64_t targetCopper
     );
 
+    void SetTargetBuyPrice(
+        uint32_t itemID,
+        uint64_t targetCopper
+    );
+
     bool IsAutoWatchEnabled();
 
     void SetAutoWatchEnabled(
@@ -86,8 +104,9 @@ namespace TradingPostWatchManager
     //
     // Dismisses the currently visible alert and immediately promotes
     // the next queued target hit, if one exists. This does NOT re-arm
-    // a target. Re-arming still requires a later observed sell price
-    // above that target.
+    // a target. Sell targets re-arm only after a later sell price rises
+    // above the target; Buy targets re-arm only after a later buy price
+    // falls below the target.
     //
     void DismissActiveTargetAlert();
 }

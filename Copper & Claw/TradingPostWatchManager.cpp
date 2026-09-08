@@ -27,17 +27,23 @@ namespace
     struct TargetAlertState
     {
         //
-        // True once this target has been reached. It stays true
-        // until a later observed sell price rises back ABOVE the
-        // target, which re-arms the alert.
+        // Sell and Buy targets arm independently.
         //
-        bool reachedLatch = false;
+        // Sell re-arms after a later observed sell listing rises
+        // back ABOVE its target.
+        //
+        // Buy re-arms after a later observed buy order falls back
+        // BELOW its target.
+        //
+        bool sellReachedLatch = false;
+        bool buyReachedLatch = false;
 
         //
-        // Prevents evaluating the same successful price response
-        // repeatedly on every render frame.
+        // Keep independent processed timestamps so editing one target
+        // cannot suppress evaluation of the other side of the market.
         //
-        uint64_t lastProcessedPriceTimestamp = 0;
+        uint64_t lastProcessedSellPriceTimestamp = 0;
+        uint64_t lastProcessedBuyPriceTimestamp = 0;
     };
 
     std::mutex g_WatchMutex;
@@ -181,7 +187,9 @@ namespace
         if (
             g_HasActiveTargetAlert &&
             g_ActiveTargetAlert.itemID ==
-            alert.itemID
+            alert.itemID &&
+            g_ActiveTargetAlert.type ==
+            alert.type
             )
         {
             return;
@@ -197,7 +205,9 @@ namespace
                 {
                     return
                         queuedAlert.itemID ==
-                        alert.itemID;
+                        alert.itemID &&
+                        queuedAlert.type ==
+                        alert.type;
                 }
             );
 
@@ -246,6 +256,28 @@ namespace
         );
     }
 
+    void RemoveQueuedTargetAlertLocked(
+        uint32_t itemID,
+        TradingPostTargetAlertType type
+    )
+    {
+        g_PendingTargetAlerts.erase(
+            std::remove_if(
+                g_PendingTargetAlerts.begin(),
+                g_PendingTargetAlerts.end(),
+                [itemID, type](
+                    const TradingPostTargetAlert& alert
+                    )
+                {
+                    return
+                        alert.itemID == itemID &&
+                        alert.type == type;
+                }
+            ),
+            g_PendingTargetAlerts.end()
+        );
+    }
+
     void SaveLocked()
     {
         if (g_SettingsPath.empty())
@@ -284,6 +316,8 @@ namespace
                 << '|'
                 << item.targetSellCopper
                 << '|'
+                << item.targetBuyCopper
+                << '|'
                 << item.name
                 << '\n';
 
@@ -292,19 +326,38 @@ namespace
                     item.itemID
                 );
 
-            const bool reachedLatch =
+            const bool sellReachedLatch =
                 alertStateIt !=
                 g_TargetAlertStates.end()
                 ? alertStateIt->
-                second.reachedLatch
+                second.sellReachedLatch
                 : false;
 
+            const bool buyReachedLatch =
+                alertStateIt !=
+                g_TargetAlertStates.end()
+                ? alertStateIt->
+                second.buyReachedLatch
+                : false;
+
+            //
+            // Backward-compatible extension of the existing alertLatch row:
+            //
+            // old: alertLatch=itemID|sellLatch
+            // new: alertLatch=itemID|sellLatch|buyLatch
+            //
             file
                 << "alertLatch="
                 << item.itemID
                 << '|'
                 << (
-                    reachedLatch
+                    sellReachedLatch
+                    ? 1
+                    : 0
+                    )
+                << '|'
+                << (
+                    buyReachedLatch
                     ? 1
                     : 0
                     )
@@ -370,18 +423,24 @@ namespace
                             11
                         );
 
-                    const size_t separator =
+                    const size_t firstSeparator =
                         payload.find(
                             '|'
                         );
 
                     if (
-                        separator ==
+                        firstSeparator ==
                         std::string::npos
                         )
                     {
                         continue;
                     }
+
+                    const size_t secondSeparator =
+                        payload.find(
+                            '|',
+                            firstSeparator + 1
+                        );
 
                     try
                     {
@@ -390,23 +449,45 @@ namespace
                                 std::stoul(
                                     payload.substr(
                                         0,
-                                        separator
+                                        firstSeparator
                                     )
                                 )
                                 );
 
-                        const std::string value =
-                            payload.substr(
-                                separator + 1
+                        const std::string sellValue =
+                            secondSeparator ==
+                            std::string::npos
+                            ? payload.substr(
+                                firstSeparator + 1
+                            )
+                            : payload.substr(
+                                firstSeparator + 1,
+                                secondSeparator -
+                                firstSeparator - 1
+                            );
+
+                        const std::string buyValue =
+                            secondSeparator ==
+                            std::string::npos
+                            ? std::string()
+                            : payload.substr(
+                                secondSeparator + 1
                             );
 
                         if (itemID != 0)
                         {
-                            g_TargetAlertStates[
-                                itemID
-                            ].reachedLatch =
-                                value == "1" ||
-                                    value == "true";
+                            TargetAlertState& state =
+                                g_TargetAlertStates[
+                                    itemID
+                                ];
+
+                            state.sellReachedLatch =
+                                sellValue == "1" ||
+                                sellValue == "true";
+
+                            state.buyReachedLatch =
+                                buyValue == "1" ||
+                                buyValue == "true";
                         }
                     }
                     catch (...)
@@ -459,6 +540,12 @@ namespace
                     continue;
                 }
 
+                const size_t thirdSeparator =
+                    payload.find(
+                        '|',
+                        secondSeparator + 1
+                    );
+
                 try
                 {
                     TradingPostWatchItem item;
@@ -482,10 +569,41 @@ namespace
                             )
                         );
 
-                    item.name =
-                        payload.substr(
-                            secondSeparator + 1
-                        );
+                    //
+                    // Backward compatibility:
+                    //
+                    // old: item=itemID|sellTarget|name
+                    // new: item=itemID|sellTarget|buyTarget|name
+                    //
+                    if (
+                        thirdSeparator ==
+                        std::string::npos
+                        )
+                    {
+                        item.targetBuyCopper =
+                            0;
+
+                        item.name =
+                            payload.substr(
+                                secondSeparator + 1
+                            );
+                    }
+                    else
+                    {
+                        item.targetBuyCopper =
+                            std::stoull(
+                                payload.substr(
+                                    secondSeparator + 1,
+                                    thirdSeparator -
+                                    secondSeparator - 1
+                                )
+                            );
+
+                        item.name =
+                            payload.substr(
+                                thirdSeparator + 1
+                            );
+                    }
 
                     //
                     // No watched item is permanently protected anymore.
@@ -510,6 +628,7 @@ namespace
                 {
                     // Ignore malformed saved rows.
                 }
+
             }
         }
         else
@@ -577,95 +696,177 @@ namespace
                     item.itemID
                 ];
 
+            //
+            // SELL TARGET
+            //
             if (
-                price.lastUpdatedUnixSeconds <=
+                price.lastUpdatedUnixSeconds >
                 alertState.
-                lastProcessedPriceTimestamp
+                lastProcessedSellPriceTimestamp
                 )
             {
-                continue;
-            }
+                alertState.
+                    lastProcessedSellPriceTimestamp =
+                    price.lastUpdatedUnixSeconds;
 
-            alertState.
-                lastProcessedPriceTimestamp =
-                price.lastUpdatedUnixSeconds;
-
-            //
-            // A zero target means target alerting is disabled.
-            //
-            if (
-                item.targetSellCopper == 0 ||
-                price.sellUnitPrice == 0
-                )
-            {
-                if (alertState.reachedLatch)
+                if (
+                    item.targetSellCopper == 0 ||
+                    price.sellUnitPrice == 0
+                    )
                 {
-                    alertState.reachedLatch =
-                        false;
+                    if (alertState.sellReachedLatch)
+                    {
+                        alertState.sellReachedLatch =
+                            false;
 
-                    settingsChanged = true;
+                        settingsChanged = true;
+                    }
                 }
-
-                continue;
-            }
-
-            const bool targetReached =
-                static_cast<uint64_t>(
-                    price.sellUnitPrice
-                    ) <=
-                item.targetSellCopper;
-
-            if (targetReached)
-            {
-                //
-                // Only fire on the transition into the target range.
-                // Once latched, repeated 60-second refreshes are quiet.
-                //
-                if (!alertState.reachedLatch)
+                else
                 {
-                    alertState.reachedLatch =
-                        true;
-
-                    settingsChanged = true;
-
-                    //
-                    // Queue every newly-triggered target hit. Only one alert
-                    // is visible at a time; dismissing it promotes the next.
-                    //
-                    TradingPostTargetAlert targetAlert;
-
-                    targetAlert.itemID =
-                        item.itemID;
-
-                    targetAlert.name =
-                        item.name;
-
-                    targetAlert.sellUnitPrice =
-                        price.sellUnitPrice;
-
-                    targetAlert.targetSellCopper =
+                    const bool targetReached =
+                        static_cast<uint64_t>(
+                            price.sellUnitPrice
+                            ) <=
                         item.targetSellCopper;
 
-                    targetAlert.triggeredUnixSeconds =
-                        GetCurrentUnixSeconds();
+                    if (targetReached)
+                    {
+                        if (!alertState.sellReachedLatch)
+                        {
+                            alertState.sellReachedLatch =
+                                true;
 
-                    QueueTargetAlertLocked(
-                        targetAlert
-                    );
+                            settingsChanged = true;
+
+                            TradingPostTargetAlert
+                                targetAlert;
+
+                            targetAlert.type =
+                                TradingPostTargetAlertType::
+                                Sell;
+
+                            targetAlert.itemID =
+                                item.itemID;
+
+                            targetAlert.name =
+                                item.name;
+
+                            targetAlert.sellUnitPrice =
+                                price.sellUnitPrice;
+
+                            targetAlert.targetSellCopper =
+                                item.targetSellCopper;
+
+                            targetAlert.triggeredUnixSeconds =
+                                GetCurrentUnixSeconds();
+
+                            QueueTargetAlertLocked(
+                                targetAlert
+                            );
+                        }
+                    }
+                    else
+                    {
+                        //
+                        // Sell price moved back above target. Re-arm so a
+                        // later drop back into range can create a new alert.
+                        //
+                        if (alertState.sellReachedLatch)
+                        {
+                            alertState.sellReachedLatch =
+                                false;
+
+                            settingsChanged = true;
+                        }
+                    }
                 }
             }
-            else
-            {
-                //
-                // Price moved back above target. Re-arm so a later
-                // drop back into range can create a new alert.
-                //
-                if (alertState.reachedLatch)
-                {
-                    alertState.reachedLatch =
-                        false;
 
-                    settingsChanged = true;
+            //
+            // BUY TARGET
+            //
+            if (
+                price.lastUpdatedUnixSeconds >
+                alertState.
+                lastProcessedBuyPriceTimestamp
+                )
+            {
+                alertState.
+                    lastProcessedBuyPriceTimestamp =
+                    price.lastUpdatedUnixSeconds;
+
+                if (
+                    item.targetBuyCopper == 0 ||
+                    price.buyUnitPrice == 0
+                    )
+                {
+                    if (alertState.buyReachedLatch)
+                    {
+                        alertState.buyReachedLatch =
+                            false;
+
+                        settingsChanged = true;
+                    }
+                }
+                else
+                {
+                    const bool targetReached =
+                        static_cast<uint64_t>(
+                            price.buyUnitPrice
+                            ) >=
+                        item.targetBuyCopper;
+
+                    if (targetReached)
+                    {
+                        if (!alertState.buyReachedLatch)
+                        {
+                            alertState.buyReachedLatch =
+                                true;
+
+                            settingsChanged = true;
+
+                            TradingPostTargetAlert
+                                targetAlert;
+
+                            targetAlert.type =
+                                TradingPostTargetAlertType::
+                                Buy;
+
+                            targetAlert.itemID =
+                                item.itemID;
+
+                            targetAlert.name =
+                                item.name;
+
+                            targetAlert.buyUnitPrice =
+                                price.buyUnitPrice;
+
+                            targetAlert.targetBuyCopper =
+                                item.targetBuyCopper;
+
+                            targetAlert.triggeredUnixSeconds =
+                                GetCurrentUnixSeconds();
+
+                            QueueTargetAlertLocked(
+                                targetAlert
+                            );
+                        }
+                    }
+                    else
+                    {
+                        //
+                        // Buy price moved back below target. Re-arm so a
+                        // later rise back into range can create a new alert.
+                        //
+                        if (alertState.buyReachedLatch)
+                        {
+                            alertState.buyReachedLatch =
+                                false;
+
+                            settingsChanged = true;
+                        }
+                    }
                 }
             }
         }
@@ -675,6 +876,7 @@ namespace
             SaveLocked();
         }
     }
+
 }
 
 void TradingPostWatchManager::Start(
@@ -977,18 +1179,15 @@ SetTargetSellPrice(
                     targetCopper;
 
                 //
-                // A changed target is a new alert condition, but the
-                // target edit itself must NOT fire an alert from an
-                // already-cached price. Mark the current cached price
-                // timestamp as processed so only a NEW API observation
-                // can evaluate the new target.
+                // A changed Sell Target is a new alert condition, but the
+                // edit itself must NOT fire from an already-cached price.
                 //
                 TargetAlertState& alertState =
                     g_TargetAlertStates[
                         itemID
                     ];
 
-                alertState.reachedLatch =
+                alertState.sellReachedLatch =
                     false;
 
                 TradingPostPrice currentPrice;
@@ -1003,25 +1202,122 @@ SetTargetSellPrice(
                     )
                 {
                     alertState.
-                        lastProcessedPriceTimestamp =
+                        lastProcessedSellPriceTimestamp =
                         currentPrice.
                         lastUpdatedUnixSeconds;
                 }
                 else
                 {
                     alertState.
-                        lastProcessedPriceTimestamp =
+                        lastProcessedSellPriceTimestamp =
                         0;
                 }
 
                 RemoveQueuedTargetAlertLocked(
-                    itemID
+                    itemID,
+                    TradingPostTargetAlertType::
+                    Sell
                 );
 
                 if (
                     g_HasActiveTargetAlert &&
                     g_ActiveTargetAlert.itemID ==
-                    itemID
+                    itemID &&
+                    g_ActiveTargetAlert.type ==
+                    TradingPostTargetAlertType::
+                    Sell
+                    )
+                {
+                    g_HasActiveTargetAlert =
+                        false;
+
+                    g_ActiveTargetAlert =
+                        TradingPostTargetAlert{};
+
+                    PromoteNextTargetAlertLocked();
+                }
+
+                SaveLocked();
+            }
+
+            return;
+        }
+    }
+}
+
+void TradingPostWatchManager::
+SetTargetBuyPrice(
+    uint32_t itemID,
+    uint64_t targetCopper
+)
+{
+    std::lock_guard<std::mutex> lock(
+        g_WatchMutex
+    );
+
+    for (
+        TradingPostWatchItem& item :
+        g_WatchedItems
+        )
+    {
+        if (item.itemID == itemID)
+        {
+            if (
+                item.targetBuyCopper !=
+                targetCopper
+                )
+            {
+                item.targetBuyCopper =
+                    targetCopper;
+
+                //
+                // A changed Buy Target is a new alert condition, but the
+                // edit itself must NOT fire from an already-cached price.
+                //
+                TargetAlertState& alertState =
+                    g_TargetAlertStates[
+                        itemID
+                    ];
+
+                alertState.buyReachedLatch =
+                    false;
+
+                TradingPostPrice currentPrice;
+
+                if (
+                    TradingPostPriceManager::
+                    TryGetPrice(
+                        itemID,
+                        currentPrice
+                    ) &&
+                    currentPrice.available
+                    )
+                {
+                    alertState.
+                        lastProcessedBuyPriceTimestamp =
+                        currentPrice.
+                        lastUpdatedUnixSeconds;
+                }
+                else
+                {
+                    alertState.
+                        lastProcessedBuyPriceTimestamp =
+                        0;
+                }
+
+                RemoveQueuedTargetAlertLocked(
+                    itemID,
+                    TradingPostTargetAlertType::
+                    Buy
+                );
+
+                if (
+                    g_HasActiveTargetAlert &&
+                    g_ActiveTargetAlert.itemID ==
+                    itemID &&
+                    g_ActiveTargetAlert.type ==
+                    TradingPostTargetAlertType::
+                    Buy
                     )
                 {
                     g_HasActiveTargetAlert =

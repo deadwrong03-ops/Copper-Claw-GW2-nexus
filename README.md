@@ -10,6 +10,8 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 **Latest Release:** v0.1.2  
 **Development:** Active
 
+> **Development Note:** Copper&Claw is actively developed. Some recently added features or improvements may be available in the source or development build before they are included in the latest published release.
+
 ---
 
 ## Main Features
@@ -21,6 +23,9 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Current **lowest sell listing**
 - Current **highest buy order**
 - Per-item **Sell Targets**
+- Per-item **Buy Targets**
+- Independent Sell and Buy target alerts
+- Compact target display with dedicated **Edit Targets** controls
 - Persistent watch list, targets, settings, and price history
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
@@ -116,9 +121,27 @@ This helps prevent limited or interrupted local history from being presented as 
 
 ## Target Alerts
 
-Set a Sell Target for any watched item.
+Copper&Claw supports independent **Sell Targets** and **Buy Targets** for each watched item.
 
-When the current lowest sell listing reaches or drops below that target, Copper&Claw displays a celebration alert.
+### Sell Targets
+
+A Sell Target is useful when you are waiting for the lowest Trading Post sell listing to reach a price you are willing to pay.
+
+The alert triggers when:
+
+`Current lowest sell listing <= Sell Target`
+
+### Buy Targets
+
+A Buy Target is useful when you are waiting for buyers to offer enough for an item you want to sell.
+
+The alert triggers when:
+
+`Current highest buy order >= Buy Target`
+
+Sell and Buy targets are stored independently and can be enabled, changed, or cleared separately.
+
+The normal watch list keeps target information compact. Use **Edit Targets** when you need to change the gold, silver, or copper values.
 
 <img width="722" height="237" alt="targetalert" src="https://github.com/user-attachments/assets/d96b2118-75e9-4ba6-ba68-d9c2396d6628" />
 
@@ -126,12 +149,17 @@ Alerts include:
 
 - **TARGET REACHED!**
 - item name
-- current sell price
+- current Trading Post price
 - your target price
+- **CURRENT SELL** or **CURRENT BUY** depending on the alert
 - confetti / celebration effects
 - **Dismiss Party**
 
+Sell Target hits use Sell-side visual styling while Buy Target hits use Buy-side visual styling so the triggered side is immediately clear.
+
 Multiple triggered alerts are queued and shown one at a time.
+
+Target values and their alert state persist across restarts. An already-visible celebration banner itself is not restored after restarting Guild Wars 2.
 
 ---
 
@@ -230,7 +258,9 @@ After a successful restore, Copper&Claw records which backup was restored and sh
 Backups include:
 
 - Copper&Claw settings
-- watched items and Sell Targets
+- watched items
+- Sell Targets
+- Buy Targets
 - local Trading Post price history
 
 The item-search cache is not included because Copper&Claw can rebuild it automatically.
@@ -279,6 +309,8 @@ Copper&Claw saves:
 
 - watched items
 - Sell Targets
+- Buy Targets
+- Sell / Buy target alert state
 - settings
 - selected Trend Window
 - selected watch-list sort mode
