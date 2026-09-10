@@ -481,6 +481,75 @@ This remains display-only. Existing Collector pricing, history import, snapshot 
 
 ---
 
+
+## 2026-09-10 — 90-Day Bounded Collector History Requests
+
+Updated Copper&Claw's Collector history import path so watched items no longer request an item's entire lifetime history.
+
+### Bounded history request
+
+`TradingPostHistoryManager` now requests:
+
+```text
+/item/{itemID}/history?days=90
+```
+
+instead of:
+
+```text
+/item/{itemID}/history
+```
+
+The 90-day request matches Copper&Claw's current longest selectable Trend Window.
+
+This reduces unnecessary data transfer and query volume as the Collector's central historical dataset grows, while preserving all history currently needed by the addon UI.
+
+**Result: PASS**
+
+### Pre-window state anchor
+
+The Collector's `price_history` table stores market-change events rather than duplicate unchanged rows for every completed scan.
+
+The Collector's bounded history endpoint therefore also returns the newest history event immediately before the requested cutoff when one exists.
+
+Copper&Claw keeps and imports that anchor row along with the in-window history.
+
+This allows the addon to reconstruct the price state that was already active when the 90-day window began and continue carrying that state forward across completed Collector snapshot timestamps.
+
+No separate Copper&Claw-side anchor calculation was required.
+
+**Result: PASS**
+
+### End-to-end request validation
+
+Temporary Collector request logging was enabled during validation.
+
+After a full Guild Wars 2 restart, Copper&Claw startup traffic confirmed watched items were requesting the new bounded endpoint.
+
+Observed examples included:
+
+```text
+API GET /item/41569/history?days=90
+API GET /item/96356/history?days=90
+API GET /item/20357/history?days=90
+```
+
+Normal current-price requests for those items also continued successfully afterward.
+
+The temporary Collector request logger was removed after validation.
+
+**Result: PASS**
+
+### Backward compatibility
+
+This Copper&Claw change only modifies the endpoint it requests.
+
+The Collector still supports the unbounded `/item/{itemID}/history` path for older or other consumers, but current Copper&Claw development builds now use the 90-day form.
+
+**Result: PASS**
+
+---
+
 ## 2026-09-08 — v0.1.3 Release Preparation
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
@@ -1844,7 +1913,8 @@ Current behavior:
 
 - Collector-first current pricing
 - Guild Wars 2 API fallback
-- Collector history import
+- Collector history import using `/item/{itemID}/history?days=90`
+- pre-window anchor history event supplied by the Collector for correct 90-day state reconstruction
 - completed Collector snapshot timestamps used for selected-window analysis coverage
 - unchanged-price states reconstructed across completed Collector scans
 - automatic retry if Collector starts after Guild Wars 2
@@ -1905,6 +1975,7 @@ Current behavior:
 
 - existing local history is preserved
 - Collector history is merged into local history
+- current Collector imports request 90 days of history plus the Collector-supplied pre-window anchor event
 - exact duplicate observations are skipped
 - imported history is persisted locally
 - if the Collector is unavailable, Copper&Claw continues using its own local history and the Guild Wars 2 API

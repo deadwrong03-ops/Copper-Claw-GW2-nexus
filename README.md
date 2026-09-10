@@ -30,6 +30,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Compact target display with dedicated **Edit Targets** controls
 - Persistent watch list, targets, settings, and price history
 - Optional integration with the standalone Copper&Claw Collector for broader historical data
+- Efficient 90-day bounded Collector history imports with pre-window state anchoring
 - Compact Collector status line showing connection state, active price source, analysis source, last successful contact, and last completed scan age
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
@@ -269,6 +270,7 @@ Current integration behavior:
 
 - current watched-item prices are requested from the Collector first
 - historical Collector data is imported for watched items
+- Collector history imports are currently bounded to 90 days, matching Copper&Claw's longest selectable Trend Window, instead of downloading an item's entire lifetime history
 - completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations for analysis
 - existing Copper&Claw local history is preserved
 - imported Collector history is merged with local history
@@ -283,6 +285,8 @@ Current integration behavior:
 - completed scan age is shown normally while fresh, turns yellow at 10 minutes, and red at 15 minutes or older to make stale market data immediately visible
 
 The status line distinguishes service reachability from data freshness. `Contact` shows how long it has been since Copper&Claw last successfully requested a price from the Collector, while `Scan` shows the age of the newest completed Collector market scan.
+
+Collector history requests use the bounded endpoint form `GET /item/{itemID}/history?days=90`. The Collector automatically includes the newest history event immediately before the 90-day cutoff when one exists, so Copper&Claw can still reconstruct the price state that was already active at the start of the requested window.
 
 The Collector is not required for Copper&Claw to function. Without it, the addon continues using the Guild Wars 2 API and its own local history as before.
 

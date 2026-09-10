@@ -790,12 +790,20 @@ namespace
 
         std::string response;
 
+        //
+        // Copper&Claw's longest selectable Trend Window is currently 90 days.
+        // Request only that range from the Collector instead of downloading
+        // the item's entire lifetime history. The Collector automatically
+        // includes the newest history event immediately before the cutoff so
+        // the price state active at the start of the window can still be
+        // reconstructed correctly.
+        //
         const std::wstring path =
             L"/item/" +
             std::to_wstring(
                 itemID
             ) +
-            L"/history";
+            L"/history?days=90";
 
         if (
             !CollectorHttpGet(
