@@ -103,6 +103,13 @@ namespace TradingPostPriceManager
     //
     bool IsCollectorAvailable();
 
+    //
+    // Unix timestamp of the most recent successful Collector price request
+    // during the current Copper&Claw session. Returns 0 until the first
+    // successful Collector contact.
+    //
+    uint64_t GetLastCollectorSuccessUnixSeconds();
+
     bool FetchPrice(
         uint32_t itemID
     );

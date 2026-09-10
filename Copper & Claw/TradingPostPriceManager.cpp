@@ -51,6 +51,9 @@ namespace
     std::atomic<bool>
         g_CollectorAvailable = false;
 
+    std::atomic<uint64_t>
+        g_LastCollectorSuccessUnixSeconds = 0;
+
     bool g_WorkerRunning = false;
     bool g_StopWorker = false;
 
@@ -753,6 +756,11 @@ void TradingPostPriceManager::Reset()
         std::memory_order_relaxed
     );
 
+    g_LastCollectorSuccessUnixSeconds.store(
+        0,
+        std::memory_order_relaxed
+    );
+
     {
         std::lock_guard<std::mutex> lock(
             g_TradingPostPriceMutex
@@ -774,6 +782,11 @@ void TradingPostPriceManager::Start()
 {
     g_CollectorAvailable.store(
         false,
+        std::memory_order_relaxed
+    );
+
+    g_LastCollectorSuccessUnixSeconds.store(
+        0,
         std::memory_order_relaxed
     );
 
@@ -1072,6 +1085,14 @@ bool TradingPostPriceManager::IsCollectorAvailable()
         );
 }
 
+uint64_t TradingPostPriceManager::GetLastCollectorSuccessUnixSeconds()
+{
+    return
+        g_LastCollectorSuccessUnixSeconds.load(
+            std::memory_order_relaxed
+        );
+}
+
 bool TradingPostPriceManager::FetchPrice(
     uint32_t itemID
 )
@@ -1094,6 +1115,21 @@ bool TradingPostPriceManager::FetchPrice(
     {
         g_CollectorAvailable.store(
             true,
+            std::memory_order_relaxed
+        );
+
+        const uint64_t nowUnixSeconds =
+            static_cast<uint64_t>(
+                std::chrono::duration_cast<
+                std::chrono::seconds
+                >(
+                    std::chrono::system_clock::
+                    now().time_since_epoch()
+                ).count()
+                );
+
+        g_LastCollectorSuccessUnixSeconds.store(
+            nowUnixSeconds,
             std::memory_order_relaxed
         );
 

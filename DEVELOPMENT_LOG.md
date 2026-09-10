@@ -381,6 +381,106 @@ No remaining contradictory Market Analysis presentation was identified during th
 
 ---
 
+
+## 2026-09-10 — Collector Status & Data-Freshness UI
+
+Added a compact Collector status line to the Trading Post tab so the addon can show both backend connectivity and the freshness of Collector-backed market data without adding another large panel.
+
+### Compact status presentation
+
+The Trading Post tab now displays a single-line status summary containing:
+
+- `Collector: Connected / Offline`
+- `Price: Collector / GW2 API`
+- `Analysis: Collector Snapshots / Local History`
+- `Contact: ... ago`
+- `Scan: ... ago`
+
+The first status prototype used a larger multi-line block, but in-game testing showed too much unused vertical space. It was reduced to one compact line and re-tested successfully.
+
+**Result: PASS**
+
+### Last successful Collector contact
+
+`TradingPostPriceManager` now records the Unix timestamp of the most recent successful Collector-backed price request.
+
+The status UI displays the elapsed age as:
+
+```text
+Contact: 121s ago
+```
+
+This value represents the most recent successful Copper&Claw → Collector price request. It is not the age of the Collector's full market scan.
+
+Behavior validated in-game:
+
+- Collector running → contact age updates after successful requests
+- Collector stopped → status switches to Offline / GW2 API while the last successful contact age continues increasing
+- Collector restarted → the next successful request restores Connected state and resets Contact close to zero
+
+**Result: PASS**
+
+### Last completed Collector scan
+
+Copper&Claw now reads the newest timestamp already available from the completed-snapshot cache and displays its age in the same status line.
+
+Examples:
+
+```text
+Scan: 45s ago
+Scan: 6m ago
+```
+
+No additional Collector endpoint or HistoryManager API was required because the UI already had access to the cached completed-snapshot timestamp list.
+
+This distinguishes:
+
+- Collector service reachability
+- current-price request freshness
+- underlying full-market snapshot freshness
+
+**Result: PASS**
+
+### Stale-scan warning colors
+
+Added a lightweight visual warning for aging Collector snapshot data.
+
+Final thresholds:
+
+```text
+Under 10 minutes: normal / muted
+10 to under 15 minutes: yellow
+15 minutes or older: red
+```
+
+The thresholds were temporarily lowered to 1 minute / 2 minutes for fast in-game validation.
+
+Validation confirmed:
+
+- the warning state turns yellow at the temporary first threshold
+- the warning state turns red at the temporary second threshold
+- a new completed scan resets the displayed age normally
+- the final production thresholds were restored to 10 minutes / 15 minutes
+
+**Result: PASS**
+
+### Collector Status feature checkpoint
+
+The completed Collector status feature now reports:
+
+- Collector Connected / Offline
+- active price source
+- active analysis source
+- last successful Collector contact age
+- last completed Collector scan age
+- stale-scan warning coloring
+
+This remains display-only. Existing Collector pricing, history import, snapshot reconstruction, refresh cadence, fallback behavior, and Market Analysis calculations are unchanged.
+
+**Result: PASS**
+
+---
+
 ## 2026-09-08 — v0.1.3 Release Preparation
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
@@ -1752,7 +1852,7 @@ Current behavior:
 - 60-second refresh while falling back
 - shared 10-second cooldown for manual Refresh / Refresh All
 
-Future work may include cleaner in-game Collector connection/status presentation and tighter synchronization to Collector snapshot timing.
+Cleaner in-game Collector connection/status presentation has now been implemented and validated. The status line reports connection state, price source, analysis source, last successful Collector contact, and completed-scan age with stale-data warning colors. Tighter synchronization to Collector snapshot timing remains a possible future refinement.
 
 
 ### Aurene's Bite starter item

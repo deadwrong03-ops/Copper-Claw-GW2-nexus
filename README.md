@@ -30,6 +30,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Compact target display with dedicated **Edit Targets** controls
 - Persistent watch list, targets, settings, and price history
 - Optional integration with the standalone Copper&Claw Collector for broader historical data
+- Compact Collector status line showing connection state, active price source, analysis source, last successful contact, and last completed scan age
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
@@ -278,6 +279,10 @@ Current integration behavior:
 - automatic refresh falls back to 60 seconds when the Collector is unavailable
 - manual Refresh and Refresh All remain immediate when accepted, with a shared 10-second manual-refresh cooldown to prevent accidental rapid repeated requests
 - if the Collector cannot provide current pricing, Copper&Claw falls back to the official Guild Wars 2 API
+- the Trading Post tab shows a compact Collector status line with connection state, current price source, current analysis source, last successful Collector contact, and last completed Collector scan age
+- completed scan age is shown normally while fresh, turns yellow at 10 minutes, and red at 15 minutes or older to make stale market data immediately visible
+
+The status line distinguishes service reachability from data freshness. `Contact` shows how long it has been since Copper&Claw last successfully requested a price from the Collector, while `Scan` shows the age of the newest completed Collector market scan.
 
 The Collector is not required for Copper&Claw to function. Without it, the addon continues using the Guild Wars 2 API and its own local history as before.
 

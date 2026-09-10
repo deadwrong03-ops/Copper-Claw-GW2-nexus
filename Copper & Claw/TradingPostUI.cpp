@@ -3361,6 +3361,223 @@ void TradingPostUI::RenderTab(
         );
     }
 
+    //
+    // Collector status uses state Copper&Claw already maintains.
+    // This first pass is display-only and does not change any price,
+    // history, refresh, or Market Analysis behavior.
+    //
+    const bool collectorConnected =
+        TradingPostPriceManager::
+        IsCollectorAvailable();
+
+    const std::vector<uint64_t>
+        collectorCompletedSnapshotTimestamps =
+        TradingPostHistoryManager::
+        GetCollectorCompletedSnapshotTimestamps();
+
+    const bool useCollectorAnalysisHistory =
+        collectorConnected &&
+        !collectorCompletedSnapshotTimestamps.empty();
+
+    const uint64_t lastCollectorSuccessUnixSeconds =
+        TradingPostPriceManager::
+        GetLastCollectorSuccessUnixSeconds();
+
+    uint64_t collectorContactAgeSeconds = 0;
+    uint64_t collectorLastScanAgeSeconds = 0;
+
+    const uint64_t nowUnixSeconds =
+        static_cast<uint64_t>(
+            std::chrono::duration_cast<
+            std::chrono::seconds
+            >(
+                std::chrono::system_clock::
+                now().time_since_epoch()
+            ).count()
+            );
+
+    if (lastCollectorSuccessUnixSeconds > 0)
+    {
+        collectorContactAgeSeconds =
+            nowUnixSeconds >=
+            lastCollectorSuccessUnixSeconds
+            ? nowUnixSeconds -
+            lastCollectorSuccessUnixSeconds
+            : 0;
+    }
+
+    uint64_t lastCollectorCompletedScanUnixSeconds = 0;
+
+    if (!collectorCompletedSnapshotTimestamps.empty())
+    {
+        lastCollectorCompletedScanUnixSeconds =
+            collectorCompletedSnapshotTimestamps.back();
+
+        collectorLastScanAgeSeconds =
+            nowUnixSeconds >=
+            lastCollectorCompletedScanUnixSeconds
+            ? nowUnixSeconds -
+            lastCollectorCompletedScanUnixSeconds
+            : 0;
+    }
+
+    ImGui::Spacing();
+
+    ImGui::TextDisabled(
+        "Collector:"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        4.0f
+    );
+
+    ImGui::TextColored(
+        collectorConnected
+        ? goodColor
+        : trendDownColor,
+        "%s",
+        collectorConnected
+        ? "Connected"
+        : "Offline"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        14.0f
+    );
+
+    ImGui::TextDisabled(
+        "| Price:"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        4.0f
+    );
+
+    ImGui::TextColored(
+        collectorConnected
+        ? goodColor
+        : attentionColor,
+        "%s",
+        collectorConnected
+        ? "Collector"
+        : "GW2 API"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        14.0f
+    );
+
+    ImGui::TextDisabled(
+        "| Analysis:"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        4.0f
+    );
+
+    ImGui::TextColored(
+        useCollectorAnalysisHistory
+        ? buyColor
+        : mutedColor,
+        "%s",
+        useCollectorAnalysisHistory
+        ? "Collector Snapshots"
+        : "Local History"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        14.0f
+    );
+
+    ImGui::TextDisabled(
+        "| Contact:"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        4.0f
+    );
+
+    if (lastCollectorSuccessUnixSeconds > 0)
+    {
+        ImGui::TextDisabled(
+            "%llus ago",
+            static_cast<unsigned long long>(
+                collectorContactAgeSeconds
+                )
+        );
+    }
+    else
+    {
+        ImGui::TextDisabled(
+            "--"
+        );
+    }
+
+    ImGui::SameLine(
+        0.0f,
+        14.0f
+    );
+
+    ImGui::TextDisabled(
+        "| Scan:"
+    );
+
+    ImGui::SameLine(
+        0.0f,
+        4.0f
+    );
+
+    if (lastCollectorCompletedScanUnixSeconds > 0)
+    {
+        ImVec4 scanAgeColor =
+            mutedColor;
+
+        if (collectorLastScanAgeSeconds >= 15ULL * 60ULL)
+        {
+            scanAgeColor =
+                trendDownColor;
+        }
+        else if (collectorLastScanAgeSeconds >= 10ULL * 60ULL)
+        {
+            scanAgeColor =
+                attentionColor;
+        }
+
+        if (collectorLastScanAgeSeconds < 60ULL)
+        {
+            ImGui::TextColored(
+                scanAgeColor,
+                "%llus ago",
+                static_cast<unsigned long long>(
+                    collectorLastScanAgeSeconds
+                    )
+            );
+        }
+        else
+        {
+            ImGui::TextColored(
+                scanAgeColor,
+                "%llum ago",
+                static_cast<unsigned long long>(
+                    collectorLastScanAgeSeconds / 60ULL
+                    )
+            );
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled(
+            "--"
+        );
+    }
+
     ImGui::Spacing();
 
     ImGui::TextDisabled("Trend Window:");
@@ -3442,16 +3659,6 @@ void TradingPostUI::RenderTab(
     > watchedItems =
         TradingPostWatchManager::
         GetItems();
-
-    const std::vector<uint64_t>
-        collectorCompletedSnapshotTimestamps =
-        TradingPostHistoryManager::
-        GetCollectorCompletedSnapshotTimestamps();
-
-    const bool useCollectorAnalysisHistory =
-        TradingPostPriceManager::
-        IsCollectorAvailable() &&
-        !collectorCompletedSnapshotTimestamps.empty();
 
     //
     // Sorting is intentionally display-only. GetItems() returns a copy,
