@@ -609,7 +609,7 @@ namespace
 
         if (
             !CollectorHttpGet(
-                L"/snapshots/completed",
+                L"/snapshots/completed?days=90",
                 response
             )
             )

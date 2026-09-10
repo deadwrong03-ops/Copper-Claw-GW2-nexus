@@ -550,6 +550,63 @@ The Collector still supports the unbounded `/item/{itemID}/history` path for old
 
 ---
 
+
+## 2026-09-10 — 90-Day Bounded Collector Snapshot Timeline
+
+Updated Copper&Claw's completed-snapshot request path so analysis no longer downloads the Collector's entire lifetime list of completed market scans.
+
+### Bounded completed-snapshot request
+
+`TradingPostHistoryManager` now requests:
+
+```text
+/snapshots/completed?days=90
+```
+
+instead of:
+
+```text
+/snapshots/completed
+```
+
+The 90-day request matches Copper&Claw's current longest selectable Trend Window.
+
+This keeps Collector-backed confidence, coverage, stale-scan status, and unchanged-price reconstruction bounded to the maximum period Copper&Claw can currently analyze.
+
+**Result: PASS**
+
+### Runtime validation
+
+Temporary Collector request logging was enabled to verify the actual addon traffic.
+
+After installing the fresh Release x64 DLL and restarting Guild Wars 2, the Collector console showed:
+
+```text
+API GET /snapshots/completed?days=90
+```
+
+The same runtime session also continued to show watched-item history requests using:
+
+```text
+/item/{itemID}/history?days=90
+```
+
+and normal current-price requests continued successfully.
+
+The temporary request logger was removed after validation.
+
+**Result: PASS**
+
+### Backward compatibility
+
+This Copper&Claw change only modifies the endpoint form it requests.
+
+The Collector continues to support unbounded `/snapshots/completed` requests for older or other consumers, while current Copper&Claw development builds use the 90-day bounded form.
+
+**Result: PASS**
+
+---
+
 ## 2026-09-08 — v0.1.3 Release Preparation
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
@@ -1915,7 +1972,7 @@ Current behavior:
 - Guild Wars 2 API fallback
 - Collector history import using `/item/{itemID}/history?days=90`
 - pre-window anchor history event supplied by the Collector for correct 90-day state reconstruction
-- completed Collector snapshot timestamps used for selected-window analysis coverage
+- completed Collector snapshot timestamps requested with `/snapshots/completed?days=90` for selected-window analysis coverage
 - unchanged-price states reconstructed across completed Collector scans
 - automatic retry if Collector starts after Guild Wars 2
 - 5-minute refresh while Collector is available
