@@ -60,6 +60,15 @@ namespace
     std::unordered_set<uint32_t>
         g_CollectorImportAttemptedItemIDs;
 
+    std::vector<uint64_t>
+        g_CollectorCompletedSnapshotTimestamps;
+
+    uint64_t
+        g_LastCollectorSnapshotRefreshAttemptUnixSeconds = 0;
+
+    constexpr uint64_t
+        COLLECTOR_SNAPSHOT_REFRESH_INTERVAL_SECONDS = 30;
+
     std::filesystem::path
         g_HistoryPath;
 
@@ -588,6 +597,180 @@ namespace
             WINDOWS_TO_UNIX_EPOCH_SECONDS;
 
         return true;
+    }
+
+    bool FetchCollectorCompletedSnapshotTimestamps(
+        std::vector<uint64_t>& outTimestamps
+    )
+    {
+        outTimestamps.clear();
+
+        std::string response;
+
+        if (
+            !CollectorHttpGet(
+                L"/snapshots/completed",
+                response
+            )
+            )
+        {
+            return false;
+        }
+
+        size_t searchPosition = 0;
+
+        while (true)
+        {
+            const size_t completedPosition =
+                response.find(
+                    "\"completedAtUtc\"",
+                    searchPosition
+                );
+
+            if (
+                completedPosition ==
+                std::string::npos
+                )
+            {
+                break;
+            }
+
+            const size_t objectStart =
+                response.rfind(
+                    '{',
+                    completedPosition
+                );
+
+            const size_t objectEnd =
+                response.find(
+                    '}',
+                    completedPosition
+                );
+
+            if (
+                objectStart ==
+                std::string::npos ||
+                objectEnd ==
+                std::string::npos ||
+                objectEnd <= objectStart
+                )
+            {
+                break;
+            }
+
+            const std::string objectJson =
+                response.substr(
+                    objectStart,
+                    objectEnd -
+                    objectStart + 1
+                );
+
+            std::string completedAtUtc;
+            uint64_t timestampUnixSeconds = 0;
+
+            if (
+                ExtractJsonString(
+                    objectJson,
+                    "completedAtUtc",
+                    completedAtUtc
+                ) &&
+                ParseUtcTimestampToUnixSeconds(
+                    completedAtUtc,
+                    timestampUnixSeconds
+                ) &&
+                timestampUnixSeconds > 0
+                )
+            {
+                outTimestamps.push_back(
+                    timestampUnixSeconds
+                );
+            }
+
+            searchPosition =
+                objectEnd + 1;
+        }
+
+        std::sort(
+            outTimestamps.begin(),
+            outTimestamps.end()
+        );
+
+        outTimestamps.erase(
+            std::unique(
+                outTimestamps.begin(),
+                outTimestamps.end()
+            ),
+            outTimestamps.end()
+        );
+
+        return true;
+    }
+
+    void RefreshCollectorCompletedSnapshotsIfNeeded()
+    {
+        const uint64_t nowUnixSeconds =
+            GetCurrentUnixSeconds();
+
+        {
+            std::lock_guard<std::mutex> lock(
+                g_HistoryMutex
+            );
+
+            if (!g_Started)
+            {
+                return;
+            }
+
+            if (
+                g_LastCollectorSnapshotRefreshAttemptUnixSeconds != 0 &&
+                nowUnixSeconds >=
+                g_LastCollectorSnapshotRefreshAttemptUnixSeconds &&
+                (
+                    nowUnixSeconds -
+                    g_LastCollectorSnapshotRefreshAttemptUnixSeconds
+                    ) <
+                COLLECTOR_SNAPSHOT_REFRESH_INTERVAL_SECONDS
+                )
+            {
+                return;
+            }
+
+            //
+            // Record the attempt before doing network I/O so multiple watched
+            // items refreshing together do not all request the same endpoint.
+            //
+            g_LastCollectorSnapshotRefreshAttemptUnixSeconds =
+                nowUnixSeconds;
+        }
+
+        std::vector<uint64_t> timestamps;
+
+        if (
+            !FetchCollectorCompletedSnapshotTimestamps(
+                timestamps
+            )
+            )
+        {
+            //
+            // Preserve the last successfully fetched snapshot list when the
+            // Collector is temporarily unavailable.
+            //
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        if (!g_Started)
+        {
+            return;
+        }
+
+        g_CollectorCompletedSnapshotTimestamps =
+            std::move(
+                timestamps
+            );
     }
 
     std::vector<
@@ -1557,6 +1740,8 @@ void TradingPostHistoryManager::Start(
 
     g_WatchedItemIDs.clear();
     g_CollectorImportAttemptedItemIDs.clear();
+    g_CollectorCompletedSnapshotTimestamps.clear();
+    g_LastCollectorSnapshotRefreshAttemptUnixSeconds = 0;
 
     LoadHistoryLocked();
 
@@ -1577,10 +1762,12 @@ void TradingPostHistoryManager::Shutdown()
 
     g_WatchedItemIDs.clear();
     g_CollectorImportAttemptedItemIDs.clear();
+    g_CollectorCompletedSnapshotTimestamps.clear();
     g_History.clear();
 
     g_HistoryPath.clear();
 
+    g_LastCollectorSnapshotRefreshAttemptUnixSeconds = 0;
     g_LastCompactionUnixSeconds = 0;
 
     g_Started = false;
@@ -1595,6 +1782,8 @@ RegisterWatchedItem(
     {
         return;
     }
+
+    RefreshCollectorCompletedSnapshotsIfNeeded();
 
     bool shouldImportFromCollector =
         false;
@@ -1646,6 +1835,8 @@ TryImportCollectorHistory(
     {
         return false;
     }
+
+    RefreshCollectorCompletedSnapshotsIfNeeded();
 
     {
         std::lock_guard<std::mutex> lock(
@@ -1836,6 +2027,18 @@ GetHistory(
 
     return
         it->second;
+}
+
+std::vector<uint64_t>
+TradingPostHistoryManager::
+GetCollectorCompletedSnapshotTimestamps()
+{
+    std::lock_guard<std::mutex> lock(
+        g_HistoryMutex
+    );
+
+    return
+        g_CollectorCompletedSnapshotTimestamps;
 }
 
 size_t TradingPostHistoryManager::

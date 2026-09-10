@@ -95,6 +95,10 @@ namespace TradingPostWatchManager
         bool enabled
     );
 
+    //
+    // Manual refreshes are globally rate-limited internally so rapid
+    // repeated button presses cannot generate request bursts.
+    //
     void RefreshItem(
         uint32_t itemID
     );

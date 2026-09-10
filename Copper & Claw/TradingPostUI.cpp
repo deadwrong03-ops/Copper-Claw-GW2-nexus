@@ -1380,31 +1380,66 @@ void TradingPostUI::RenderTab(
                 newestPoint.timestampUnixSeconds -
                 windowSeconds;
 
+            if (
+                points.front().
+                timestampUnixSeconds >
+                targetTimestamp
+                )
+            {
+                //
+                // The stored history does not reach the requested
+                // trend-window boundary yet.
+                //
+                return
+                    result;
+            }
+
             const TradingPostHistoryPoint*
                 olderPoint =
                 nullptr;
 
+            uint64_t closestDistanceSeconds =
+                UINT64_MAX;
+
             //
-            // Find the newest observation that is at least
-            // 30 minutes older than the latest observation.
+            // Use the observation closest in real time to the requested
+            // window boundary. The previous implementation always chose
+            // the newest point at-or-before the boundary, which could make
+            // a displayed "30m" trend represent substantially more than
+            // 30 minutes when observations were sparse.
+            //
+            // Requiring points.front() <= targetTimestamp above prevents
+            // a short history span from pretending to cover the full window.
             //
             for (
-                auto it =
-                points.rbegin();
-                it !=
-                points.rend();
-                ++it
+                size_t i = 0;
+                i + 1 < points.size();
+                ++i
                 )
             {
-                if (
-                    it->timestampUnixSeconds <=
+                const TradingPostHistoryPoint&
+                    candidate =
+                    points[i];
+
+                const uint64_t distanceSeconds =
+                    candidate.timestampUnixSeconds >=
                     targetTimestamp
+                    ? candidate.timestampUnixSeconds -
+                    targetTimestamp
+                    : targetTimestamp -
+                    candidate.timestampUnixSeconds;
+
+                if (
+                    olderPoint == nullptr ||
+                    distanceSeconds <
+                    closestDistanceSeconds
                     )
                 {
                     olderPoint =
-                        &(*it);
+                        &candidate;
 
-                    break;
+                    closestDistanceSeconds =
+                        distanceSeconds;
                 }
             }
 
@@ -1554,6 +1589,85 @@ void TradingPostUI::RenderTab(
             }
 
             return result;
+        };
+
+    auto BuildCollectorSampledHistory =
+        [](
+            const std::vector<
+            TradingPostHistoryPoint
+            >& history,
+            const std::vector<uint64_t>&
+            completedSnapshotTimestamps
+            )
+        {
+            std::vector<
+                TradingPostHistoryPoint
+            > sampledHistory;
+
+            if (
+                history.empty() ||
+                completedSnapshotTimestamps.empty()
+                )
+            {
+                return sampledHistory;
+            }
+
+            sampledHistory.reserve(
+                completedSnapshotTimestamps.size()
+            );
+
+            size_t historyIndex = 0;
+            bool hasKnownPrice = false;
+
+            TradingPostHistoryPoint currentState;
+
+            for (
+                const uint64_t snapshotTimestamp :
+            completedSnapshotTimestamps
+                )
+            {
+                while (
+                    historyIndex < history.size() &&
+                    history[
+                        historyIndex
+                    ].timestampUnixSeconds <=
+                    snapshotTimestamp
+                            )
+                {
+                    currentState =
+                        history[
+                            historyIndex
+                        ];
+
+                    hasKnownPrice =
+                        currentState.buyUnitPrice > 0 ||
+                        currentState.sellUnitPrice > 0;
+
+                    ++historyIndex;
+                }
+
+                if (!hasKnownPrice)
+                {
+                    continue;
+                }
+
+                TradingPostHistoryPoint sampledPoint;
+
+                sampledPoint.timestampUnixSeconds =
+                    snapshotTimestamp;
+
+                sampledPoint.buyUnitPrice =
+                    currentState.buyUnitPrice;
+
+                sampledPoint.sellUnitPrice =
+                    currentState.sellUnitPrice;
+
+                sampledHistory.push_back(
+                    sampledPoint
+                );
+            }
+
+            return sampledHistory;
         };
 
     auto FormatTrendCoinDelta =
@@ -2247,6 +2361,85 @@ void TradingPostUI::RenderTab(
             return result;
         };
 
+    auto CalculateCollectorSnapshotCoverage =
+        [](
+            const std::vector<
+            TradingPostHistoryPoint
+            >& sampledHistory,
+            uint64_t windowSeconds
+            )
+        {
+            WindowCoverageInfo result;
+
+            if (
+                sampledHistory.empty() ||
+                windowSeconds == 0
+                )
+            {
+                return result;
+            }
+
+            constexpr uint64_t
+                COLLECTOR_SCAN_INTERVAL_SECONDS =
+                5ULL * 60ULL;
+
+            const uint64_t newestTimestamp =
+                sampledHistory.back().
+                timestampUnixSeconds;
+
+            if (newestTimestamp < windowSeconds)
+            {
+                return result;
+            }
+
+            const uint64_t startTimestamp =
+                newestTimestamp -
+                windowSeconds;
+
+            for (
+                const TradingPostHistoryPoint& point :
+                sampledHistory
+                )
+            {
+                if (
+                    point.timestampUnixSeconds >=
+                    startTimestamp &&
+                    point.timestampUnixSeconds <=
+                    newestTimestamp
+                    )
+                {
+                    ++result.sampleCount;
+                }
+            }
+
+            const uint64_t representedSeconds =
+                static_cast<uint64_t>(
+                    result.sampleCount
+                    ) *
+                COLLECTOR_SCAN_INTERVAL_SECONDS;
+
+            result.coveredSeconds =
+                std::min(
+                    representedSeconds,
+                    windowSeconds
+                );
+
+            result.coverage =
+                static_cast<double>(
+                    result.coveredSeconds
+                    ) /
+                static_cast<double>(
+                    windowSeconds
+                    );
+
+            if (result.coverage > 1.0)
+            {
+                result.coverage = 1.0;
+            }
+
+            return result;
+        };
+
     auto CalculateWindowAverageSell =
         [](
             const std::vector<
@@ -2336,7 +2529,12 @@ void TradingPostUI::RenderTab(
         VolatilityLevel level =
             VolatilityLevel::Developing;
 
-        double relativeStdDevPercent =
+        //
+        // Overall market volatility for the selected Trend Window.
+        // We calculate sell-side and buy-side RMS scan-to-scan movement
+        // separately, then keep whichever side is moving more.
+        //
+        double movementRmsPercent =
             0.0;
 
         bool available =
@@ -2376,116 +2574,175 @@ void TradingPostUI::RenderTab(
                 newestTimestamp -
                 windowSeconds;
 
-            double total =
-                0.0;
-
-            size_t sampleCount =
-                0;
-
-            for (
-                const TradingPostHistoryPoint& point :
-                points
-                )
-            {
-                if (
-                    point.timestampUnixSeconds <
-                    startTimestamp ||
-                    point.sellUnitPrice == 0
+            auto CalculateSideMovementRms =
+                [&](
+                    bool useSellPrice,
+                    double& outRmsPercent
                     )
                 {
-                    continue;
-                }
+                    outRmsPercent = 0.0;
 
-                total +=
-                    static_cast<double>(
-                        point.sellUnitPrice
+                    bool hasPreviousPrice =
+                        false;
+
+                    uint32_t previousPrice =
+                        0;
+
+                    double squaredPercentMoveTotal =
+                        0.0;
+
+                    size_t moveCount =
+                        0;
+
+                    for (
+                        const TradingPostHistoryPoint& point :
+                        points
+                        )
+                    {
+                        if (
+                            point.timestampUnixSeconds <
+                            startTimestamp ||
+                            point.timestampUnixSeconds >
+                            newestTimestamp
+                            )
+                        {
+                            continue;
+                        }
+
+                        const uint32_t currentPrice =
+                            useSellPrice
+                            ? point.sellUnitPrice
+                            : point.buyUnitPrice;
+
+                        if (currentPrice == 0)
+                        {
+                            continue;
+                        }
+
+                        if (hasPreviousPrice)
+                        {
+                            const double previous =
+                                static_cast<double>(
+                                    previousPrice
+                                    );
+
+                            const double current =
+                                static_cast<double>(
+                                    currentPrice
+                                    );
+
+                            if (previous > 0.0)
+                            {
+                                const double percentMove =
+                                    (
+                                        current -
+                                        previous
+                                        ) /
+                                    previous *
+                                    100.0;
+
+                                squaredPercentMoveTotal +=
+                                    percentMove *
+                                    percentMove;
+
+                                ++moveCount;
+                            }
+                        }
+
+                        previousPrice =
+                            currentPrice;
+
+                        hasPreviousPrice =
+                            true;
+                    }
+
+                    if (moveCount == 0)
+                    {
+                        return false;
+                    }
+
+                    outRmsPercent =
+                        std::sqrt(
+                            squaredPercentMoveTotal /
+                            static_cast<double>(
+                                moveCount
+                                )
                         );
 
-                ++sampleCount;
-            }
+                    return true;
+                };
 
-            if (sampleCount < 2)
-            {
-                return result;
-            }
-
-            const double mean =
-                total /
-                static_cast<double>(
-                    sampleCount
-                    );
-
-            if (mean <= 0.0)
-            {
-                return result;
-            }
-
-            double squaredDifferenceTotal =
+            double sellMovementRmsPercent =
                 0.0;
 
-            for (
-                const TradingPostHistoryPoint& point :
-                points
-                )
-            {
-                if (
-                    point.timestampUnixSeconds <
-                    startTimestamp ||
-                    point.sellUnitPrice == 0
-                    )
-                {
-                    continue;
-                }
+            double buyMovementRmsPercent =
+                0.0;
 
-                const double difference =
-                    static_cast<double>(
-                        point.sellUnitPrice
-                        ) -
-                    mean;
-
-                squaredDifferenceTotal +=
-                    difference *
-                    difference;
-            }
-
-            const double variance =
-                squaredDifferenceTotal /
-                static_cast<double>(
-                    sampleCount
-                    );
-
-            const double standardDeviation =
-                std::sqrt(
-                    variance
+            const bool hasSellMovement =
+                CalculateSideMovementRms(
+                    true,
+                    sellMovementRmsPercent
                 );
 
-            result.relativeStdDevPercent =
-                standardDeviation /
-                mean *
-                100.0;
+            const bool hasBuyMovement =
+                CalculateSideMovementRms(
+                    false,
+                    buyMovementRmsPercent
+                );
+
+            if (
+                !hasSellMovement &&
+                !hasBuyMovement
+                )
+            {
+                return result;
+            }
+
+            if (
+                hasSellMovement &&
+                hasBuyMovement
+                )
+            {
+                result.movementRmsPercent =
+                    std::max(
+                        sellMovementRmsPercent,
+                        buyMovementRmsPercent
+                    );
+            }
+            else
+            {
+                result.movementRmsPercent =
+                    hasSellMovement
+                    ? sellMovementRmsPercent
+                    : buyMovementRmsPercent;
+            }
 
             result.available =
                 true;
 
+            //
+            // A single overall market-volatility badge keeps the UI simple.
+            // The more active side of the market controls the label.
+            //
             if (
-                result.relativeStdDevPercent <
-                0.75
+                result.movementRmsPercent <
+                0.25
                 )
             {
                 result.level =
                     VolatilityLevel::Calm;
             }
             else if (
-                result.relativeStdDevPercent <
-                2.0
+                result.movementRmsPercent <
+                0.75
                 )
             {
                 result.level =
                     VolatilityLevel::Normal;
             }
             else if (
-                result.relativeStdDevPercent <
-                5.0
+                result.movementRmsPercent <
+                2.0
                 )
             {
                 result.level =
@@ -2680,41 +2937,55 @@ void TradingPostUI::RenderTab(
             );
         };
 
+    struct SparklinePoint
+    {
+        uint64_t timestampUnixSeconds = 0;
+        float value = 0.0f;
+    };
+
     auto DrawSparkline =
         [](
             const char* id,
-            const std::vector<float>& values,
+            const std::vector<
+            SparklinePoint
+            >& values,
+            uint64_t rangeStartTimestamp,
+            uint64_t rangeEndTimestamp,
             const ImVec4& lineColor,
             float width,
             float height
             )
         {
-            if (values.size() < 2)
+            if (
+                values.size() < 2 ||
+                rangeEndTimestamp <=
+                rangeStartTimestamp
+                )
             {
                 return;
             }
 
             float minValue =
-                values.front();
+                values.front().value;
 
             float maxValue =
-                values.front();
+                values.front().value;
 
             for (
-                const float value :
-            values
+                const SparklinePoint& point :
+                values
                 )
             {
-                if (value < minValue)
+                if (point.value < minValue)
                 {
                     minValue =
-                        value;
+                        point.value;
                 }
 
-                if (value > maxValue)
+                if (point.value > maxValue)
                 {
                     maxValue =
-                        value;
+                        point.value;
                 }
             }
 
@@ -2756,45 +3027,61 @@ void TradingPostUI::RenderTab(
                 GetWindowDrawList();
 
             std::vector<ImVec2>
-                points;
+                drawPoints;
 
-            points.reserve(
+            drawPoints.reserve(
                 values.size()
             );
 
-            const float denominator =
+            const float valueDenominator =
                 scaleMax -
                 scaleMin;
 
+            const double timeDenominator =
+                static_cast<double>(
+                    rangeEndTimestamp -
+                    rangeStartTimestamp
+                    );
+
             for (
-                size_t i = 0;
-                i < values.size();
-                ++i
+                const SparklinePoint& point :
+                values
                 )
             {
+                const uint64_t clampedTimestamp =
+                    std::min(
+                        std::max(
+                            point.timestampUnixSeconds,
+                            rangeStartTimestamp
+                        ),
+                        rangeEndTimestamp
+                    );
+
+                const double timeFraction =
+                    static_cast<double>(
+                        clampedTimestamp -
+                        rangeStartTimestamp
+                        ) /
+                    timeDenominator;
+
                 const float x =
                     start.x +
-                    (
-                        static_cast<float>(
-                            i
-                            ) /
-                        static_cast<float>(
-                            values.size() - 1
-                            )
+                    static_cast<float>(
+                        timeFraction
                         ) *
                     width;
 
                 float normalized =
                     0.5f;
 
-                if (denominator > 0.0f)
+                if (valueDenominator > 0.0f)
                 {
                     normalized =
                         (
-                            values[i] -
+                            point.value -
                             scaleMin
                             ) /
-                        denominator;
+                        valueDenominator;
                 }
 
                 const float y =
@@ -2805,7 +3092,7 @@ void TradingPostUI::RenderTab(
                         height
                         );
 
-                points.emplace_back(
+                drawPoints.emplace_back(
                     x,
                     y
                 );
@@ -2822,9 +3109,9 @@ void TradingPostUI::RenderTab(
             );
 
             drawList->AddPolyline(
-                points.data(),
+                drawPoints.data(),
                 static_cast<int>(
-                    points.size()
+                    drawPoints.size()
                     ),
                 ImGui::
                 ColorConvertFloat4ToU32(
@@ -3010,7 +3297,7 @@ void TradingPostUI::RenderTab(
 
     if (
         ImGui::Checkbox(
-            "Auto watch every 60 seconds",
+            "Auto watch prices",
             &autoWatch
         )
         )
@@ -3139,11 +3426,11 @@ void TradingPostUI::RenderTab(
     ImGui::Spacing();
 
     ImGui::TextDisabled(
-        "Historical note: Copper&Claw builds its own price history from the time you begin tracking an item."
+        "Historical note: Copper&Claw uses Collector scan history when available and local history as fallback."
     );
 
     ImGui::TextDisabled(
-        "No earlier market history is available on initial install."
+        "Collector-backed history may include observations from before an item was added to this watch list."
     );
 
     ImGui::Spacing();
@@ -3155,6 +3442,16 @@ void TradingPostUI::RenderTab(
     > watchedItems =
         TradingPostWatchManager::
         GetItems();
+
+    const std::vector<uint64_t>
+        collectorCompletedSnapshotTimestamps =
+        TradingPostHistoryManager::
+        GetCollectorCompletedSnapshotTimestamps();
+
+    const bool useCollectorAnalysisHistory =
+        TradingPostPriceManager::
+        IsCollectorAvailable() &&
+        !collectorCompletedSnapshotTimestamps.empty();
 
     //
     // Sorting is intentionally display-only. GetItems() returns a copy,
@@ -3205,33 +3502,102 @@ void TradingPostUI::RenderTab(
                 );
 
             if (
-                sortItem.targetSellCopper > 0 &&
                 hasSortPrice &&
-                sortPrice.available &&
-                sortPrice.sellUnitPrice > 0
+                sortPrice.available
                 )
             {
+                bool hasAnyTargetDistance =
+                    false;
+
+                double closestTargetDistanceRatio =
+                    0.0;
+
+                //
+                // Sell Target:
+                // reached when the current sell listing is at or below
+                // the user's target. Otherwise measure how far above the
+                // target the listing still is.
+                //
+                if (
+                    sortItem.targetSellCopper > 0 &&
+                    sortPrice.sellUnitPrice > 0
+                    )
+                {
+                    const double targetSell =
+                        static_cast<double>(
+                            sortItem.targetSellCopper
+                            );
+
+                    const double currentSell =
+                        static_cast<double>(
+                            sortPrice.sellUnitPrice
+                            );
+
+                    const double sellDistanceRatio =
+                        currentSell <= targetSell
+                        ? 0.0
+                        : (
+                            currentSell -
+                            targetSell
+                            ) /
+                        targetSell;
+
+                    closestTargetDistanceRatio =
+                        sellDistanceRatio;
+
+                    hasAnyTargetDistance =
+                        true;
+                }
+
+                //
+                // Buy Target:
+                // reached when the current buy order is at or above
+                // the user's target. Otherwise measure how far below the
+                // target the current buy order still is.
+                //
+                if (
+                    sortItem.targetBuyCopper > 0 &&
+                    sortPrice.buyUnitPrice > 0
+                    )
+                {
+                    const double targetBuy =
+                        static_cast<double>(
+                            sortItem.targetBuyCopper
+                            );
+
+                    const double currentBuy =
+                        static_cast<double>(
+                            sortPrice.buyUnitPrice
+                            );
+
+                    const double buyDistanceRatio =
+                        currentBuy >= targetBuy
+                        ? 0.0
+                        : (
+                            targetBuy -
+                            currentBuy
+                            ) /
+                        targetBuy;
+
+                    if (
+                        !hasAnyTargetDistance ||
+                        buyDistanceRatio <
+                        closestTargetDistanceRatio
+                        )
+                    {
+                        closestTargetDistanceRatio =
+                            buyDistanceRatio;
+                    }
+
+                    hasAnyTargetDistance =
+                        true;
+                }
+
                 metric.hasTargetDistance =
-                    true;
-
-                const double target =
-                    static_cast<double>(
-                        sortItem.targetSellCopper
-                        );
-
-                const double currentSell =
-                    static_cast<double>(
-                        sortPrice.sellUnitPrice
-                        );
+                    hasAnyTargetDistance;
 
                 metric.targetDistanceRatio =
-                    currentSell <= target
-                    ? 0.0
-                    : (
-                        currentSell -
-                        target
-                        ) /
-                    target;
+                    closestTargetDistanceRatio;
             }
 
             if (
@@ -3253,6 +3619,16 @@ void TradingPostUI::RenderTab(
                         sortItem.itemID
                     );
 
+                const std::vector<
+                    TradingPostHistoryPoint
+                > sortAnalysisHistory =
+                    useCollectorAnalysisHistory
+                    ? BuildCollectorSampledHistory(
+                        sortHistory,
+                        collectorCompletedSnapshotTimestamps
+                    )
+                    : sortHistory;
+
                 if (
                     g_Settings.tradingPostWatchSortMode ==
                     3 ||
@@ -3262,7 +3638,7 @@ void TradingPostUI::RenderTab(
                 {
                     const TrendInfo sortSellTrend =
                         CalculateTrend(
-                            sortHistory,
+                            sortAnalysisHistory,
                             true,
                             trendWindowSeconds
                         );
@@ -3276,20 +3652,61 @@ void TradingPostUI::RenderTab(
                 else
                 {
                     const WindowCoverageInfo sortWindowCoverage =
-                        CalculateGapAwareCoverage(
-                            sortHistory,
-                            trendWindowSeconds
-                        );
+                        (
+                            useCollectorAnalysisHistory
+                            ? CalculateCollectorSnapshotCoverage(
+                                sortAnalysisHistory,
+                                trendWindowSeconds
+                            )
+                            : CalculateGapAwareCoverage(
+                                sortAnalysisHistory,
+                                trendWindowSeconds
+                            )
+                            );
+
+                    size_t sortMinimumAnalysisSamples =
+                        15;
+
+                    if (useCollectorAnalysisHistory)
+                    {
+                        constexpr uint64_t
+                            COLLECTOR_SCAN_INTERVAL_SECONDS =
+                            5ULL * 60ULL;
+
+                        const size_t expectedWindowSamples =
+                            static_cast<size_t>(
+                                trendWindowSeconds /
+                                COLLECTOR_SCAN_INTERVAL_SECONDS
+                                ) +
+                            1;
+
+                        const size_t seventyFivePercentSamples =
+                            (
+                                expectedWindowSamples *
+                                3 +
+                                3
+                                ) /
+                            4;
+
+                        sortMinimumAnalysisSamples =
+                            std::min<size_t>(
+                                15,
+                                std::max<size_t>(
+                                    3,
+                                    seventyFivePercentSamples
+                                )
+                            );
+                    }
 
                     const bool sortVolatilityReady =
                         sortWindowCoverage.sampleCount >=
-                        15 &&
+                        sortMinimumAnalysisSamples &&
                         sortWindowCoverage.coverage >=
                         0.75;
 
                     const VolatilityInfo sortVolatility =
                         CalculateVolatility(
-                            sortHistory,
+                            sortAnalysisHistory,
                             trendWindowSeconds,
                             sortVolatilityReady
                         );
@@ -3298,7 +3715,7 @@ void TradingPostUI::RenderTab(
                         sortVolatility.available;
 
                     metric.volatilityPercent =
-                        sortVolatility.relativeStdDevPercent;
+                        sortVolatility.movementRmsPercent;
                 }
             }
 
@@ -3851,16 +4268,26 @@ void TradingPostUI::RenderTab(
                     item.itemID
                 );
 
+            const std::vector<
+                TradingPostHistoryPoint
+            > analysisHistory =
+                useCollectorAnalysisHistory
+                ? BuildCollectorSampledHistory(
+                    history,
+                    collectorCompletedSnapshotTimestamps
+                )
+                : history;
+
             const TrendInfo sellTrend =
                 CalculateTrend(
-                    history,
+                    analysisHistory,
                     true,
                     trendWindowSeconds
                 );
 
             const TrendInfo buyTrend =
                 CalculateTrend(
-                    history,
+                    analysisHistory,
                     false,
                     trendWindowSeconds
                 );
@@ -5066,12 +5493,48 @@ void TradingPostUI::RenderTab(
                     : 0;
             }
 
-            const size_t minimumAnalysisSamples =
+            size_t minimumAnalysisSamples =
                 15;
 
+            if (useCollectorAnalysisHistory)
+            {
+                constexpr uint64_t
+                    COLLECTOR_SCAN_INTERVAL_SECONDS =
+                    5ULL * 60ULL;
+
+                const size_t expectedWindowSamples =
+                    static_cast<size_t>(
+                        trendWindowSeconds /
+                        COLLECTOR_SCAN_INTERVAL_SECONDS
+                        ) +
+                    1;
+
+                const size_t seventyFivePercentSamples =
+                    (
+                        expectedWindowSamples *
+                        3 +
+                        3
+                        ) /
+                    4;
+
+                minimumAnalysisSamples =
+                    std::min<size_t>(
+                        15,
+                        std::max<size_t>(
+                            3,
+                            seventyFivePercentSamples
+                        )
+                    );
+            }
+
             const WindowCoverageInfo windowCoverage =
-                CalculateGapAwareCoverage(
-                    history,
+                useCollectorAnalysisHistory
+                ? CalculateCollectorSnapshotCoverage(
+                    analysisHistory,
+                    trendWindowSeconds
+                )
+                : CalculateGapAwareCoverage(
+                    analysisHistory,
                     trendWindowSeconds
                 );
 
@@ -5092,26 +5555,22 @@ void TradingPostUI::RenderTab(
 
             const VolatilityInfo volatility =
                 CalculateVolatility(
-                    history,
+                    analysisHistory,
                     trendWindowSeconds,
                     volatilityAnalysisReady
                 );
 
+            //
+            // Keep the displayed direction strictly tied to the selected
+            // Trend Window. If that window is not available yet, show
+            // Developing instead of silently falling back to the entire
+            // available history.
+            //
             const TrendInfo observedSellTrend =
-                sellTrend.available
-                ? sellTrend
-                : CalculateObservedTrend(
-                    history,
-                    true
-                );
+                sellTrend;
 
             const TrendInfo observedBuyTrend =
-                buyTrend.available
-                ? buyTrend
-                : CalculateObservedTrend(
-                    history,
-                    false
-                );
+                buyTrend;
 
             if (
                 !ultraSlimView &&
@@ -5296,13 +5755,13 @@ void TradingPostUI::RenderTab(
                 {
                     const DealWindowStats sellStats =
                         CalculateDealWindowStats(
-                            history,
+                            analysisHistory,
                             trendWindowSeconds
                         );
 
                     const DealWindowStats buyStats =
                         CalculateBuyWindowStats(
-                            history,
+                            analysisHistory,
                             trendWindowSeconds
                         );
 
@@ -5323,63 +5782,96 @@ void TradingPostUI::RenderTab(
                             0.5
                             );
 
-                    std::vector<float>
-                        analysisBuyHistoryGold;
+                    std::vector<
+                        SparklinePoint
+                    > analysisBuyHistoryGold;
 
-                    std::vector<float>
-                        analysisSellHistoryGold;
+                    std::vector<
+                        SparklinePoint
+                    > analysisSellHistoryGold;
 
                     analysisBuyHistoryGold.reserve(
-                        history.size()
+                        analysisHistory.size()
                     );
 
                     analysisSellHistoryGold.reserve(
-                        history.size()
+                        analysisHistory.size()
                     );
 
                     uint64_t analysisSparklineStartTimestamp =
                         0;
 
-                    if (
-                        !history.empty() &&
-                        history.back().
-                        timestampUnixSeconds >
-                        trendWindowSeconds
-                        )
+                    uint64_t analysisSparklineEndTimestamp =
+                        0;
+
+                    if (!analysisHistory.empty())
                     {
-                        analysisSparklineStartTimestamp =
-                            history.back().
-                            timestampUnixSeconds -
-                            trendWindowSeconds;
+                        analysisSparklineEndTimestamp =
+                            analysisHistory.back().
+                            timestampUnixSeconds;
+
+                        if (
+                            analysisSparklineEndTimestamp >
+                            trendWindowSeconds
+                            )
+                        {
+                            analysisSparklineStartTimestamp =
+                                analysisSparklineEndTimestamp -
+                                trendWindowSeconds;
+                        }
                     }
 
                     for (
                         const TradingPostHistoryPoint&
                         point :
-                        history
+                        analysisHistory
                         )
                     {
                         if (
                             point.timestampUnixSeconds <
-                            analysisSparklineStartTimestamp
+                            analysisSparklineStartTimestamp ||
+                            point.timestampUnixSeconds >
+                            analysisSparklineEndTimestamp
                             )
                         {
                             continue;
                         }
 
-                        analysisBuyHistoryGold.push_back(
-                            static_cast<float>(
-                                point.buyUnitPrice
-                                ) /
-                            10000.0f
-                        );
+                        if (point.buyUnitPrice > 0)
+                        {
+                            SparklinePoint sparklinePoint;
 
-                        analysisSellHistoryGold.push_back(
-                            static_cast<float>(
-                                point.sellUnitPrice
-                                ) /
-                            10000.0f
-                        );
+                            sparklinePoint.timestampUnixSeconds =
+                                point.timestampUnixSeconds;
+
+                            sparklinePoint.value =
+                                static_cast<float>(
+                                    point.buyUnitPrice
+                                    ) /
+                                10000.0f;
+
+                            analysisBuyHistoryGold.push_back(
+                                sparklinePoint
+                            );
+                        }
+
+                        if (point.sellUnitPrice > 0)
+                        {
+                            SparklinePoint sparklinePoint;
+
+                            sparklinePoint.timestampUnixSeconds =
+                                point.timestampUnixSeconds;
+
+                            sparklinePoint.value =
+                                static_cast<float>(
+                                    point.sellUnitPrice
+                                    ) /
+                                10000.0f;
+
+                            analysisSellHistoryGold.push_back(
+                                sparklinePoint
+                            );
+                        }
                     }
 
                     ImGui::TextUnformatted(
@@ -5578,33 +6070,27 @@ void TradingPostUI::RenderTab(
                                 trendDownColor;
                         }
 
+                        //
+                        // Keep the buyer-facing signal consistent with the
+                        // displayed price position. This avoids conflicting
+                        // combinations such as "Well Above Recent Avg" and
+                        // "Typical" at the same time.
+                        //
                         const char* buyerSignal =
                             "Typical";
 
                         ImVec4 buyerSignalColor =
                             attentionColor;
 
-                        if (
-                            price.sellUnitPrice <=
-                            sellStats.lowerQuartileSell
-                            )
+                        if (sellVsAverage <= -1.0)
                         {
                             buyerSignal =
-                                observedSellTrend.trend ==
-                                PriceTrend::Up
-                                ? "Worth Watching"
-                                : "Favorable";
+                                "Favorable";
 
                             buyerSignalColor =
-                                observedSellTrend.trend ==
-                                PriceTrend::Up
-                                ? attentionColor
-                                : goodColor;
+                                goodColor;
                         }
-                        else if (
-                            price.sellUnitPrice >=
-                            sellStats.upperQuartileSell
-                            )
+                        else if (sellVsAverage >= 1.0)
                         {
                             buyerSignal =
                                 "Caution";
@@ -5690,6 +6176,8 @@ void TradingPostUI::RenderTab(
                         DrawSparkline(
                             "##SellAnalysisSparkline",
                             analysisSellHistoryGold,
+                            analysisSparklineStartTimestamp,
+                            analysisSparklineEndTimestamp,
                             sellColor,
                             sellSparklineWidth,
                             38.0f
@@ -5844,7 +6332,7 @@ void TradingPostUI::RenderTab(
                         ImGui::Spacing();
 
                         ImGui::TextDisabled(
-                            "Analysis is based only on locally collected history."
+                            "Analysis is still developing for the selected Trend Window."
                         );
                     }
                     else
@@ -5902,16 +6390,17 @@ void TradingPostUI::RenderTab(
                                 trendDownColor;
                         }
 
+                        //
+                        // Keep the seller-facing signal consistent with the
+                        // displayed buy-order position.
+                        //
                         const char* sellerSignal =
                             "Typical";
 
                         ImVec4 sellerSignalColor =
                             attentionColor;
 
-                        if (
-                            price.buyUnitPrice >=
-                            buyStats.upperQuartileSell
-                            )
+                        if (buyVsAverage >= 1.0)
                         {
                             sellerSignal =
                                 "Favorable";
@@ -5919,22 +6408,13 @@ void TradingPostUI::RenderTab(
                             sellerSignalColor =
                                 goodColor;
                         }
-                        else if (
-                            price.buyUnitPrice <=
-                            buyStats.lowerQuartileSell
-                            )
+                        else if (buyVsAverage <= -1.0)
                         {
                             sellerSignal =
-                                observedBuyTrend.trend ==
-                                PriceTrend::Up
-                                ? "Worth Watching"
-                                : "Weak";
+                                "Weak";
 
                             sellerSignalColor =
-                                observedBuyTrend.trend ==
-                                PriceTrend::Up
-                                ? attentionColor
-                                : trendDownColor;
+                                trendDownColor;
                         }
 
                         const std::string buyAverageText =
@@ -6014,6 +6494,8 @@ void TradingPostUI::RenderTab(
                         DrawSparkline(
                             "##BuyAnalysisSparkline",
                             analysisBuyHistoryGold,
+                            analysisSparklineStartTimestamp,
+                            analysisSparklineEndTimestamp,
                             buyColor,
                             buySparklineWidth,
                             38.0f
@@ -6077,7 +6559,7 @@ void TradingPostUI::RenderTab(
                     if (ImGui::IsItemHovered())
                     {
                         ImGui::SetTooltip(
-                            "Gap-aware coverage. Long periods without observations are discounted; normal history compaction is accounted for."
+                            "Coverage uses completed Collector scans while the Collector is connected; local gap-aware history is used as fallback."
                         );
                     }
 
@@ -6168,7 +6650,7 @@ void TradingPostUI::RenderTab(
                     }
 
                     ImGui::TextDisabled(
-                        "Volatility"
+                        "Market Volatility"
                     );
 
                     ImGui::SameLine(
@@ -6183,7 +6665,7 @@ void TradingPostUI::RenderTab(
                     if (ImGui::IsItemHovered())
                     {
                         ImGui::SetTooltip(
-                            "How widely sell-listing prices have moved during the selected Trend Window. DEVELOPING is shown until Copper&Claw has enough gap-aware history."
+                            "Market Volatility uses the more active of sell-listing or buy-order scan-to-scan movement during the selected Trend Window. A one-time jump followed by stable prices is less volatile than repeated large swings."
                         );
                     }
 

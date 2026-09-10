@@ -133,6 +133,254 @@ This establishes the first working end-to-end Copper&Claw ↔ Collector integrat
 
 ---
 
+
+## 2026-09-10 — Collector-Backed Market Analysis Coherence Pass
+
+Completed a broad Trading Post analysis accuracy and coherence pass after the first working Copper&Claw ↔ Collector integration.
+
+### Completed Collector snapshot coverage
+
+Added Collector support for exposing completed market scans and using those timestamps inside Copper&Claw analysis.
+
+Collector endpoint:
+
+```text
+GET /snapshots/completed
+```
+
+Copper&Claw now caches completed Collector snapshot timestamps and uses them to reconstruct sampled watched-item history.
+
+For each completed Collector scan, the addon carries forward the most recently known watched-item price state at or before that scan timestamp.
+
+This allows unchanged prices to count as real observations instead of disappearing simply because the Collector's item history stores change events rather than duplicate unchanged rows.
+
+Collector-backed coverage now reflects completed scans inside the selected Trend Window.
+
+Validation examples included:
+
+- `30m / 30m (100%)`
+- six or seven completed samples on a 30-minute window
+- approximately `5h 50m / 6h (97%)`
+- long windows correctly remaining incomplete when only partial Collector history exists
+
+A 3-day test with only about 11h 35m of Collector coverage correctly showed:
+
+- LOW confidence
+- 16% coverage
+- Direction: Developing
+- Tracked Avg: Developing
+- Buyer / Seller signals: Developing
+- Market Volatility: Developing
+
+**Result: PASS**
+
+### Strict selected-window trend behavior
+
+Removed the old fallback that could use the entire available history when the selected Trend Window did not have enough history.
+
+Direction is now tied strictly to the selected window.
+
+If history does not reach the requested window boundary, the UI displays:
+
+```text
+Developing
+```
+
+instead of silently presenting a longer-period trend as though it represented the selected 30m / 1h / 6h / longer window.
+
+The trend boundary lookup was also improved to use the historical observation closest in real time to the requested boundary while still requiring the stored history to reach that boundary.
+
+**Result: PASS**
+
+### Time-aware sparklines
+
+Sell and Buy analysis sparklines now position points according to their actual timestamps inside the selected Trend Window.
+
+The previous sample-index spacing could make unevenly spaced observations look evenly distributed in time.
+
+Current behavior:
+
+- x-position is based on real timestamp within the selected window
+- only positive Sell / Buy values are drawn
+- graph data remains restricted to the selected Trend Window
+- Sell and Buy graphs remain visually aligned with their corresponding analysis sections
+
+In-game testing across 30m, 1h, and 6h windows confirmed the graphs change coherently with the selected time period.
+
+**Result: PASS**
+
+### Manual refresh abuse protection
+
+Added a shared backend cooldown for manual Trading Post refresh actions.
+
+Current behavior:
+
+```text
+Manual refresh cooldown: 10 seconds
+```
+
+The cooldown is shared by:
+
+- per-item `Refresh`
+- `Refresh All`
+
+A manual refresh on either path prevents another manual refresh action from being accepted until the cooldown expires.
+
+Automatic refresh cadence is unaffected.
+
+This protects both the Collector and Guild Wars 2 API fallback path from accidental rapid repeated manual requests.
+
+**Result: PASS**
+
+### Closest to Target sorting corrected
+
+`Closest to Target` previously considered only Sell Targets.
+
+It now evaluates both:
+
+- Sell Target distance
+- Buy Target distance
+
+Sell Target reaches zero distance when:
+
+```text
+Current Sell <= Sell Target
+```
+
+Buy Target reaches zero distance when:
+
+```text
+Current Buy >= Buy Target
+```
+
+When both targets exist, Copper&Claw uses whichever side is proportionally closer.
+
+In-game sorting validation confirmed the watch list reorders correctly using the combined target logic.
+
+**Result: PASS**
+
+### Market Volatility redesigned
+
+The original volatility model used relative standard deviation around the selected-window average.
+
+Live testing exposed a misleading result: one large price step followed by a stable plateau could be classified as `WILD` even though the sparkline did not show repeated market swings.
+
+Volatility was redesigned to measure RMS scan-to-scan percentage movement.
+
+Current interpretation:
+
+- `CALM` — very little scan-to-scan movement
+- `NORMAL` — modest movement
+- `ACTIVE` — meaningful movement
+- `WILD` — repeated / large movement
+- `DEVELOPING` — insufficient reliable selected-window data
+
+Sell Listing and Buy Order movement are calculated separately. The more active side determines the single overall `Market Volatility` badge.
+
+This keeps one simple market-level label while ensuring movement on either side of the Trading Post is represented.
+
+Runtime examples:
+
+- flat Sell + flat Buy → `CALM`
+- small temporary Sell movement + flat Buy → `CALM` / `NORMAL`
+- meaningful Sell move + flat Buy → `ACTIVE`
+- broader 6-hour movement on one or both sides → `ACTIVE`
+
+**Result: PASS**
+
+### Buyer / Seller signal consistency
+
+Live testing exposed combinations that were individually mathematically possible but confusing in the UI, such as:
+
+```text
+Price Position: Well Above Recent Avg
+For Buyers: Typical
+```
+
+Buyer- and seller-facing signals were simplified so they cannot conflict with the displayed Price Position.
+
+Current buyer-facing behavior follows Sell Listing position:
+
+- below recent average → `Favorable`
+- near recent average → `Typical`
+- above recent average → `Caution`
+
+Current seller-facing behavior follows Buy Order position:
+
+- above recent average → `Favorable`
+- near recent average → `Typical`
+- below recent average → `Weak`
+
+This keeps the recommendation line subordinate to the price-position metric instead of using a separate quartile rule that can disagree with it.
+
+**Result: PASS**
+
+### Dynamic volatility sort readiness
+
+The main Market Analysis already used a dynamic Collector sample requirement for shorter windows, but `Most Volatile` / `Least Volatile` sorting still required a hardcoded 15 samples.
+
+This caused a mismatch where a 30-minute item could have a mature volatility badge with six valid Collector samples but be excluded from volatility sorting.
+
+Volatility sorting now uses the same dynamic Collector readiness calculation as Market Analysis.
+
+Collector readiness:
+
+- scales with expected 5-minute samples in the selected Trend Window
+- requires at least 75% selected-window coverage
+- minimum sample threshold is bounded between 3 and 15
+
+In-game validation confirmed both:
+
+- `Most Volatile`
+- `Least Volatile`
+
+correctly reorder watched items on a 30-minute window.
+
+**Result: PASS**
+
+### Multi-window coherence validation
+
+Performed repeated in-game coherence testing across multiple watched items and Trend Windows.
+
+Validated examples included:
+
+- completely flat Sell and Buy lines
+- temporary movement that returned to the starting price
+- one-sided Sell movement while Buy remained flat
+- sustained direction changes
+- 30m / 1h / 6h comparisons
+- incomplete 3-day history
+- Most / Least Volatile sorting
+- Closest to Target sorting
+
+The following metrics were checked together:
+
+- Direction
+- Recent Avg
+- Price Position
+- For Buyers
+- For Sellers
+- Confidence
+- Coverage
+- Samples
+- Market Volatility
+- Spread
+- Sell / Buy sparklines
+- sorting behavior
+
+Observed combinations were internally coherent.
+
+Examples confirmed that seemingly different statements can both be valid when they answer different questions, such as:
+
+- `Getting Cheaper` while still `Above Recent Avg`
+- `Stable` endpoint direction while a small temporary bump produces non-zero volatility
+
+No remaining contradictory Market Analysis presentation was identified during this validation pass.
+
+**Result: PASS**
+
+---
+
 ## 2026-09-08 — v0.1.3 Release Preparation
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
@@ -567,21 +815,20 @@ Extended the persistent watch-list sorting system with two additional options:
 - Most Volatile
 - Least Volatile
 
-Behavior:
+Behavior at this historical checkpoint originally used Sell Listing movement and a fixed 15-sample readiness floor.
 
-- volatility sorting uses Sell Listing price movement inside the selected Trend Window
-- it uses the same volatility calculation as the Market Analysis badge
-- an item must meet the volatility readiness requirements before it receives a sortable volatility value
-- readiness requires at least 15 selected-window samples and at least 75% gap-aware selected-window coverage
-- items still classified as `DEVELOPING` are placed below items with mature volatility data
+This logic was later superseded by the 2026-09-10 coherence pass:
+
+- Market Volatility now considers both Sell and Buy scan-to-scan movement
+- Collector-backed volatility readiness scales dynamically with the selected Trend Window
+- at least 75% selected-window coverage is still required
+- items still classified as `DEVELOPING` remain below items with mature volatility data
 - the sort remains display-only and does not rewrite the saved watch-list order
 - the selected sort mode continues to persist in `CopperAndClaw.ini`
 
-In-game testing confirmed both new sort options appear correctly in the dropdown.
+Live ranking behavior has now been validated in-game for both Most Volatile and Least Volatile.
 
-Because the currently watched items are still `DEVELOPING`, final live ranking behavior will become directly observable once multiple items have mature volatility data.
-
-**Result: UI / INTEGRATION PASS — LIVE RANKING VALIDATION PENDING MATURE DATA**
+**Result: PASS — SUPERSEDED BY 2026-09-10 VOLATILITY MODEL**
 
 ---
 
@@ -599,26 +846,22 @@ User-facing labels:
 
 The UI intentionally does not display another volatility percentage or raw statistical value.
 
-Current calculation:
+This historical implementation originally used Sell Listing relative price dispersion and a fixed 15-sample floor.
 
-- uses Sell Listing observations inside the selected Trend Window
-- calculates relative price dispersion internally
-- requires at least 15 selected-window samples
-- requires at least 75% gap-aware selected-window coverage before assigning a mature volatility label
+The calculation was later superseded by the 2026-09-10 Market Analysis coherence pass.
+
+Current behavior:
+
+- measures RMS scan-to-scan percentage movement
+- evaluates Sell Listings and Buy Orders separately
+- uses the more active side as one overall `Market Volatility` label
+- uses dynamic Collector sample readiness for shorter windows
+- requires at least 75% selected-window coverage
 - otherwise displays `DEVELOPING`
 
-Current internal classification thresholds:
+The badge remains intentionally qualitative rather than adding another raw percentage to the UI.
 
-- CALM: under 0.75%
-- NORMAL: 0.75% to under 2.0%
-- ACTIVE: 2.0% to under 5.0%
-- WILD: 5.0% or higher
-
-The badge is shown inside Market Analysis and uses a compact colored presentation rather than adding more number-heavy watch-row data.
-
-In-game testing with a 7-day window and insufficient gap-aware coverage correctly displayed `DEVELOPING`.
-
-**Result: PASS**
+**Result: PASS — SUPERSEDED BY 2026-09-10 VOLATILITY MODEL**
 
 ---
 
@@ -1502,9 +1745,12 @@ Current behavior:
 - Collector-first current pricing
 - Guild Wars 2 API fallback
 - Collector history import
+- completed Collector snapshot timestamps used for selected-window analysis coverage
+- unchanged-price states reconstructed across completed Collector scans
 - automatic retry if Collector starts after Guild Wars 2
 - 5-minute refresh while Collector is available
 - 60-second refresh while falling back
+- shared 10-second cooldown for manual Refresh / Refresh All
 
 Future work may include cleaner in-game Collector connection/status presentation and tighter synchronization to Collector snapshot timing.
 

@@ -21,7 +21,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Watch multiple Trading Post items
 - Official Guild Wars 2 item icons beside watched items
 - Collector-aware automatic refresh: 5 minutes when the local Collector is available, 60 seconds when falling back to the Guild Wars 2 API
-- Manual per-item refresh and Refresh All
+- Manual per-item refresh and Refresh All with a shared 10-second manual-refresh cooldown
 - Current **lowest sell listing**
 - Current **highest buy order**
 - Per-item **Sell Targets**
@@ -33,8 +33,8 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
-- Gap-aware confidence and coverage
-- Colored **Volatility** classification
+- Collector snapshot-aware confidence and coverage, with gap-aware local-history fallback
+- Colored **Market Volatility** classification based on scan-to-scan movement
 - Sortable watch list
 - **Normal / Slim / Ultra Slim** watch-list views
 - Optional per-item **Favorites** with an instant Favorites-only view
@@ -73,7 +73,9 @@ Current sort options:
 
 Price-rise, price-drop, and volatility sorting use the selected **Trend Window**.
 
-Volatility sorting uses the same gap-aware history requirements as the Volatility badge. Items still marked **DEVELOPING** are placed below items with mature volatility data.
+**Closest to Target** evaluates both Sell Targets and Buy Targets and uses the closest proportional distance for each item.
+
+Volatility sorting uses the same readiness rules as the **Market Volatility** badge. When Collector-backed history is available, the sample requirement scales with the selected Trend Window instead of always requiring 15 samples. Items still marked **DEVELOPING** are placed below items with mature volatility data.
 
 ---
 
@@ -113,15 +115,21 @@ Copper&Claw separates the two sides of the Trading Post market.
 - Price position
 - Seller-facing signal
 
-### Volatility
+Buyer- and seller-facing signals are kept consistent with the displayed Price Position. For example, a Sell Listing that is above its recent average will not simultaneously be labeled favorable for buyers.
 
-Copper&Claw summarizes sell-listing price movement with a simple colored badge:
+### Market Volatility
+
+Copper&Claw summarizes overall market movement with a simple colored badge:
 
 - **CALM**
 - **NORMAL**
 - **ACTIVE**
 - **WILD**
 - **DEVELOPING**
+
+Market Volatility measures scan-to-scan percentage movement rather than dispersion around an average. Sell Listing and Buy Order movement are calculated separately, and the more active side determines the single overall market-volatility label.
+
+This avoids treating one sustained price step as if the market were repeatedly swinging. A one-time move followed by stable prices contributes less volatility than repeated large back-and-forth movement.
 
 The badge uses the selected Trend Window and stays **DEVELOPING** until enough reliable history has been collected.
 
@@ -130,10 +138,12 @@ The badge uses the selected Trend Window and stays **DEVELOPING** until enough r
 Copper&Claw also reports:
 
 - Confidence
-- Gap-aware selected-window coverage
-- Sample count inside the selected trend window
+- selected-window coverage
+- sample count inside the selected trend window
 
-This helps prevent limited or interrupted local history from being presented as mature market data.
+When the Collector is available, coverage is based on completed Collector scan timestamps so unchanged prices still count as real observations. Without the Collector, Copper&Claw uses its gap-aware local-history fallback.
+
+Selected-window analysis stays **DEVELOPING** when the requested time window is not sufficiently covered, preventing partial history from being presented as a complete 3-day, 7-day, or longer conclusion.
 
 <img width="1497" height="1179" alt="marketanalysis" src="https://github.com/user-attachments/assets/57479002-ec6f-4e55-a33d-b898ccd273da" />
 
@@ -238,6 +248,10 @@ The old standalone History panel has been removed from the watch-list UI to keep
 
 The Sell and Buy sparklines in Analysis use the currently selected **Trend Window**, so the graph and the surrounding market analysis refer to the same period.
 
+Sparkline horizontal spacing is timestamp-based rather than sample-index-based, so visible movement occurs at the correct relative time within the selected window.
+
+Trend direction is also strict to the selected window. If history does not reach the requested boundary, Copper&Claw shows **Developing** instead of silently falling back to a longer period of history.
+
 ---
 
 ## Copper&Claw Collector Integration
@@ -254,6 +268,7 @@ Current integration behavior:
 
 - current watched-item prices are requested from the Collector first
 - historical Collector data is imported for watched items
+- completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations for analysis
 - existing Copper&Claw local history is preserved
 - imported Collector history is merged with local history
 - exact duplicate historical observations are skipped
@@ -261,7 +276,7 @@ Current integration behavior:
 - no Guild Wars 2 restart is required when the Collector becomes available later
 - automatic refresh uses a 5-minute cadence while the Collector is available
 - automatic refresh falls back to 60 seconds when the Collector is unavailable
-- manual Refresh and Refresh All remain immediate
+- manual Refresh and Refresh All remain immediate when accepted, with a shared 10-second manual-refresh cooldown to prevent accidental rapid repeated requests
 - if the Collector cannot provide current pricing, Copper&Claw falls back to the official Guild Wars 2 API
 
 The Collector is not required for Copper&Claw to function. Without it, the addon continues using the Guild Wars 2 API and its own local history as before.

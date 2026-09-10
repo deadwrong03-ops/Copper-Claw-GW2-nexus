@@ -28,6 +28,14 @@ namespace
         COLLECTOR_WATCH_INTERVAL_SECONDS =
         5 * 60;
 
+    //
+    // Protect manual Refresh / Refresh All from rapid repeated clicking.
+    // One manual refresh action is allowed every 10 seconds across the addon.
+    //
+    constexpr int64_t
+        MANUAL_REFRESH_COOLDOWN_SECONDS =
+        10;
+
     struct TargetAlertState
     {
         //
@@ -77,6 +85,11 @@ namespace
     std::chrono::steady_clock::
         time_point g_LastCheckTime;
 
+    bool g_HasLastManualRefresh = false;
+
+    std::chrono::steady_clock::
+        time_point g_LastManualRefreshTime;
+
     std::filesystem::path
         g_SettingsPath;
 
@@ -92,6 +105,41 @@ namespace
                     time_since_epoch()
                 ).count()
                 );
+    }
+
+    bool TryBeginManualRefreshLocked()
+    {
+        const auto now =
+            std::chrono::steady_clock::
+            now();
+
+        if (g_HasLastManualRefresh)
+        {
+            const int64_t elapsedSeconds =
+                std::chrono::
+                duration_cast<
+                std::chrono::seconds
+                >(
+                    now -
+                    g_LastManualRefreshTime
+                ).count();
+
+            if (
+                elapsedSeconds <
+                MANUAL_REFRESH_COOLDOWN_SECONDS
+                )
+            {
+                return false;
+            }
+        }
+
+        g_LastManualRefreshTime =
+            now;
+
+        g_HasLastManualRefresh =
+            true;
+
+        return true;
     }
 
     std::filesystem::path
@@ -966,6 +1014,9 @@ void TradingPostWatchManager::Start(
 
     g_PendingTargetAlerts.clear();
 
+    g_HasLastManualRefresh =
+        false;
+
     LoadLocked();
 
     for (
@@ -1014,6 +1065,9 @@ void TradingPostWatchManager::Shutdown()
     g_SettingsPath.clear();
 
     g_HasLastCheck =
+        false;
+
+    g_HasLastManualRefresh =
         false;
 }
 
@@ -1485,6 +1539,17 @@ void TradingPostWatchManager::RefreshItem(
         return;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(
+            g_WatchMutex
+        );
+
+        if (!TryBeginManualRefreshLocked())
+        {
+            return;
+        }
+    }
+
     TradingPostPriceManager::
         RequestPrice(
             itemID,
@@ -1497,6 +1562,11 @@ void TradingPostWatchManager::RefreshAll()
     std::lock_guard<std::mutex> lock(
         g_WatchMutex
     );
+
+    if (!TryBeginManualRefreshLocked())
+    {
+        return;
+    }
 
     QueueAllLocked(
         true

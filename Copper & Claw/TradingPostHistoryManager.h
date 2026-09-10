@@ -44,7 +44,10 @@ namespace TradingPostHistoryManager
     //
     // Retries Collector history import for a watched item.
     // Once an import succeeds during the current addon session,
-    // later calls become no-ops.
+    // later calls become no-ops for price-history import.
+    //
+    // This call also keeps the cached list of successfully completed
+    // Collector scans refreshed for market-analysis coverage.
     //
     bool TryImportCollectorHistory(
         uint32_t itemID
@@ -77,6 +80,14 @@ namespace TradingPostHistoryManager
         GetHistory(
             uint32_t itemID
         );
+
+    //
+    // Returns the cached timestamps of successfully completed Collector
+    // scans, oldest to newest. The cache is refreshed from the Collector
+    // while watched-item Collector requests are being made.
+    //
+    std::vector<uint64_t>
+        GetCollectorCompletedSnapshotTimestamps();
 
     size_t GetObservationCount(
         uint32_t itemID
