@@ -15,8 +15,6 @@ namespace TradingPostHistoryManager
 {
     //
     // Loads persistent Trading Post history from disk.
-    // Existing history is automatically compacted according to
-    // the retention policy when the manager starts.
     //
     void Start(
         void* moduleHandle
@@ -30,9 +28,25 @@ namespace TradingPostHistoryManager
 
     //
     // Marks an item as currently watched.
-    // Only watched items are allowed to record new history.
+    //
+    // The first time an item is registered during the current
+    // Copper&Claw session, the manager also makes one best-effort
+    // request to the local Copper&Claw Collector and imports any
+    // historical points that are not already stored locally.
+    //
+    // If the Collector is unavailable, registration still succeeds
+    // and local history recording continues normally.
     //
     void RegisterWatchedItem(
+        uint32_t itemID
+    );
+
+    //
+    // Retries Collector history import for a watched item.
+    // Once an import succeeds during the current addon session,
+    // later calls become no-ops.
+    //
+    bool TryImportCollectorHistory(
         uint32_t itemID
     );
 
@@ -45,13 +59,8 @@ namespace TradingPostHistoryManager
     );
 
     //
-    // Records one successful Trading Post API observation.
+    // Records one successful Trading Post price observation.
     // The call is ignored when the item is not currently watched.
-    //
-    // Retention policy:
-    // - newest 24 hours: keep every observation
-    // - 24 hours through 7 days: keep one observation per 5 minutes
-    // - older than 7 days: keep one observation per 30 minutes
     //
     void RecordObservation(
         uint32_t itemID,

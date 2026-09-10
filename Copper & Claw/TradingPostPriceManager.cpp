@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <winhttp.h>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -46,6 +47,9 @@ namespace
         g_QueuedLookupItemIDs;
 
     std::thread g_WorkerThread;
+
+    std::atomic<bool>
+        g_CollectorAvailable = false;
 
     bool g_WorkerRunning = false;
     bool g_StopWorker = false;
@@ -210,6 +214,317 @@ namespace
 
         return true;
     }
+
+
+    bool CollectorHttpGet(
+        const std::wstring& path,
+        std::string& response
+    )
+    {
+        response.clear();
+
+        HINTERNET session =
+            WinHttpOpen(
+                L"CopperAndClaw/1.0",
+                WINHTTP_ACCESS_TYPE_NO_PROXY,
+                WINHTTP_NO_PROXY_NAME,
+                WINHTTP_NO_PROXY_BYPASS,
+                0
+            );
+
+        if (session == nullptr)
+        {
+            return false;
+        }
+
+        WinHttpSetTimeouts(
+            session,
+            1000,
+            1000,
+            1000,
+            1000
+        );
+
+        HINTERNET connection =
+            WinHttpConnect(
+                session,
+                L"127.0.0.1",
+                5177,
+                0
+            );
+
+        if (connection == nullptr)
+        {
+            WinHttpCloseHandle(session);
+            return false;
+        }
+
+        HINTERNET request =
+            WinHttpOpenRequest(
+                connection,
+                L"GET",
+                path.c_str(),
+                nullptr,
+                WINHTTP_NO_REFERER,
+                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                0
+            );
+
+        if (request == nullptr)
+        {
+            WinHttpCloseHandle(connection);
+            WinHttpCloseHandle(session);
+            return false;
+        }
+
+        const BOOL sent =
+            WinHttpSendRequest(
+                request,
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                WINHTTP_NO_REQUEST_DATA,
+                0,
+                0,
+                0
+            );
+
+        if (
+            !sent ||
+            !WinHttpReceiveResponse(
+                request,
+                nullptr
+            )
+            )
+        {
+            WinHttpCloseHandle(request);
+            WinHttpCloseHandle(connection);
+            WinHttpCloseHandle(session);
+            return false;
+        }
+
+        DWORD statusCode = 0;
+        DWORD statusCodeSize =
+            sizeof(statusCode);
+
+        const BOOL statusRead =
+            WinHttpQueryHeaders(
+                request,
+                WINHTTP_QUERY_STATUS_CODE |
+                WINHTTP_QUERY_FLAG_NUMBER,
+                WINHTTP_HEADER_NAME_BY_INDEX,
+                &statusCode,
+                &statusCodeSize,
+                WINHTTP_NO_HEADER_INDEX
+            );
+
+        if (
+            !statusRead ||
+            statusCode != 200
+            )
+        {
+            WinHttpCloseHandle(request);
+            WinHttpCloseHandle(connection);
+            WinHttpCloseHandle(session);
+            return false;
+        }
+
+        while (true)
+        {
+            DWORD available = 0;
+
+            if (
+                !WinHttpQueryDataAvailable(
+                    request,
+                    &available
+                )
+                )
+            {
+                WinHttpCloseHandle(request);
+                WinHttpCloseHandle(connection);
+                WinHttpCloseHandle(session);
+                return false;
+            }
+
+            if (available == 0)
+            {
+                break;
+            }
+
+            std::vector<char> buffer(
+                available + 1,
+                '\0'
+            );
+
+            DWORD bytesRead = 0;
+
+            if (
+                !WinHttpReadData(
+                    request,
+                    buffer.data(),
+                    available,
+                    &bytesRead
+                )
+                )
+            {
+                WinHttpCloseHandle(request);
+                WinHttpCloseHandle(connection);
+                WinHttpCloseHandle(session);
+                return false;
+            }
+
+            response.append(
+                buffer.data(),
+                bytesRead
+            );
+        }
+
+        WinHttpCloseHandle(request);
+        WinHttpCloseHandle(connection);
+        WinHttpCloseHandle(session);
+
+        return true;
+    }
+
+    bool ExtractJsonUInt32(
+        const std::string& json,
+        const std::string& key,
+        uint32_t& outValue
+    )
+    {
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (
+            keyPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition +
+                searchKey.size()
+            );
+
+        if (
+            colonPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        size_t numberStart =
+            colonPosition + 1;
+
+        while (
+            numberStart < json.size() &&
+            (
+                json[numberStart] == ' ' ||
+                json[numberStart] == '\t' ||
+                json[numberStart] == '\r' ||
+                json[numberStart] == '\n'
+                )
+            )
+        {
+            ++numberStart;
+        }
+
+        if (
+            numberStart >= json.size() ||
+            json[numberStart] < '0' ||
+            json[numberStart] > '9'
+            )
+        {
+            return false;
+        }
+
+        size_t numberEnd =
+            numberStart;
+
+        while (
+            numberEnd < json.size() &&
+            json[numberEnd] >= '0' &&
+            json[numberEnd] <= '9'
+            )
+        {
+            ++numberEnd;
+        }
+
+        try
+        {
+            const unsigned long value =
+                std::stoul(
+                    json.substr(
+                        numberStart,
+                        numberEnd - numberStart
+                    )
+                );
+
+            outValue =
+                static_cast<uint32_t>(
+                    value
+                    );
+
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
+    bool FetchPriceFromCollector(
+        uint32_t itemID,
+        uint32_t& buyUnitPrice,
+        uint32_t& sellUnitPrice
+    )
+    {
+        std::string response;
+
+        const std::wstring path =
+            L"/item/" +
+            std::to_wstring(
+                itemID
+            );
+
+        if (
+            !CollectorHttpGet(
+                path,
+                response
+            )
+            )
+        {
+            return false;
+        }
+
+        if (
+            !ExtractJsonUInt32(
+                response,
+                "buyUnitPrice",
+                buyUnitPrice
+            ) ||
+            !ExtractJsonUInt32(
+                response,
+                "sellUnitPrice",
+                sellUnitPrice
+            )
+            )
+        {
+            return false;
+        }
+
+        return true;
+    }
+
 
     bool ExtractJsonString(
         const std::string& json,
@@ -433,6 +748,11 @@ namespace
 
 void TradingPostPriceManager::Reset()
 {
+    g_CollectorAvailable.store(
+        false,
+        std::memory_order_relaxed
+    );
+
     {
         std::lock_guard<std::mutex> lock(
             g_TradingPostPriceMutex
@@ -452,6 +772,11 @@ void TradingPostPriceManager::Reset()
 
 void TradingPostPriceManager::Start()
 {
+    g_CollectorAvailable.store(
+        false,
+        std::memory_order_relaxed
+    );
+
     std::lock_guard<std::mutex> lock(
         g_RequestMutex
     );
@@ -739,6 +1064,14 @@ bool TradingPostPriceManager::TryGetPrice(
     return true;
 }
 
+bool TradingPostPriceManager::IsCollectorAvailable()
+{
+    return
+        g_CollectorAvailable.load(
+            std::memory_order_relaxed
+        );
+}
+
 bool TradingPostPriceManager::FetchPrice(
     uint32_t itemID
 )
@@ -747,6 +1080,41 @@ bool TradingPostPriceManager::FetchPrice(
     {
         return false;
     }
+
+    uint32_t collectorBuyPrice = 0;
+    uint32_t collectorSellPrice = 0;
+
+    if (
+        FetchPriceFromCollector(
+            itemID,
+            collectorBuyPrice,
+            collectorSellPrice
+        )
+        )
+    {
+        g_CollectorAvailable.store(
+            true,
+            std::memory_order_relaxed
+        );
+
+        TradingPostHistoryManager::
+            TryImportCollectorHistory(
+                itemID
+            );
+
+        StorePrice(
+            itemID,
+            collectorBuyPrice,
+            collectorSellPrice
+        );
+
+        return true;
+    }
+
+    g_CollectorAvailable.store(
+        false,
+        std::memory_order_relaxed
+    );
 
     std::string response;
 

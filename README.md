@@ -18,7 +18,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 - Watch multiple Trading Post items
 - Official Guild Wars 2 item icons beside watched items
-- Automatic price refresh every 60 seconds
+- Collector-aware automatic refresh: 5 minutes when the local Collector is available, 60 seconds when falling back to the Guild Wars 2 API
 - Manual per-item refresh and Refresh All
 - Current **lowest sell listing**
 - Current **highest buy order**
@@ -27,6 +27,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Independent Sell and Buy target alerts
 - Compact target display with dedicated **Edit Targets** controls
 - Persistent watch list, targets, settings, and price history
+- Optional integration with the standalone Copper&Claw Collector for broader historical data
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
@@ -120,7 +121,7 @@ Copper&Claw summarizes sell-listing price movement with a simple colored badge:
 - **WILD**
 - **DEVELOPING**
 
-The badge uses the selected Trend Window and stays **DEVELOPING** until enough reliable local history has been collected.
+The badge uses the selected Trend Window and stays **DEVELOPING** until enough reliable history has been collected.
 
 ### Confidence & Coverage
 
@@ -202,18 +203,22 @@ This makes it easier to select the exact Trading Post listing you intended to wa
 
 ---
 
-## Local Price History
+## Price History
 
-Copper&Claw builds its own Trading Post history from observations collected while items are being watched.
+Copper&Claw preserves its own local Trading Post history and can also import historical market data from the standalone Copper&Claw Collector when that service is available.
 
 Current behavior:
 
-- preserves every successfully recorded observation
-- does **not** automatically discard or compact older observations
+- preserves every successfully recorded local observation
+- does **not** automatically discard or compact older local observations
 - retains history across game restarts
-- uses locally collected history for trends and analysis
+- merges Collector history into existing Copper&Claw history
+- skips exact duplicate imported observations
+- uses the combined available history for trends and analysis
+- newly watched items can immediately gain earlier history already collected by the Collector
+- continues working from local history if the Collector is unavailable
 
-New installations begin with **no historical market data from before tracking started**.
+If the Collector has never observed an item, Copper&Claw still begins with only the history available locally from the time tracking started.
 
 The old standalone History panel has been removed from the watch-list UI to keep Details focused on useful analysis. Historical observations are still collected normally and continue to power trends, confidence, coverage, volatility, statistics, and sparklines.
 
@@ -230,6 +235,34 @@ The old standalone History panel has been removed from the watch-list UI to keep
 - 90d
 
 The Sell and Buy sparklines in Analysis use the currently selected **Trend Window**, so the graph and the surrounding market analysis refer to the same period.
+
+---
+
+## Copper&Claw Collector Integration
+
+Copper&Claw can optionally use the standalone **Copper&Claw Collector** as its preferred market-data source.
+
+When the Collector is running locally, Copper&Claw connects to:
+
+```text
+http://127.0.0.1:5177/
+```
+
+Current integration behavior:
+
+- current watched-item prices are requested from the Collector first
+- historical Collector data is imported for watched items
+- existing Copper&Claw local history is preserved
+- imported Collector history is merged with local history
+- exact duplicate historical observations are skipped
+- if the Collector is unavailable when Guild Wars 2 starts, history import is retried later automatically
+- no Guild Wars 2 restart is required when the Collector becomes available later
+- automatic refresh uses a 5-minute cadence while the Collector is available
+- automatic refresh falls back to 60 seconds when the Collector is unavailable
+- manual Refresh and Refresh All remain immediate
+- if the Collector cannot provide current pricing, Copper&Claw falls back to the official Guild Wars 2 API
+
+The Collector is not required for Copper&Claw to function. Without it, the addon continues using the Guild Wars 2 API and its own local history as before.
 
 ---
 
@@ -342,6 +375,7 @@ Copper&Claw saves:
 - last restored backup information
 - acknowledged update-notice version
 - local Trading Post history
+- imported Collector history after it is merged into the local history file
 - cached item-search index
 
 Aurene's Bite is added as a **first-run starter item**, but it can be removed normally and stays removed after restart.
@@ -358,6 +392,8 @@ Aurene's Bite is added as a **first-run starter item**, but it can be removed no
 6. Allow first-time item indexing to finish if needed
 
 Copper&Claw creates its local settings and data files automatically.
+
+The standalone Copper&Claw Collector is optional. If it is running locally, Copper&Claw automatically detects and uses it without requiring additional in-game configuration.
 
 ---
 

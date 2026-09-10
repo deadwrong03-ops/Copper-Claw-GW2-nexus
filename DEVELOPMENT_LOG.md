@@ -16,6 +16,123 @@ Current development builds may contain features or improvements that have not ye
 ---
 
 
+## 2026-09-10 — Copper&Claw Collector Integration
+
+Integrated the Copper&Claw Nexus addon with the standalone Copper&Claw Collector.
+
+### Collector-first current pricing
+
+`TradingPostPriceManager` now attempts to retrieve watched-item prices from the local Collector first.
+
+Local endpoint pattern:
+
+```text
+http://127.0.0.1:5177/item/{itemID}
+```
+
+If the Collector cannot be reached or cannot return usable data, Copper&Claw falls back to the official Guild Wars 2 API.
+
+This preserves standalone addon behavior while allowing Collector-backed pricing when available.
+
+**Result: PASS**
+
+### Collector history import
+
+`TradingPostHistoryManager` now supports importing existing historical observations from:
+
+```text
+/item/{itemID}/history
+```
+
+Current behavior:
+
+- watched items request Collector history
+- imported history is merged into existing Copper&Claw local history
+- existing local observations are preserved
+- exact duplicate observations are skipped
+- imported observations are persisted into Copper&Claw's local TSV history
+- newly watched items can immediately receive historical coverage collected before they were added to the Copper&Claw watch list
+
+Fresh-item testing confirmed this behavior with previously unwatched Trading Post items.
+
+Examples included:
+
+- Heavy Supply Bag immediately receiving historical samples
+- Dusk Dye importing Collector history before the first local-only history could accumulate
+
+**Result: PASS**
+
+### Import retry when Collector starts late
+
+Initial integration attempted Collector history once during watched-item registration.
+
+This exposed a usability issue:
+
+- if Guild Wars 2 / Copper&Claw started before the Collector
+- the first history request failed
+- history would not be imported until the addon restarted
+
+Retry support was added.
+
+Current behavior:
+
+- a failed history import is not treated as completed
+- when a later price refresh successfully reaches the Collector, Copper&Claw retries the history import
+- the import can recover automatically after the Collector starts
+- Guild Wars 2 does not need to be restarted
+
+Runtime validation confirmed `/item/{itemID}/history` requests appeared after the Collector was started later in the same Guild Wars 2 session.
+
+**Result: PASS**
+
+### Collector-aware refresh cadence
+
+The previous automatic Trading Post refresh cadence was fixed at:
+
+```text
+60 seconds
+```
+
+This was wasteful while using the Collector because the Collector itself performs full market scans every five minutes.
+
+Copper&Claw now tracks whether Collector-backed price retrieval is currently succeeding.
+
+Automatic refresh behavior:
+
+```text
+Collector available: 300 seconds
+Collector unavailable: 60 seconds
+```
+
+Manual Refresh and Refresh All remain immediate.
+
+Runtime validation confirmed:
+
+- Collector online → countdown near 300 seconds
+- Collector stopped → next failed Collector request switches the countdown to 60 seconds
+- fallback to the Guild Wars 2 API remains functional
+
+**Result: PASS**
+
+### End-to-end integration validation
+
+Verified in-game:
+
+- Collector current-price endpoint is consumed successfully
+- Collector historical endpoint is consumed successfully
+- existing local Copper&Claw history remains intact
+- fresh watched items receive earlier Collector history
+- Collector history and fresh Copper&Claw observations coexist
+- Collector-unavailable startup no longer requires a game restart once the Collector later becomes available
+- Collector-aware 5-minute refresh works
+- 60-second API fallback works
+
+This establishes the first working end-to-end Copper&Claw ↔ Collector integration checkpoint.
+
+**Result: PASS**
+
+---
+
 ## 2026-09-08 — v0.1.3 Release Preparation
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
@@ -704,7 +821,7 @@ The following systems are currently working in-game:
 - internal pre-restore safety protection
 - persistent Last restored restore-point tracking
 
-**Current overall status: Core standalone functionality is working and the current build is a release candidate.**
+**Current overall status: Core standalone functionality is working. Collector integration is now active in development builds, with Collector-first pricing, historical import, automatic retry, and dynamic refresh fallback validated in-game.**
 
 Copper&Claw has since published releases through `v0.1.3`.
 
@@ -1370,6 +1487,28 @@ Current generated DLL: `Copper & Claw.dll`
 
 ## Current Known Notes / Decisions Still Open
 
+### Collector integration
+
+The first local Collector integration is working and validated.
+
+Current local service address:
+
+```text
+127.0.0.1:5177
+```
+
+Current behavior:
+
+- Collector-first current pricing
+- Guild Wars 2 API fallback
+- Collector history import
+- automatic retry if Collector starts after Guild Wars 2
+- 5-minute refresh while Collector is available
+- 60-second refresh while falling back
+
+Future work may include cleaner in-game Collector connection/status presentation and tighter synchronization to Collector snapshot timing.
+
+
 ### Aurene's Bite starter item
 
 Aurene's Bite is now used only as a first-run starter watched item.
@@ -1410,15 +1549,21 @@ The Trading Post item-index cache now includes:
 
 Older two-column and three-column cache rows remain readable, but legacy caches trigger a background rebuild so the current metadata, including icon URLs, can be populated.
 
-### Local history limitation
+### Local history / Collector history
 
-Copper&Claw builds its own local price-history database.
+Copper&Claw preserves its own local price-history database.
 
-No historical market data exists for periods before an item began being tracked locally.
+When the standalone Copper&Claw Collector is available, watched items can also import historical market observations that were collected before the item was added to the Copper&Claw watch list.
 
-New installations therefore begin with no historical market data.
+Current behavior:
 
-Copper&Claw now preserves every successfully recorded observation and does not automatically compact or downsample older history.
+- existing local history is preserved
+- Collector history is merged into local history
+- exact duplicate observations are skipped
+- imported history is persisted locally
+- if the Collector is unavailable, Copper&Claw continues using its own local history and the Guild Wars 2 API
+
+Copper&Claw does not automatically compact or downsample older local history.
 
 ### Market-analysis confidence
 

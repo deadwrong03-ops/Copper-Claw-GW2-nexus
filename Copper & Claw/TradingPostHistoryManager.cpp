@@ -1,6 +1,7 @@
 #include "TradingPostHistoryManager.h"
 
 #include <Windows.h>
+#include <winhttp.h>
 
 #include <algorithm>
 #include <chrono>
@@ -11,6 +12,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#pragma comment(lib, "winhttp.lib")
 
 namespace
 {
@@ -54,6 +57,9 @@ namespace
     std::unordered_set<uint32_t>
         g_WatchedItemIDs;
 
+    std::unordered_set<uint32_t>
+        g_CollectorImportAttemptedItemIDs;
+
     std::filesystem::path
         g_HistoryPath;
 
@@ -61,6 +67,11 @@ namespace
 
     uint64_t
         g_LastCompactionUnixSeconds = 0;
+
+    bool AppendObservationLocked(
+        uint32_t itemID,
+        const TradingPostHistoryPoint& point
+    );
 
     uint64_t GetCurrentUnixSeconds()
     {
@@ -74,6 +85,778 @@ namespace
                     time_since_epoch()
                 ).count()
                 );
+    }
+
+    bool CollectorHttpGet(
+        const std::wstring& path,
+        std::string& response
+    )
+    {
+        response.clear();
+
+        HINTERNET session =
+            WinHttpOpen(
+                L"CopperAndClaw/1.0",
+                WINHTTP_ACCESS_TYPE_NO_PROXY,
+                WINHTTP_NO_PROXY_NAME,
+                WINHTTP_NO_PROXY_BYPASS,
+                0
+            );
+
+        if (session == nullptr)
+        {
+            return false;
+        }
+
+        WinHttpSetTimeouts(
+            session,
+            1000,
+            1000,
+            1000,
+            1000
+        );
+
+        HINTERNET connection =
+            WinHttpConnect(
+                session,
+                L"127.0.0.1",
+                5177,
+                0
+            );
+
+        if (connection == nullptr)
+        {
+            WinHttpCloseHandle(
+                session
+            );
+
+            return false;
+        }
+
+        HINTERNET request =
+            WinHttpOpenRequest(
+                connection,
+                L"GET",
+                path.c_str(),
+                nullptr,
+                WINHTTP_NO_REFERER,
+                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                0
+            );
+
+        if (request == nullptr)
+        {
+            WinHttpCloseHandle(
+                connection
+            );
+
+            WinHttpCloseHandle(
+                session
+            );
+
+            return false;
+        }
+
+        const BOOL sent =
+            WinHttpSendRequest(
+                request,
+                WINHTTP_NO_ADDITIONAL_HEADERS,
+                0,
+                WINHTTP_NO_REQUEST_DATA,
+                0,
+                0,
+                0
+            );
+
+        if (
+            !sent ||
+            !WinHttpReceiveResponse(
+                request,
+                nullptr
+            )
+            )
+        {
+            WinHttpCloseHandle(
+                request
+            );
+
+            WinHttpCloseHandle(
+                connection
+            );
+
+            WinHttpCloseHandle(
+                session
+            );
+
+            return false;
+        }
+
+        DWORD statusCode = 0;
+        DWORD statusCodeSize =
+            sizeof(statusCode);
+
+        const BOOL statusRead =
+            WinHttpQueryHeaders(
+                request,
+                WINHTTP_QUERY_STATUS_CODE |
+                WINHTTP_QUERY_FLAG_NUMBER,
+                WINHTTP_HEADER_NAME_BY_INDEX,
+                &statusCode,
+                &statusCodeSize,
+                WINHTTP_NO_HEADER_INDEX
+            );
+
+        if (
+            !statusRead ||
+            statusCode != 200
+            )
+        {
+            WinHttpCloseHandle(
+                request
+            );
+
+            WinHttpCloseHandle(
+                connection
+            );
+
+            WinHttpCloseHandle(
+                session
+            );
+
+            return false;
+        }
+
+        while (true)
+        {
+            DWORD available = 0;
+
+            if (
+                !WinHttpQueryDataAvailable(
+                    request,
+                    &available
+                )
+                )
+            {
+                WinHttpCloseHandle(
+                    request
+                );
+
+                WinHttpCloseHandle(
+                    connection
+                );
+
+                WinHttpCloseHandle(
+                    session
+                );
+
+                return false;
+            }
+
+            if (available == 0)
+            {
+                break;
+            }
+
+            std::vector<char> buffer(
+                available + 1,
+                '\0'
+            );
+
+            DWORD bytesRead = 0;
+
+            if (
+                !WinHttpReadData(
+                    request,
+                    buffer.data(),
+                    available,
+                    &bytesRead
+                )
+                )
+            {
+                WinHttpCloseHandle(
+                    request
+                );
+
+                WinHttpCloseHandle(
+                    connection
+                );
+
+                WinHttpCloseHandle(
+                    session
+                );
+
+                return false;
+            }
+
+            response.append(
+                buffer.data(),
+                bytesRead
+            );
+        }
+
+        WinHttpCloseHandle(
+            request
+        );
+
+        WinHttpCloseHandle(
+            connection
+        );
+
+        WinHttpCloseHandle(
+            session
+        );
+
+        return true;
+    }
+
+    bool ExtractJsonString(
+        const std::string& json,
+        const std::string& key,
+        std::string& outValue
+    )
+    {
+        outValue.clear();
+
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (
+            keyPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition +
+                searchKey.size()
+            );
+
+        if (
+            colonPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t quotePosition =
+            json.find(
+                '"',
+                colonPosition + 1
+            );
+
+        if (
+            quotePosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t endQuotePosition =
+            json.find(
+                '"',
+                quotePosition + 1
+            );
+
+        if (
+            endQuotePosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        outValue =
+            json.substr(
+                quotePosition + 1,
+                endQuotePosition -
+                quotePosition - 1
+            );
+
+        return true;
+    }
+
+    bool ExtractJsonUInt32(
+        const std::string& json,
+        const std::string& key,
+        uint32_t& outValue
+    )
+    {
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (
+            keyPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition +
+                searchKey.size()
+            );
+
+        if (
+            colonPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        size_t numberStart =
+            colonPosition + 1;
+
+        while (
+            numberStart < json.size() &&
+            (
+                json[numberStart] == ' ' ||
+                json[numberStart] == '\t' ||
+                json[numberStart] == '\r' ||
+                json[numberStart] == '\n'
+                )
+            )
+        {
+            ++numberStart;
+        }
+
+        if (
+            numberStart >= json.size() ||
+            json[numberStart] < '0' ||
+            json[numberStart] > '9'
+            )
+        {
+            return false;
+        }
+
+        size_t numberEnd =
+            numberStart;
+
+        while (
+            numberEnd < json.size() &&
+            json[numberEnd] >= '0' &&
+            json[numberEnd] <= '9'
+            )
+        {
+            ++numberEnd;
+        }
+
+        try
+        {
+            outValue =
+                static_cast<uint32_t>(
+                    std::stoul(
+                        json.substr(
+                            numberStart,
+                            numberEnd -
+                            numberStart
+                        )
+                    )
+                    );
+
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
+    bool ParseUtcTimestampToUnixSeconds(
+        const std::string& timestamp,
+        uint64_t& outUnixSeconds
+    )
+    {
+        outUnixSeconds = 0;
+
+        if (timestamp.size() < 19)
+        {
+            return false;
+        }
+
+        int year = 0;
+        int month = 0;
+        int day = 0;
+        int hour = 0;
+        int minute = 0;
+        int second = 0;
+
+        if (
+            sscanf_s(
+                timestamp.c_str(),
+                "%d-%d-%dT%d:%d:%d",
+                &year,
+                &month,
+                &day,
+                &hour,
+                &minute,
+                &second
+            ) != 6
+            )
+        {
+            return false;
+        }
+
+        SYSTEMTIME systemTime = {};
+
+        systemTime.wYear =
+            static_cast<WORD>(
+                year
+                );
+
+        systemTime.wMonth =
+            static_cast<WORD>(
+                month
+                );
+
+        systemTime.wDay =
+            static_cast<WORD>(
+                day
+                );
+
+        systemTime.wHour =
+            static_cast<WORD>(
+                hour
+                );
+
+        systemTime.wMinute =
+            static_cast<WORD>(
+                minute
+                );
+
+        systemTime.wSecond =
+            static_cast<WORD>(
+                second
+                );
+
+        FILETIME fileTime = {};
+
+        if (
+            !SystemTimeToFileTime(
+                &systemTime,
+                &fileTime
+            )
+            )
+        {
+            return false;
+        }
+
+        ULARGE_INTEGER fileTimeValue = {};
+
+        fileTimeValue.LowPart =
+            fileTime.dwLowDateTime;
+
+        fileTimeValue.HighPart =
+            fileTime.dwHighDateTime;
+
+        constexpr uint64_t WINDOWS_TO_UNIX_EPOCH_SECONDS =
+            11644473600ULL;
+
+        const uint64_t totalSeconds =
+            fileTimeValue.QuadPart /
+            10000000ULL;
+
+        if (
+            totalSeconds <
+            WINDOWS_TO_UNIX_EPOCH_SECONDS
+            )
+        {
+            return false;
+        }
+
+        outUnixSeconds =
+            totalSeconds -
+            WINDOWS_TO_UNIX_EPOCH_SECONDS;
+
+        return true;
+    }
+
+    std::vector<
+        TradingPostHistoryPoint
+    > FetchCollectorHistory(
+        uint32_t itemID
+    )
+    {
+        std::vector<
+            TradingPostHistoryPoint
+        > history;
+
+        if (itemID == 0)
+        {
+            return history;
+        }
+
+        std::string response;
+
+        const std::wstring path =
+            L"/item/" +
+            std::to_wstring(
+                itemID
+            ) +
+            L"/history";
+
+        if (
+            !CollectorHttpGet(
+                path,
+                response
+            )
+            )
+        {
+            return history;
+        }
+
+        size_t searchPosition = 0;
+
+        while (true)
+        {
+            const size_t observedPosition =
+                response.find(
+                    "\"observedAtUtc\"",
+                    searchPosition
+                );
+
+            if (
+                observedPosition ==
+                std::string::npos
+                )
+            {
+                break;
+            }
+
+            const size_t objectStart =
+                response.rfind(
+                    '{',
+                    observedPosition
+                );
+
+            const size_t objectEnd =
+                response.find(
+                    '}',
+                    observedPosition
+                );
+
+            if (
+                objectStart ==
+                std::string::npos ||
+                objectEnd ==
+                std::string::npos ||
+                objectEnd <= objectStart
+                )
+            {
+                break;
+            }
+
+            const std::string objectJson =
+                response.substr(
+                    objectStart,
+                    objectEnd -
+                    objectStart + 1
+                );
+
+            std::string observedAtUtc;
+            uint32_t buyUnitPrice = 0;
+            uint32_t sellUnitPrice = 0;
+            uint64_t timestampUnixSeconds = 0;
+
+            if (
+                ExtractJsonString(
+                    objectJson,
+                    "observedAtUtc",
+                    observedAtUtc
+                ) &&
+                ExtractJsonUInt32(
+                    objectJson,
+                    "buyUnitPrice",
+                    buyUnitPrice
+                ) &&
+                ExtractJsonUInt32(
+                    objectJson,
+                    "sellUnitPrice",
+                    sellUnitPrice
+                ) &&
+                ParseUtcTimestampToUnixSeconds(
+                    observedAtUtc,
+                    timestampUnixSeconds
+                )
+                )
+            {
+                TradingPostHistoryPoint point;
+
+                point.timestampUnixSeconds =
+                    timestampUnixSeconds;
+
+                point.buyUnitPrice =
+                    buyUnitPrice;
+
+                point.sellUnitPrice =
+                    sellUnitPrice;
+
+                history.push_back(
+                    point
+                );
+            }
+
+            searchPosition =
+                objectEnd + 1;
+        }
+
+        std::sort(
+            history.begin(),
+            history.end(),
+            [](
+                const TradingPostHistoryPoint& a,
+                const TradingPostHistoryPoint& b
+                )
+            {
+                return
+                    a.timestampUnixSeconds <
+                    b.timestampUnixSeconds;
+            }
+        );
+
+        return history;
+    }
+
+    bool HistoryContainsPoint(
+        const std::vector<
+        TradingPostHistoryPoint
+        >& history,
+        const TradingPostHistoryPoint& point
+    )
+    {
+        for (
+            const TradingPostHistoryPoint& existing :
+            history
+            )
+        {
+            if (
+                existing.timestampUnixSeconds ==
+                point.timestampUnixSeconds &&
+                existing.buyUnitPrice ==
+                point.buyUnitPrice &&
+                existing.sellUnitPrice ==
+                point.sellUnitPrice
+                )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool ImportCollectorHistory(
+        uint32_t itemID
+    )
+    {
+        const std::vector<
+            TradingPostHistoryPoint
+        > collectorHistory =
+            FetchCollectorHistory(
+                itemID
+            );
+
+        if (collectorHistory.empty())
+        {
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        if (
+            !g_Started ||
+            g_WatchedItemIDs.find(
+                itemID
+            ) ==
+            g_WatchedItemIDs.end()
+            )
+        {
+            return false;
+        }
+
+        std::vector<
+            TradingPostHistoryPoint
+        >& localHistory =
+            g_History[
+                itemID
+            ];
+
+        bool addedAny =
+            false;
+
+        for (
+            const TradingPostHistoryPoint& point :
+            collectorHistory
+            )
+        {
+            if (
+                point.timestampUnixSeconds == 0 ||
+                HistoryContainsPoint(
+                    localHistory,
+                    point
+                )
+                )
+            {
+                continue;
+            }
+
+            if (
+                !AppendObservationLocked(
+                    itemID,
+                    point
+                )
+                )
+            {
+                continue;
+            }
+
+            localHistory.push_back(
+                point
+            );
+
+            addedAny =
+                true;
+        }
+
+        if (addedAny)
+        {
+            std::sort(
+                localHistory.begin(),
+                localHistory.end(),
+                [](
+                    const TradingPostHistoryPoint& a,
+                    const TradingPostHistoryPoint& b
+                    )
+                {
+                    return
+                        a.timestampUnixSeconds <
+                        b.timestampUnixSeconds;
+                }
+            );
+        }
+
+        return true;
     }
 
     std::filesystem::path BuildHistoryPath(
@@ -773,6 +1556,7 @@ void TradingPostHistoryManager::Start(
         );
 
     g_WatchedItemIDs.clear();
+    g_CollectorImportAttemptedItemIDs.clear();
 
     LoadHistoryLocked();
 
@@ -792,6 +1576,7 @@ void TradingPostHistoryManager::Shutdown()
     );
 
     g_WatchedItemIDs.clear();
+    g_CollectorImportAttemptedItemIDs.clear();
     g_History.clear();
 
     g_HistoryPath.clear();
@@ -811,18 +1596,104 @@ RegisterWatchedItem(
         return;
     }
 
-    std::lock_guard<std::mutex> lock(
-        g_HistoryMutex
-    );
+    bool shouldImportFromCollector =
+        false;
 
-    if (!g_Started)
     {
-        return;
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        if (!g_Started)
+        {
+            return;
+        }
+
+        g_WatchedItemIDs.insert(
+            itemID
+        );
+
+        shouldImportFromCollector =
+            g_CollectorImportAttemptedItemIDs.find(
+                itemID
+            ) ==
+            g_CollectorImportAttemptedItemIDs.end();
     }
 
-    g_WatchedItemIDs.insert(
-        itemID
-    );
+    if (
+        shouldImportFromCollector &&
+        ImportCollectorHistory(
+            itemID
+        )
+        )
+    {
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        g_CollectorImportAttemptedItemIDs.insert(
+            itemID
+        );
+    }
+}
+
+bool TradingPostHistoryManager::
+TryImportCollectorHistory(
+    uint32_t itemID
+)
+{
+    if (itemID == 0)
+    {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        if (
+            !g_Started ||
+            g_WatchedItemIDs.find(
+                itemID
+            ) ==
+            g_WatchedItemIDs.end()
+            )
+        {
+            return false;
+        }
+
+        if (
+            g_CollectorImportAttemptedItemIDs.find(
+                itemID
+            ) !=
+            g_CollectorImportAttemptedItemIDs.end()
+            )
+        {
+            return true;
+        }
+    }
+
+    if (
+        !ImportCollectorHistory(
+            itemID
+        )
+        )
+    {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        g_CollectorImportAttemptedItemIDs.insert(
+            itemID
+        );
+    }
+
+    return true;
 }
 
 void TradingPostHistoryManager::

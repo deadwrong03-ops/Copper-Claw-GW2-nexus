@@ -49,7 +49,7 @@ namespace TradingPostPriceManager
     // Queues an asynchronous price request.
     //
     // When forceRefresh is false, an existing cached price is reused.
-    // When true, a fresh API request is queued even if a cache entry exists.
+    // When true, a fresh request is queued even if a cache entry exists.
     //
     void RequestPrice(
         uint32_t itemID,
@@ -95,6 +95,13 @@ namespace TradingPostPriceManager
         uint32_t itemID,
         TradingPostPrice& outPrice
     );
+
+    //
+    // True after the most recent Collector price attempt succeeded.
+    // False after a Collector price attempt fails and Copper&Claw
+    // falls back to the ArenaNet API.
+    //
+    bool IsCollectorAvailable();
 
     bool FetchPrice(
         uint32_t itemID

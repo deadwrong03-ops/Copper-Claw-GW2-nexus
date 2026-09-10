@@ -21,8 +21,12 @@ namespace
         96356;
 
     constexpr int64_t
-        WATCH_INTERVAL_SECONDS =
+        FALLBACK_WATCH_INTERVAL_SECONDS =
         60;
+
+    constexpr int64_t
+        COLLECTOR_WATCH_INTERVAL_SECONDS =
+        5 * 60;
 
     struct TargetAlertState
     {
@@ -1058,9 +1062,15 @@ void TradingPostWatchManager::Update()
             g_LastCheckTime
         ).count();
 
+    const int64_t watchIntervalSeconds =
+        TradingPostPriceManager::
+        IsCollectorAvailable()
+        ? COLLECTOR_WATCH_INTERVAL_SECONDS
+        : FALLBACK_WATCH_INTERVAL_SECONDS;
+
     if (
         elapsedSeconds <
-        WATCH_INTERVAL_SECONDS
+        watchIntervalSeconds
         )
     {
         return;
@@ -1525,16 +1535,22 @@ GetSecondsUntilNextCheck()
             g_LastCheckTime
         ).count();
 
+    const int64_t watchIntervalSeconds =
+        TradingPostPriceManager::
+        IsCollectorAvailable()
+        ? COLLECTOR_WATCH_INTERVAL_SECONDS
+        : FALLBACK_WATCH_INTERVAL_SECONDS;
+
     if (
         elapsedSeconds >=
-        WATCH_INTERVAL_SECONDS
+        watchIntervalSeconds
         )
     {
         return 0;
     }
 
     return
-        WATCH_INTERVAL_SECONDS -
+        watchIntervalSeconds -
         elapsedSeconds;
 }
 
