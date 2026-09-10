@@ -30,6 +30,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Compact target display with dedicated **Edit Targets** controls
 - Persistent watch list, targets, settings, and price history
 - Optional integration with the standalone Copper&Claw Collector for broader historical data
+- Configurable Collector host, port, and HTTP/HTTPS connection settings with localhost defaults
 - Efficient 90-day bounded Collector history imports with pre-window state anchoring
 - Efficient 90-day bounded Collector completed-snapshot timeline for analysis coverage
 - Compact Collector status line showing connection state, active price source, analysis source, last successful contact, and last completed scan age
@@ -261,15 +262,26 @@ Trend direction is also strict to the selected window. If history does not reach
 
 Copper&Claw can optionally use the standalone **Copper&Claw Collector** as its preferred market-data source.
 
-When the Collector is running locally, Copper&Claw connects to:
+By default, Copper&Claw connects to a local Collector at:
 
 ```text
 http://127.0.0.1:5177/
 ```
 
+The Collector connection is now configurable through `CopperAndClaw.ini`:
+
+```text
+collectorHost=127.0.0.1
+collectorPort=5177
+collectorUseHttps=0
+```
+
+These defaults preserve the current local-development behavior while allowing a future hosted Collector to use a different hostname, port, and HTTPS without changing Copper&Claw networking code again.
+
 Current integration behavior:
 
 - current watched-item prices are requested from the Collector first
+- current-price, history, and completed-snapshot Collector requests all use the configured host, port, and HTTP/HTTPS mode
 - historical Collector data is imported for watched items
 - Collector history imports are currently bounded to 90 days, matching Copper&Claw's longest selectable Trend Window, instead of downloading an item's entire lifetime history
 - completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations for analysis
@@ -397,7 +409,7 @@ Copper&Claw saves:
 - Sell Targets
 - Buy Targets
 - Sell / Buy target alert state
-- settings
+- settings, including Collector host / port / HTTPS connection values
 - selected Trend Window
 - selected watch-list sort mode
 - selected watch-list view density
@@ -423,7 +435,7 @@ Aurene's Bite is added as a **first-run starter item**, but it can be removed no
 
 Copper&Claw creates its local settings and data files automatically.
 
-The standalone Copper&Claw Collector is optional. If it is running locally, Copper&Claw automatically detects and uses it without requiring additional in-game configuration.
+The standalone Copper&Claw Collector is optional. With the default settings, if it is running locally on `127.0.0.1:5177`, Copper&Claw automatically detects and uses it. The Collector host, port, and HTTP/HTTPS mode are persisted in `CopperAndClaw.ini` for future remote/hosted Collector use.
 
 ---
 

@@ -111,6 +111,15 @@ void AddonLoad(
         hSelf
     );
 
+    //
+    // Rewrite the settings file once after loading so newly added
+    // settings are materialized with their defaults immediately.
+    // Existing saved values remain preserved.
+    //
+    Settings::Save(
+        hSelf
+    );
+
     BackupManager::
         Start(
             hSelf

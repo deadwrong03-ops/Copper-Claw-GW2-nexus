@@ -607,6 +607,89 @@ The Collector continues to support unbounded `/snapshots/completed` requests for
 
 ---
 
+
+## 2026-09-10 — Configurable Collector Connection
+
+Prepared Copper&Claw for eventual hosted Collector use by removing the hardcoded Collector address from its networking paths.
+
+### Persistent Collector connection settings
+
+Added Collector connection values to `CopperAndClawSettings` and `CopperAndClaw.ini`.
+
+Current defaults:
+
+```text
+collectorHost=127.0.0.1
+collectorPort=5177
+collectorUseHttps=0
+```
+
+The defaults preserve the existing local Collector behavior.
+
+`Settings::Load` reads the three values when present, validates the port range, and keeps safe defaults when values are missing or malformed.
+
+`Settings::Save` persists the values with the rest of Copper&Claw's existing settings.
+
+Startup now performs a save immediately after loading settings so newly introduced default keys are materialized in existing INI files without requiring a later addon unload.
+
+**Result: PASS**
+
+### Collector networking updated
+
+Both Collector HTTP paths now use the persisted connection values:
+
+- `TradingPostPriceManager` — current watched-item pricing
+- `TradingPostHistoryManager` — 90-day item history and 90-day completed-snapshot timeline
+
+The connection host is read from `collectorHost`.
+
+The port is read from `collectorPort`.
+
+`collectorUseHttps=1` applies `WINHTTP_FLAG_SECURE`; `0` keeps the existing plain-HTTP local behavior.
+
+The official Guild Wars 2 API path is unchanged.
+
+**Result: PASS**
+
+### End-to-end validation
+
+Validated the new configuration in-game using controlled INI changes.
+
+Tests:
+
+- default `127.0.0.1:5177` over HTTP → Collector connected normally
+- `collectorPort=5178` while the Collector remained on 5177 → Collector went Offline and Copper&Claw fell back to the Guild Wars 2 API
+- restoring `collectorPort=5177` → Collector connection returned
+- `collectorHost=localhost` → Collector remained connected
+- `collectorUseHttps=1` against the plain-HTTP local Collector → Collector went Offline and fallback activated
+- restoring `collectorUseHttps=0` → Collector connection returned
+
+The status line confirmed the expected source transitions:
+
+```text
+Collector: Connected | Price: Collector | Analysis: Collector Snapshots
+```
+
+and during deliberate connection failures:
+
+```text
+Collector: Offline | Price: GW2 API | Analysis: Local History
+```
+
+This confirms the host, port, and HTTP/HTTPS settings are actually controlling all Collector communication.
+
+**Result: PASS**
+
+### Hosted-Collector readiness
+
+Copper&Claw is still using localhost defaults during development.
+
+This change does not deploy or expose the Collector remotely. It removes the addon-side hardcoded address so a future VPS/HTTPS Collector can be adopted by changing configuration rather than rewriting the networking code.
+
+**Result: PASS**
+
+---
+
 ## 2026-09-08 — v0.1.3 Release Preparation
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
@@ -1960,14 +2043,25 @@ Current generated DLL: `Copper & Claw.dll`
 
 The first local Collector integration is working and validated.
 
-Current local service address:
+Current default local service address:
 
 ```text
 127.0.0.1:5177
 ```
 
+Collector connection settings are now persisted in `CopperAndClaw.ini`:
+
+```text
+collectorHost=127.0.0.1
+collectorPort=5177
+collectorUseHttps=0
+```
+
+All Collector current-price, item-history, and completed-snapshot requests use these configured values. The localhost defaults remain active for development, while the same settings can later point Copper&Claw at a hosted HTTPS Collector.
+
 Current behavior:
 
+- configurable Collector host / port / HTTP-vs-HTTPS settings with localhost defaults
 - Collector-first current pricing
 - Guild Wars 2 API fallback
 - Collector history import using `/item/{itemID}/history?days=90`

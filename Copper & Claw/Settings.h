@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 struct CopperAndClawSettings
 {
@@ -52,6 +53,17 @@ struct CopperAndClawSettings
     // 1 = 10
     // 2 = 20
     int backupKeepCountIndex = 1;
+
+    //
+    // Collector connection settings.
+    //
+    // Defaults preserve the current local-development behavior.
+    // Later, these can point Copper&Claw at a hosted Collector
+    // without changing the networking code again.
+    //
+    std::string collectorHost = "127.0.0.1";
+    uint16_t collectorPort = 5177;
+    bool collectorUseHttps = false;
 
     //
     // Packed addon version for which the one-time post-update

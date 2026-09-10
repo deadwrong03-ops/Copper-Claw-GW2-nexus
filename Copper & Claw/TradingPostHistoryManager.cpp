@@ -1,4 +1,5 @@
 #include "TradingPostHistoryManager.h"
+#include "Settings.h"
 
 #include <Windows.h>
 #include <winhttp.h>
@@ -125,11 +126,27 @@ namespace
             1000
         );
 
+        std::wstring collectorHost(
+            g_Settings.collectorHost.begin(),
+            g_Settings.collectorHost.end()
+        );
+
+        if (collectorHost.empty())
+        {
+            collectorHost =
+                L"127.0.0.1";
+        }
+
+        const INTERNET_PORT collectorPort =
+            static_cast<INTERNET_PORT>(
+                g_Settings.collectorPort
+                );
+
         HINTERNET connection =
             WinHttpConnect(
                 session,
-                L"127.0.0.1",
-                5177,
+                collectorHost.c_str(),
+                collectorPort,
                 0
             );
 
@@ -142,6 +159,11 @@ namespace
             return false;
         }
 
+        const DWORD requestFlags =
+            g_Settings.collectorUseHttps
+            ? WINHTTP_FLAG_SECURE
+            : 0;
+
         HINTERNET request =
             WinHttpOpenRequest(
                 connection,
@@ -150,7 +172,7 @@ namespace
                 nullptr,
                 WINHTTP_NO_REFERER,
                 WINHTTP_DEFAULT_ACCEPT_TYPES,
-                0
+                requestFlags
             );
 
         if (request == nullptr)

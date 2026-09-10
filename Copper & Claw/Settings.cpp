@@ -140,6 +140,44 @@ bool Settings::Load(
             }
             else if (
                 key ==
+                "collectorHost"
+                )
+            {
+                if (!value.empty())
+                {
+                    g_Settings.collectorHost =
+                        value;
+                }
+            }
+            else if (
+                key ==
+                "collectorPort"
+                )
+            {
+                const int port =
+                    std::stoi(value);
+
+                if (
+                    port >= 1 &&
+                    port <= 65535
+                    )
+                {
+                    g_Settings.collectorPort =
+                        static_cast<uint16_t>(
+                            port
+                            );
+                }
+            }
+            else if (
+                key ==
+                "collectorUseHttps"
+                )
+            {
+                g_Settings.collectorUseHttps =
+                    std::stoi(value) != 0;
+            }
+            else if (
+                key ==
                 "acknowledgedUpdateNoticeVersion"
                 )
             {
@@ -189,6 +227,18 @@ bool Settings::Load(
             0,
             2
         );
+
+    if (g_Settings.collectorHost.empty())
+    {
+        g_Settings.collectorHost =
+            "127.0.0.1";
+    }
+
+    if (g_Settings.collectorPort == 0)
+    {
+        g_Settings.collectorPort =
+            5177;
+    }
 
     return true;
 }
@@ -252,6 +302,25 @@ bool Settings::Save(
         << "backupKeepCountIndex="
         << g_Settings
         .backupKeepCountIndex
+        << '\n';
+
+    file
+        << "collectorHost="
+        << g_Settings.collectorHost
+        << '\n';
+
+    file
+        << "collectorPort="
+        << g_Settings.collectorPort
+        << '\n';
+
+    file
+        << "collectorUseHttps="
+        << (
+            g_Settings.collectorUseHttps
+            ? 1
+            : 0
+            )
         << '\n';
 
     file
