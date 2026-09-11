@@ -57,13 +57,11 @@ struct CopperAndClawSettings
     //
     // Collector connection settings.
     //
-    // Defaults preserve the current local-development behavior.
-    // Later, these can point Copper&Claw at a hosted Collector
-    // without changing the networking code again.
+    // Default to the hosted Copper&Claw Collector.
     //
-    std::string collectorHost = "127.0.0.1";
-    uint16_t collectorPort = 5177;
-    bool collectorUseHttps = false;
+    std::string collectorHost = "copperclaw-api.duckdns.org";
+    uint16_t collectorPort = 443;
+    bool collectorUseHttps = true;
 
     //
     // Packed addon version for which the one-time post-update

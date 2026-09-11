@@ -231,13 +231,44 @@ bool Settings::Load(
     if (g_Settings.collectorHost.empty())
     {
         g_Settings.collectorHost =
-            "127.0.0.1";
+            "copperclaw-api.duckdns.org";
     }
 
     if (g_Settings.collectorPort == 0)
     {
         g_Settings.collectorPort =
-            5177;
+            443;
+    }
+
+    //
+    // One-time migration from the old local Collector defaults.
+    //
+    // Existing installations may already have either
+    // "localhost" or "127.0.0.1" saved with port 5177 over HTTP.
+    // If that exact legacy local configuration is present,
+    // move it to the hosted Collector and persist the new values.
+    //
+    const bool usingLegacyLocalHost =
+        g_Settings.collectorHost == "localhost" ||
+        g_Settings.collectorHost == "127.0.0.1";
+
+    const bool usingLegacyLocalCollector =
+        usingLegacyLocalHost &&
+        g_Settings.collectorPort == 5177 &&
+        !g_Settings.collectorUseHttps;
+
+    if (usingLegacyLocalCollector)
+    {
+        g_Settings.collectorHost =
+            "copperclaw-api.duckdns.org";
+
+        g_Settings.collectorPort =
+            443;
+
+        g_Settings.collectorUseHttps =
+            true;
+
+        Settings::Save(moduleHandle);
     }
 
     return true;

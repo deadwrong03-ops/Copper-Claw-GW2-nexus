@@ -14,6 +14,59 @@ Development: `Active`
 Current development builds may contain features or improvements that have not yet been included in the latest published release.
 
 ---
+## 2026-09-11 — Hosted Collector Deployment
+
+Moved Copper&Claw's default Collector connection from the original local-development service to the hosted HTTPS Collector.
+
+### Hosted Collector defaults
+
+`Settings.h` now defaults to:
+
+```text
+collectorHost=copperclaw-api.duckdns.org
+collectorPort=443
+collectorUseHttps=1
+```
+
+All existing Collector networking paths already use these persisted settings, so no `TradingPostPriceManager` or `TradingPostHistoryManager` networking rewrite was required.
+
+### Legacy local-settings migration
+
+Existing installations may still have the original local Collector configuration saved in `CopperAndClaw.ini`.
+
+`Settings::Load` now recognizes both legacy local host forms when they use the original port and HTTP mode:
+
+```text
+localhost:5177
+127.0.0.1:5177
+```
+
+When either exact legacy configuration is found, Copper&Claw migrates it to the hosted HTTPS Collector and persists the new values automatically.
+
+Custom Collector configurations are not changed by this migration.
+
+### Hosted runtime validation
+
+Validated the hosted path end to end.
+
+Infrastructure checks:
+- `copperclaw-collector` systemd service active after VPS reboot
+- Caddy active after VPS reboot
+- public HTTPS health endpoint reachable at `https://copperclaw-api.duckdns.org/health`
+
+Addon checks:
+- addon build passed after hosted-default changes
+- Copper&Claw connected successfully to `copperclaw-api.duckdns.org:443`
+- HTTPS mode remained enabled
+- Trading Post current-price data loaded from the Collector
+- Collector snapshot-backed analysis remained available
+- a full Guild Wars 2 restart still returned `Collector: Connected`
+- corrected legacy migration build passed and remained connected in-game
+
+The existing Guild Wars 2 API fallback remains available if the hosted Collector cannot provide current pricing.
+
+**Result: PASS — HOSTED COLLECTOR ACTIVE**
+
 
 
 ## 2026-09-10 — Copper&Claw Collector Integration
@@ -2039,42 +2092,44 @@ Current generated DLL: `Copper & Claw.dll`
 
 ## Current Known Notes / Decisions Still Open
 
+
 ### Collector integration
 
-The first local Collector integration is working and validated.
+The hosted Collector integration is working and validated.
 
-Current default local service address:
-
-```text
-127.0.0.1:5177
-```
-
-Collector connection settings are now persisted in `CopperAndClaw.ini`:
+Current default service address:
 
 ```text
-collectorHost=127.0.0.1
-collectorPort=5177
-collectorUseHttps=0
+https://copperclaw-api.duckdns.org/
 ```
 
-All Collector current-price, item-history, and completed-snapshot requests use these configured values. The localhost defaults remain active for development, while the same settings can later point Copper&Claw at a hosted HTTPS Collector.
+Collector connection settings are persisted in `CopperAndClaw.ini`:
+
+```text
+collectorHost=copperclaw-api.duckdns.org
+collectorPort=443
+collectorUseHttps=1
+```
+
+Existing installations using the original `localhost:5177` or `127.0.0.1:5177` HTTP defaults migrate automatically to the hosted configuration. Custom Collector settings are left unchanged.
+
+All Collector current-price, item-history, and completed-snapshot requests use the configured values.
 
 Current behavior:
 
-- configurable Collector host / port / HTTP-vs-HTTPS settings with localhost defaults
+- configurable Collector host / port / HTTP-vs-HTTPS settings with hosted HTTPS defaults
 - Collector-first current pricing
 - Guild Wars 2 API fallback
 - Collector history import using `/item/{itemID}/history?days=90`
 - pre-window anchor history event supplied by the Collector for correct 90-day state reconstruction
 - completed Collector snapshot timestamps requested with `/snapshots/completed?days=90` for selected-window analysis coverage
 - unchanged-price states reconstructed across completed Collector scans
-- automatic retry if Collector starts after Guild Wars 2
+- automatic retry if the Collector becomes available after Guild Wars 2 starts
 - 5-minute refresh while Collector is available
 - 60-second refresh while falling back
 - shared 10-second cooldown for manual Refresh / Refresh All
 
-Cleaner in-game Collector connection/status presentation has now been implemented and validated. The status line reports connection state, price source, analysis source, last successful Collector contact, and completed-scan age with stale-data warning colors. Tighter synchronization to Collector snapshot timing remains a possible future refinement.
-
+Cleaner in-game Collector connection/status presentation has been implemented and validated. The status line reports connection state, price source, analysis source, last successful Collector contact, and completed-scan age with stale-data warning colors. Tighter synchronization to Collector snapshot timing remains a possible future refinement.
 
 ### Aurene's Bite starter item
 

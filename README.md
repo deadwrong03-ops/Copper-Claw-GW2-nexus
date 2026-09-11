@@ -5,8 +5,6 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 <img width="250" height="250" alt="main" src="https://github.com/user-attachments/assets/17c29794-13a7-4eda-80b6-66db93de544c" />
 
-
-
 ## Status
 
 **Latest Release:** v0.1.3  
@@ -20,7 +18,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 - Watch multiple Trading Post items
 - Official Guild Wars 2 item icons beside watched items
-- Collector-aware automatic refresh: 5 minutes when the local Collector is available, 60 seconds when falling back to the Guild Wars 2 API
+- Collector-aware automatic refresh: 5 minutes when the hosted Collector is available, 60 seconds when falling back to the Guild Wars 2 API
 - Manual per-item refresh and Refresh All with a shared 10-second manual-refresh cooldown
 - Current **lowest sell listing**
 - Current **highest buy order**
@@ -30,7 +28,9 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Compact target display with dedicated **Edit Targets** controls
 - Persistent watch list, targets, settings, and price history
 - Optional integration with the standalone Copper&Claw Collector for broader historical data
-- Configurable Collector host, port, and HTTP/HTTPS connection settings with localhost defaults
+- Hosted Collector connection over HTTPS by default
+- Configurable Collector host, port, and HTTP/HTTPS connection settings
+- Automatic migration from legacy `localhost:5177` and `127.0.0.1:5177` HTTP defaults
 - Efficient 90-day bounded Collector history imports with pre-window state anchoring
 - Efficient 90-day bounded Collector completed-snapshot timeline for analysis coverage
 - Compact Collector status line showing connection state, active price source, analysis source, last successful contact, and last completed scan age
@@ -53,7 +53,6 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 ## Item Icons
 
 Watched items display their official Guild Wars 2 item icon directly beside the item name.
-
 
 <img width="365" height="335" alt="itemicon" src="https://github.com/user-attachments/assets/6d127eea-fdb2-41c0-93a4-76f4bb6bab87" />
 
@@ -150,7 +149,6 @@ When the Collector is available, coverage is based on completed Collector scan t
 Selected-window analysis stays **DEVELOPING** when the requested time window is not sufficiently covered, preventing partial history from being presented as a complete 3-day, 7-day, or longer conclusion.
 
 <img width="1497" height="1179" alt="marketanalysis" src="https://github.com/user-attachments/assets/57479002-ec6f-4e55-a33d-b898ccd273da" />
-
 
 ---
 
@@ -260,51 +258,55 @@ Trend direction is also strict to the selected window. If history does not reach
 
 ## Copper&Claw Collector Integration
 
-Copper&Claw can optionally use the standalone **Copper&Claw Collector** as its preferred market-data source.
+Copper&Claw can use the standalone **Copper&Claw Collector** as its preferred market-data source.
 
-By default, Copper&Claw connects to a local Collector at:
-
-```text
-http://127.0.0.1:5177/
-```
-
-The Collector connection is now configurable through `CopperAndClaw.ini`:
+The current default connection is the hosted HTTPS Collector:
 
 ```text
-collectorHost=127.0.0.1
-collectorPort=5177
-collectorUseHttps=0
+https://copperclaw-api.duckdns.org/
 ```
 
-These defaults preserve the current local-development behavior while allowing a future hosted Collector to use a different hostname, port, and HTTPS without changing Copper&Claw networking code again.
+The persisted connection settings are:
+
+```text
+collectorHost=copperclaw-api.duckdns.org
+collectorPort=443
+collectorUseHttps=1
+```
+
+Existing installations using the original local defaults are migrated automatically when they still contain either of these exact legacy configurations:
+
+```text
+localhost:5177 over HTTP
+127.0.0.1:5177 over HTTP
+```
 
 Current integration behavior:
 
 - current watched-item prices are requested from the Collector first
 - current-price, history, and completed-snapshot Collector requests all use the configured host, port, and HTTP/HTTPS mode
 - historical Collector data is imported for watched items
-- Collector history imports are currently bounded to 90 days, matching Copper&Claw's longest selectable Trend Window, instead of downloading an item's entire lifetime history
+- Collector history imports are bounded to 90 days, matching Copper&Claw's longest selectable Trend Window
 - completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations for analysis
-- completed-snapshot requests are currently bounded to 90 days, matching Copper&Claw's longest selectable Trend Window, instead of downloading the Collector's entire lifetime snapshot timeline
+- completed-snapshot requests are bounded to 90 days
 - existing Copper&Claw local history is preserved
 - imported Collector history is merged with local history
 - exact duplicate historical observations are skipped
 - if the Collector is unavailable when Guild Wars 2 starts, history import is retried later automatically
-- no Guild Wars 2 restart is required when the Collector becomes available later
 - automatic refresh uses a 5-minute cadence while the Collector is available
 - automatic refresh falls back to 60 seconds when the Collector is unavailable
-- manual Refresh and Refresh All remain immediate when accepted, with a shared 10-second manual-refresh cooldown to prevent accidental rapid repeated requests
+- manual Refresh and Refresh All remain immediate when accepted, with a shared 10-second cooldown
 - if the Collector cannot provide current pricing, Copper&Claw falls back to the official Guild Wars 2 API
 - the Trading Post tab shows a compact Collector status line with connection state, current price source, current analysis source, last successful Collector contact, and last completed Collector scan age
-- completed scan age is shown normally while fresh, turns yellow at 10 minutes, and red at 15 minutes or older to make stale market data immediately visible
+- completed scan age is shown normally while fresh, turns yellow at 10 minutes, and red at 15 minutes or older
 
 The status line distinguishes service reachability from data freshness. `Contact` shows how long it has been since Copper&Claw last successfully requested a price from the Collector, while `Scan` shows the age of the newest completed Collector market scan.
 
-Collector history requests use the bounded endpoint form `GET /item/{itemID}/history?days=90`. The Collector automatically includes the newest history event immediately before the 90-day cutoff when one exists, so Copper&Claw can still reconstruct the price state that was already active at the start of the requested window.
+Collector history requests use `GET /item/{itemID}/history?days=90`. The Collector includes the newest history event immediately before the 90-day cutoff when one exists so Copper&Claw can reconstruct the price state already active at the start of the requested window.
 
-Completed Collector scan timestamps are requested with `GET /snapshots/completed?days=90`. This keeps the snapshot timeline bounded to the maximum analysis window Copper&Claw currently uses and avoids downloading an ever-growing lifetime list of completed scans.
+Completed Collector scan timestamps are requested with `GET /snapshots/completed?days=90`.
 
-The Collector is not required for Copper&Claw to function. Without it, the addon continues using the Guild Wars 2 API and its own local history as before.
+The Collector remains optional from the addon's point of view. If the hosted Collector cannot be reached, Copper&Claw continues using the Guild Wars 2 API for current pricing and its own local history for analysis.
 
 ---
 
@@ -368,7 +370,6 @@ The item-search cache is not included because Copper&Claw can rebuild it automat
 
 On first launch, Copper&Claw builds a searchable Trading Post item index using the Guild Wars 2 API.
 
-
 <img width="543" height="56" alt="itemindex" src="https://github.com/user-attachments/assets/fe8e9588-9d5b-43ab-80d9-0b0cb555a305" />
 
 While the index is building:
@@ -391,8 +392,8 @@ allow it to finish before judging search behavior.
 Some Copper&Claw updates may require the Trading Post item index to rebuild.
 
 When this applies, Copper&Claw displays a one-time notice after the updated addon is loaded.
-<img width="470" height="146" alt="updatenotification" src="https://github.com/user-attachments/assets/f6074c48-49f1-4e53-9b9c-3d53635ad518" />
 
+<img width="470" height="146" alt="updatenotification" src="https://github.com/user-attachments/assets/f6074c48-49f1-4e53-9b9c-3d53635ad518" />
 
 The rebuild starts automatically and may take a couple minutes.
 
@@ -435,7 +436,9 @@ Aurene's Bite is added as a **first-run starter item**, but it can be removed no
 
 Copper&Claw creates its local settings and data files automatically.
 
-The standalone Copper&Claw Collector is optional. With the default settings, if it is running locally on `127.0.0.1:5177`, Copper&Claw automatically detects and uses it. The Collector host, port, and HTTP/HTTPS mode are persisted in `CopperAndClaw.ini` for future remote/hosted Collector use.
+Current builds default to the hosted Collector at `https://copperclaw-api.duckdns.org/`. No separate local Collector setup is required for normal hosted-Collector use.
+
+If the hosted Collector is unavailable, Copper&Claw falls back automatically to the Guild Wars 2 API for current prices and continues using local history for analysis.
 
 ---
 
