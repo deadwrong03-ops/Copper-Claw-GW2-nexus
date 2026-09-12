@@ -149,7 +149,8 @@ When the Collector is available, coverage is based on completed Collector scan t
 
 Selected-window analysis stays **DEVELOPING** when the requested time window is not sufficiently covered, preventing partial history from being presented as a complete 3-day, 7-day, or longer conclusion.
 
-<img width="1497" height="1179" alt="marketanalysis" src="https://github.com/user-attachments/assets/57479002-ec6f-4e55-a33d-b898ccd273da" />
+
+<img width="350" height="350" alt="newmarketlook2" src="https://github.com/user-attachments/assets/3e42ed4c-67cf-48b5-bfcf-072823799c49" />
 
 ---
 
