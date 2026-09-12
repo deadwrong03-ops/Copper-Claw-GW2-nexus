@@ -7,7 +7,8 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 ## Status
 
-**Latest Release:** v0.1.3  
+**Latest Published Release:** v0.1.2  
+**Release Candidate:** v0.1.3  
 **Development:** Active
 
 > **Development Note:** Copper&Claw is actively developed. Some recently added features or improvements may be available in the source or development build before they are included in the latest published release.
@@ -37,12 +38,13 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
+- Boxed Sell / Buy analysis cards for clearer visual separation
 - Collector snapshot-aware confidence and coverage, with gap-aware local-history fallback
 - Colored **Market Volatility** classification based on scan-to-scan movement
 - Sortable watch list
 - **Normal / Slim / Ultra Slim** watch-list views
 - Optional per-item **Favorites** with an instant Favorites-only view
-- Sell / Buy price-history sparklines that follow the selected **Trend Window**
+- Sell / Buy price-history sparklines that follow the selected **Trend Window**, with time/price axes, current-price and change readouts, and a subtle live endpoint sparkle
 - Historical minimum / average / maximum prices
 - Dragon Bash-style **Target Reached** alerts
 - Built-in automatic **Backup & Restore** for local Copper&Claw data
@@ -250,7 +252,17 @@ The old standalone History panel has been removed from the watch-list UI to keep
 
 The Sell and Buy sparklines in Analysis use the currently selected **Trend Window**, so the graph and the surrounding market analysis refer to the same period.
 
-Sparkline horizontal spacing is timestamp-based rather than sample-index-based, so visible movement occurs at the correct relative time within the selected window.
+Current chart presentation includes:
+
+- timestamp-based horizontal spacing
+- Y-axis price labels sized dynamically for low- and high-value items
+- X-axis labels for the full selected window, half-window, and **Now**
+- a faint midpoint guide
+- current price shown beside the chart
+- absolute coin change and percentage change for the selected Trend Window
+- a small latest-price endpoint marker with a brief periodic sparkle/pulse to indicate live data
+
+The sparkle is intentionally limited to the endpoint; the chart itself remains clean and unfilled.
 
 Trend direction is also strict to the selected window. If history does not reach the requested boundary, Copper&Claw shows **Developing** instead of silently falling back to a longer period of history.
 
@@ -439,6 +451,8 @@ Copper&Claw creates its local settings and data files automatically.
 Current builds default to the hosted Collector at `https://copperclaw-api.duckdns.org/`. No separate local Collector setup is required for normal hosted-Collector use.
 
 If the hosted Collector is unavailable, Copper&Claw falls back automatically to the Guild Wars 2 API for current prices and continues using local history for analysis.
+
+The current source is being finalized as the **v0.1.3 release candidate**. The published-release label above should be updated after the GitHub v0.1.3 release is created.
 
 ---
 

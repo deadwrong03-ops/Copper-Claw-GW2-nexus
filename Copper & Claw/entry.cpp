@@ -318,6 +318,6 @@ void AddonOptions()
     ImGui::Separator();
 
     ImGui::TextDisabled(
-        "Copper&Claw v0.1.3 - Development Build"
+        "Copper&Claw v0.1.3"
     );
 }

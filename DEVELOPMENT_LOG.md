@@ -8,12 +8,98 @@ The project began by extracting the already-working Trading Post framework that 
 
 Display name: `Copper&Claw`  
 Filesystem/data prefix: `CopperAndClaw`  
-Latest published release: `v0.1.3`  
+Latest published release: `v0.1.2`  
+Current release candidate: `v0.1.3`  
 Development: `Active`
 
 Current development builds may contain features or improvements that have not yet been included in the latest published release.
 
 ---
+
+
+## 2026-09-12 — v0.1.3 Final UI Polish & Release Smoke Test
+
+Completed the final Trading Post chart/presentation pass and a focused in-game release smoke test before packaging v0.1.3.
+
+### Market Analysis card presentation
+
+The left-side Sell Listings and Buy Orders analysis blocks are now visually boxed into separate lightweight cards.
+
+Current presentation:
+
+- Sell Listings uses the existing green Sell-side accent
+- Buy Orders uses the existing blue Buy-side accent
+- cards use subtle borders and stronger left accent lines
+- no heavy filled background was added, keeping the analysis readable and compact
+
+**Result: PASS**
+
+### Sparkline chart presentation
+
+The Sell and Buy sparklines were upgraded from plain mini-lines into compact market charts while keeping the underlying stored history and analysis calculations unchanged.
+
+Current presentation includes:
+
+- dynamically sized Y-axis price-label gutter so expensive items do not overlap the chart
+- max / midpoint / min Y-axis price labels
+- X-axis labels for the full selected Trend Window, exact half-window, and `Now`
+- timestamp-based point placement
+- faint horizontal and vertical midpoint guides
+- current price displayed beside the chart
+- selected-window coin change and percentage change displayed beside the chart
+- thicker 2 px Sell / Buy chart lines
+- current-price endpoint dot
+
+A filled/glow-under-line experiment was implemented and tested in-game, but the result looked visually banded/jagged with real Collector-backed data. The glow/fill was removed.
+
+Decision:
+
+- keep the chart line clean and unfilled
+- retain the endpoint dot
+- retain the axes/current-price/change information
+
+**Result: PASS**
+
+### Live endpoint sparkle
+
+Added a very small periodic animation to the newest-price endpoint marker.
+
+Behavior:
+
+- endpoint dot remains visible normally
+- approximately every four seconds, a short faint ring expands from the dot
+- a small cross-shaped glint appears briefly with the ring
+- the effect fades in under one second
+- Sell uses the Sell-side green
+- Buy uses the Buy-side blue
+- no animation is applied to the chart line itself
+
+In-game screenshot validation confirmed the effect reads as a subtle live-data cue without distracting from the chart.
+
+**Result: PASS**
+
+### Release smoke test
+
+Current in-game smoke-test status:
+
+- Copper&Claw loaded successfully through Nexus — PASS
+- game remained stable with the current build loaded — PASS
+- hosted Collector connection active — PASS
+- `Price: Collector` active — PASS
+- `Analysis: Collector Snapshots` active — PASS
+- Collector-unavailable fallback behavior — PASS from previously validated integration testing
+- Sell Target behavior — PASS
+- Buy Target behavior — PASS
+- Favorites persistence across normal use/restarts — PASS
+- Backup & Restore tab / ongoing backups — PASS
+- final chart/card/sparkle presentation — PASS
+
+The exact final Release x64 DLL still needs to be rebuilt and tested before the Git tag / GitHub release is created.
+
+**Result: RELEASE CANDIDATE FUNCTIONALLY VALIDATED — FINAL RELEASE BUILD PENDING**
+
+---
+
 ## 2026-09-11 — Hosted Collector Deployment
 
 Moved Copper&Claw's default Collector connection from the original local-development service to the hosted HTTPS Collector.
@@ -804,7 +890,7 @@ This change does not deploy or expose the Collector remotely. It removes the add
 
 ---
 
-## 2026-09-08 — v0.1.3 Release Preparation
+## 2026-09-08 — v0.1.3 Release Preparation (Superseded by 2026-09-12 Final Release Pass)
 
 Prepared Copper&Claw v0.1.3 for release after completing the post-v0.1.2 Trading Post UI and usability pass.
 
@@ -2293,27 +2379,28 @@ Replace only if Copper&Claw later receives an assigned Raidcore signature.
 
 - [x] bump `entry.cpp` version to `0.1.3.0`
 - [x] update in-app footer to `Copper&Claw v0.1.3 - Development Build`
-- [x] update `README.md` for v0.1.3
-- [x] update `DEVELOPMENT_LOG.md` for v0.1.3
+- [x] update `README.md` for v0.1.3 release candidate
+- [x] update `DEVELOPMENT_LOG.md` for v0.1.3 release candidate
+- [x] hosted Collector connection validated in-game
+- [x] Collector-backed pricing / snapshot analysis validated in-game
+- [x] Collector fallback behavior previously validated
+- [x] Sell Target behavior verified
+- [x] Buy Target behavior verified
+- [x] Favorites persistence verified
+- [x] Backup & Restore / ongoing backups verified
+- [x] final Sell / Buy analysis-card presentation verified
+- [x] final sparkline axes / current-price / change presentation verified
+- [x] endpoint sparkle verified in-game
 - [ ] perform clean **Release x64** rebuild
-- [ ] verify final DLL loads through Nexus
-- [ ] verify Nexus reports `0.1.3.0`
-- [ ] verify the v0.1.3 one-time update notice appears after the version change
-- [ ] verify watched-item icons repopulate normally
-- [ ] verify All Items / Favorites filtering
-- [ ] verify favorite state survives a Guild Wars 2 restart
-- [ ] verify Normal / Slim / Ultra Slim views
-- [ ] verify Trend Window / Sort / View / Show toolbar presentation
-- [ ] verify Sell / Buy sparklines follow the selected Trend Window
-- [ ] verify Sell Target behavior
-- [ ] verify Buy Target behavior
-- [ ] verify local history continues appending
-- [ ] verify Backup & Restore tab still opens normally
-- [ ] confirm no blocking regression during smoke test
-- [ ] commit release-prep changes
+- [ ] install and test the exact final Release x64 DLL
+- [ ] verify Nexus reports `0.1.3.0` on the final Release DLL
+- [ ] verify the v0.1.3 one-time update notice on the final Release DLL
+- [ ] confirm no blocking regression on the final Release DLL
+- [ ] commit final release-prep changes
 - [ ] push
 - [ ] create Git tag `v0.1.3`
 - [ ] create GitHub release `v0.1.3`
+- [ ] after publishing, update documentation that explicitly identifies the latest published release
 
 ---
 
