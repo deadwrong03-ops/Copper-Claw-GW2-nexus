@@ -7,8 +7,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 ## Status
 
-**Latest Published Release:** v0.1.3  
-**Release Candidate:** v0.1.4  
+**Latest Published Release:** v0.1.4  
 **Development:** Active
 
 > **Development Note:** Copper&Claw is actively developed. Some recently added features or improvements may be available in the source or development build before they are included in the latest published release.
@@ -454,7 +453,6 @@ Current builds default to the hosted Collector at `https://copperclaw-api.duckdn
 
 If the hosted Collector is unavailable, Copper&Claw falls back automatically to the Guild Wars 2 API for current prices and continues using local history for analysis.
 
-The current source is being finalized as the **v0.1.4 release candidate**. The published-release label above should be updated after the GitHub v0.1.4 release is created.
 
 ---
 
