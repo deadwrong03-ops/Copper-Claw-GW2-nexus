@@ -8,8 +8,8 @@ The project began by extracting the already-working Trading Post framework that 
 
 Display name: `Copper&Claw`  
 Filesystem/data prefix: `CopperAndClaw`  
-Latest published release: `v0.1.2`  
-Current release candidate: `v0.1.3`  
+Latest published release: `v0.1.3`  
+Current release candidate: `v0.1.4`  
 Development: `Active`
 
 Current development builds may contain features or improvements that have not yet been included in the latest published release.
@@ -17,9 +17,9 @@ Current development builds may contain features or improvements that have not ye
 ---
 
 
-## 2026-09-12 — v0.1.3 Final UI Polish & Release Smoke Test
+## 2026-09-12 — v0.1.4 Final UI Polish & Release Smoke Test
 
-Completed the final Trading Post chart/presentation pass and a focused in-game release smoke test before packaging v0.1.3.
+Completed the final Trading Post chart/presentation pass and a focused in-game release smoke test before packaging v0.1.4.
 
 ### Market Analysis card presentation
 
@@ -94,7 +94,7 @@ Current in-game smoke-test status:
 - Backup & Restore tab / ongoing backups — PASS
 - final chart/card/sparkle presentation — PASS
 
-The exact final Release x64 DLL still needs to be rebuilt and tested before the Git tag / GitHub release is created.
+The exact final v0.1.4 Release x64 DLL still needs to be rebuilt and tested before the Git tag / GitHub release is created.
 
 **Result: RELEASE CANDIDATE FUNCTIONALLY VALIDATED — FINAL RELEASE BUILD PENDING**
 
@@ -2375,12 +2375,12 @@ Replace only if Copper&Claw later receives an assigned Raidcore signature.
 
 ---
 
-## v0.1.3 Pre-Release Checklist
+## v0.1.4 Pre-Release Checklist
 
-- [x] bump `entry.cpp` version to `0.1.3.0`
-- [x] update in-app footer to `Copper&Claw v0.1.3 - Development Build`
-- [x] update `README.md` for v0.1.3 release candidate
-- [x] update `DEVELOPMENT_LOG.md` for v0.1.3 release candidate
+- [x] set `entry.cpp` version to `0.1.4.0`
+- [x] set in-app footer to `Copper&Claw v0.1.4`
+- [x] update `README.md` for v0.1.4 release candidate
+- [x] update `DEVELOPMENT_LOG.md` for v0.1.4 release candidate
 - [x] hosted Collector connection validated in-game
 - [x] Collector-backed pricing / snapshot analysis validated in-game
 - [x] Collector fallback behavior previously validated
@@ -2392,14 +2392,15 @@ Replace only if Copper&Claw later receives an assigned Raidcore signature.
 - [x] final sparkline axes / current-price / change presentation verified
 - [x] endpoint sparkle verified in-game
 - [ ] perform clean **Release x64** rebuild
-- [ ] install and test the exact final Release x64 DLL
-- [ ] verify Nexus reports `0.1.3.0` on the final Release DLL
-- [ ] verify the v0.1.3 one-time update notice on the final Release DLL
-- [ ] confirm no blocking regression on the final Release DLL
-- [ ] commit final release-prep changes
+- [ ] install and test the exact final v0.1.4 Release x64 DLL
+- [ ] verify Nexus reports `0.1.4.0`
+- [ ] verify footer reports `Copper&Claw v0.1.4`
+- [ ] verify the v0.1.4 one-time update notice appears after the version change
+- [ ] confirm no blocking regression on the final v0.1.4 Release DLL
+- [ ] commit final v0.1.4 release-prep changes
 - [ ] push
-- [ ] create Git tag `v0.1.3`
-- [ ] create GitHub release `v0.1.3`
+- [ ] create Git tag `v0.1.4`
+- [ ] create GitHub release `v0.1.4`
 - [ ] after publishing, update documentation that explicitly identifies the latest published release
 
 ---

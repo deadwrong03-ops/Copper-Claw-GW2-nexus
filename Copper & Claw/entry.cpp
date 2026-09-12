@@ -59,7 +59,7 @@ AddonDefinition_t* GetAddonDef()
 
     AddonDef.Version.Major = 0;
     AddonDef.Version.Minor = 1;
-    AddonDef.Version.Build = 3;
+    AddonDef.Version.Build = 4;
     AddonDef.Version.Revision = 0;
 
     AddonDef.Author =
@@ -318,6 +318,6 @@ void AddonOptions()
     ImGui::Separator();
 
     ImGui::TextDisabled(
-        "Copper&Claw v0.1.3"
+        "Copper&Claw v0.1.4"
     );
 }
