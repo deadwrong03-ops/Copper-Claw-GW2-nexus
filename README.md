@@ -238,7 +238,7 @@ This makes it easier to select the exact Trading Post listing you intended to wa
 Copper&Claw preserves its own local Trading Post history and can also import historical market data from the standalone Copper&Claw Collector when that service is available.
 
 
-<img width="474" height="208" alt="collector status" src="https://github.com/user-attachments/assets/a5c22fcf-5f71-4cf7-9c1b-cd18e66836f8" />
+
 
 
 Current behavior:
