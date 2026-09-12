@@ -67,6 +67,67 @@ The existing Guild Wars 2 API fallback remains available if the hosted Collector
 
 **Result: PASS — HOSTED COLLECTOR ACTIVE**
 
+## 2026-09-12 — Hosted Collector History Migration
+
+Safely merged the historical data collected by the original Windows/local Collector into the production VPS Collector database so hosted collection could continue without losing the earlier market history.
+
+### Migration safeguards
+
+The live Collector service was stopped before database replacement.
+
+Before any merge work:
+
+- the production VPS SQLite database was checkpointed
+- `PRAGMA integrity_check` returned `ok`
+- a pre-merge backup was retained as `CopperClaw-before-merge-backup.db`
+- the old Windows Collector database was uploaded separately
+- all merge work was first performed against a disposable copy of the VPS database
+
+### Import boundary
+
+The old Windows Collector had continued running after the VPS Collector began, so the databases contained overlapping time ranges.
+
+To prevent duplicate or conflicting production history, the migration imported only old Collector runs that were both:
+
+- `COMPLETE`
+- started strictly before the VPS Collector's first scan at `2026-09-11T05:38:44.1801029Z`
+
+Migration selection:
+
+- 273 old runs existed before the cutoff
+- 264 were `COMPLETE` and imported
+- 9 failed runs were excluded
+- all old runs at or after the VPS start time were excluded
+
+### Imported history
+
+The successful migration added:
+
+- 264 completed historical snapshot runs
+- 305,162 `price_history` rows
+- 27,987 legacy `price_snapshots` rows
+
+Existing VPS `current_prices` and `item_metadata` were preserved.
+
+The merged database contained 387 total snapshot runs immediately before the Collector was restarted.
+
+### Validation
+
+Validation passed at each stage:
+
+- merge-test database integrity check: `ok`
+- foreign-key check: clean
+- live merged database integrity check: `ok`
+- `copperclaw-collector` systemd service restarted successfully and returned `active`
+- public HTTPS `/health` returned `status: ok`
+- Copper&Claw connected in-game using the hosted Collector
+- Collector-backed pricing and snapshot analysis remained active
+- historical sample counts and graphs were populated after migration
+
+The original pre-merge VPS database backup is being retained as a rollback copy.
+
+**Result: PASS — LOCAL HISTORY MIGRATED TO HOSTED COLLECTOR**
+
 
 
 ## 2026-09-10 — Copper&Claw Collector Integration
@@ -2130,6 +2191,24 @@ Current behavior:
 - shared 10-second cooldown for manual Refresh / Refresh All
 
 Cleaner in-game Collector connection/status presentation has been implemented and validated. The status line reports connection state, price source, analysis source, last successful Collector contact, and completed-scan age with stale-data warning colors. Tighter synchronization to Collector snapshot timing remains a possible future refinement.
+
+### Collector database size management — TODO
+
+The hosted Collector now runs continuously, so long-term SQLite growth needs to be self-managed before the historical database becomes unnecessarily large.
+
+Planned retention / rollup work:
+
+- keep full change-level history for approximately 90 days
+- roll older history into hourly summaries
+- roll much older history into daily summaries for long-term trend retention
+- automatically prune raw rows that have been superseded by rollups
+- periodically reclaim unused SQLite space after pruning
+- log / monitor database file size
+- add warning thresholds such as 1 GB and 5 GB
+
+Goal: preserve useful multi-year market history without requiring a very large database file to be manually managed.
+
+**Status: TODO — HIGH PRIORITY COLLECTOR MAINTENANCE**
 
 ### Aurene's Bite starter item
 

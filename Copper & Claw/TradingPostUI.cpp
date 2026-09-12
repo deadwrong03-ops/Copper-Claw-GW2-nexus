@@ -2193,6 +2193,12 @@ void TradingPostUI::RenderTab(
                 "m";
         };
 
+    const std::string halfTrendWindowLabel =
+        FormatHistorySpan(
+            trendWindowSeconds /
+            2ULL
+        );
+
     struct WindowCoverageInfo
     {
         uint64_t coveredSeconds = 0;
@@ -2944,7 +2950,7 @@ void TradingPostUI::RenderTab(
     };
 
     auto DrawSparkline =
-        [](
+        [&](
             const char* id,
             const std::vector<
             SparklinePoint
@@ -2952,6 +2958,11 @@ void TradingPostUI::RenderTab(
             uint64_t rangeStartTimestamp,
             uint64_t rangeEndTimestamp,
             const ImVec4& lineColor,
+            const ImVec4& changeColor,
+            const char* fullWindowLabel,
+            const char* halfWindowLabel,
+            const TrendInfo& trend,
+            uint64_t currentPriceCopper,
             float width,
             float height
             )
@@ -2959,56 +2970,127 @@ void TradingPostUI::RenderTab(
             if (
                 values.size() < 2 ||
                 rangeEndTimestamp <=
-                rangeStartTimestamp
+                rangeStartTimestamp ||
+                width <= 320.0f ||
+                height <= 60.0f
                 )
             {
                 return;
             }
 
-            float minValue =
-                values.front().value;
+            //
+            // Keep the stored/analysis history untouched. The following
+            // smoothing is display-only and removes isolated one-scan spikes
+            // that can make dense Collector history look visually broken.
+            //
+            std::vector<
+                SparklinePoint
+            > visibleValues;
 
-            float maxValue =
-                values.front().value;
+            visibleValues.reserve(
+                values.size()
+            );
 
             for (
                 const SparklinePoint& point :
                 values
                 )
             {
-                if (point.value < minValue)
+                if (
+                    point.timestampUnixSeconds <
+                    rangeStartTimestamp ||
+                    point.timestampUnixSeconds >
+                    rangeEndTimestamp
+                    )
                 {
-                    minValue =
-                        point.value;
+                    continue;
                 }
 
-                if (point.value > maxValue)
+                visibleValues.push_back(
+                    point
+                );
+            }
+
+            if (visibleValues.size() < 2)
+            {
+                return;
+            }
+
+            std::vector<
+                SparklinePoint
+            > displayValues =
+                visibleValues;
+
+            if (visibleValues.size() >= 3)
+            {
+                for (
+                    size_t i = 1;
+                    i + 1 < visibleValues.size();
+                    ++i
+                    )
                 {
-                    maxValue =
-                        point.value;
+                    float a =
+                        visibleValues[
+                            i - 1
+                        ].value;
+
+                    float b =
+                        visibleValues[
+                            i
+                        ].value;
+
+                    float c =
+                        visibleValues[
+                            i + 1
+                        ].value;
+
+                    if (a > b)
+                    {
+                        std::swap(
+                            a,
+                            b
+                        );
+                    }
+
+                    if (b > c)
+                    {
+                        std::swap(
+                            b,
+                            c
+                        );
+                    }
+
+                    if (a > b)
+                    {
+                        std::swap(
+                            a,
+                            b
+                        );
+                    }
+
+                    displayValues[
+                        i
+                    ].value =
+                        b;
                 }
             }
 
-            const float range =
-                maxValue -
-                minValue;
+            const float statsWidth =
+                145.0f;
 
-            const float padding =
-                range > 0.0f
-                ? range * 0.10f
-                : (
-                    maxValue > 0.0f
-                    ? maxValue * 0.005f
-                    : 1.0f
-                    );
+            const float statsGap =
+                14.0f;
 
-            const float scaleMin =
-                minValue -
-                padding;
+            const float plotTopPadding =
+                3.0f;
 
-            const float scaleMax =
-                maxValue +
-                padding;
+            const float xLabelHeight =
+                19.0f;
+
+            const float plotHeight =
+                height -
+                xLabelHeight -
+                plotTopPadding;
 
             const ImVec2 start =
                 ImGui::
@@ -3026,11 +3108,429 @@ void TradingPostUI::RenderTab(
                 ImGui::
                 GetWindowDrawList();
 
-            std::vector<ImVec2>
-                drawPoints;
+            float minValue =
+                displayValues.front().value;
+
+            float maxValue =
+                displayValues.front().value;
+
+            for (
+                const SparklinePoint& point :
+                displayValues
+                )
+            {
+                minValue =
+                    std::min(
+                        minValue,
+                        point.value
+                    );
+
+                maxValue =
+                    std::max(
+                        maxValue,
+                        point.value
+                    );
+            }
+
+            const float rawRange =
+                maxValue -
+                minValue;
+
+            const float padding =
+                rawRange > 0.0f
+                ? rawRange * 0.10f
+                : (
+                    maxValue > 0.0f
+                    ? maxValue * 0.005f
+                    : 1.0f
+                    );
+
+            const float scaleMin =
+                minValue -
+                padding;
+
+            const float scaleMax =
+                maxValue +
+                padding;
+
+            const float scaleMid =
+                (
+                    scaleMin +
+                    scaleMax
+                    ) *
+                0.5f;
+
+            const ImU32 axisColor =
+                IM_COL32(
+                    128,
+                    132,
+                    140,
+                    120
+                );
+
+            const ImU32 guideColor =
+                IM_COL32(
+                    128,
+                    132,
+                    140,
+                    62
+                );
+
+            const ImU32 mutedTextColor =
+                IM_COL32(
+                    180,
+                    183,
+                    190,
+                    220
+                );
+
+            const auto GoldToCopper =
+                [](
+                    float gold
+                    ) -> uint64_t
+                {
+                    if (gold <= 0.0f)
+                    {
+                        return 0ULL;
+                    }
+
+                    return
+                        static_cast<uint64_t>(
+                            gold *
+                            10000.0f +
+                            0.5f
+                            );
+                };
+
+            const std::string maxPriceLabel =
+                FormatCoinValue(
+                    GoldToCopper(
+                        scaleMax
+                    )
+                );
+
+            const std::string midPriceLabel =
+                FormatCoinValue(
+                    GoldToCopper(
+                        scaleMid
+                    )
+                );
+
+            const std::string minPriceLabel =
+                FormatCoinValue(
+                    GoldToCopper(
+                        scaleMin
+                    )
+                );
+
+            //
+            // Size the Y-axis gutter from the actual widest formatted price.
+            // This prevents expensive items (for example 1,000g+) from
+            // overlapping the chart line.
+            //
+            const float maxYAxisLabelTextWidth =
+                std::max(
+                    ImGui::CalcTextSize(
+                        maxPriceLabel.c_str()
+                    ).x,
+                    std::max(
+                        ImGui::CalcTextSize(
+                            midPriceLabel.c_str()
+                        ).x,
+                        ImGui::CalcTextSize(
+                            minPriceLabel.c_str()
+                        ).x
+                    )
+                );
+
+            const float yLabelWidth =
+                maxYAxisLabelTextWidth +
+                12.0f;
+
+            const float plotWidth =
+                std::max(
+                    130.0f,
+                    width -
+                    yLabelWidth -
+                    statsWidth -
+                    statsGap
+                );
+
+            const float plotLeft =
+                start.x +
+                yLabelWidth;
+
+            const float plotRight =
+                plotLeft +
+                plotWidth;
+
+            const float plotTop =
+                start.y +
+                plotTopPadding;
+
+            const float plotBottom =
+                plotTop +
+                plotHeight;
+
+            const float plotMidY =
+                (
+                    plotTop +
+                    plotBottom
+                    ) *
+                0.5f;
+
+            const float plotMidX =
+                (
+                    plotLeft +
+                    plotRight
+                    ) *
+                0.5f;
+
+            //
+            // Axes and lightweight guides.
+            //
+            drawList->AddLine(
+                ImVec2(
+                    plotLeft,
+                    plotTop
+                ),
+                ImVec2(
+                    plotLeft,
+                    plotBottom
+                ),
+                axisColor,
+                1.0f
+            );
+
+            drawList->AddLine(
+                ImVec2(
+                    plotLeft,
+                    plotBottom
+                ),
+                ImVec2(
+                    plotRight,
+                    plotBottom
+                ),
+                axisColor,
+                1.0f
+            );
+
+            drawList->AddLine(
+                ImVec2(
+                    plotMidX,
+                    plotTop
+                ),
+                ImVec2(
+                    plotMidX,
+                    plotBottom
+                ),
+                guideColor,
+                1.0f
+            );
+
+            drawList->AddLine(
+                ImVec2(
+                    plotLeft,
+                    plotMidY
+                ),
+                ImVec2(
+                    plotRight,
+                    plotMidY
+                ),
+                IM_COL32(
+                    128,
+                    132,
+                    140,
+                    34
+                ),
+                1.0f
+            );
+
+            drawList->AddText(
+                ImVec2(
+                    start.x,
+                    plotTop - 2.0f
+                ),
+                mutedTextColor,
+                maxPriceLabel.c_str()
+            );
+
+            drawList->AddText(
+                ImVec2(
+                    start.x,
+                    plotMidY -
+                    ImGui::GetTextLineHeight() *
+                    0.5f
+                ),
+                mutedTextColor,
+                midPriceLabel.c_str()
+            );
+
+            drawList->AddText(
+                ImVec2(
+                    start.x,
+                    plotBottom -
+                    ImGui::GetTextLineHeight()
+                ),
+                mutedTextColor,
+                minPriceLabel.c_str()
+            );
+
+            //
+            // If Collector history is denser than the available screen width,
+            // average it into horizontal screen-space buckets. This keeps the
+            // line readable while retaining the real timestamp spacing.
+            //
+            const size_t maxDisplayPoints =
+                std::max<size_t>(
+                    2,
+                    static_cast<size_t>(
+                        plotWidth
+                        )
+                );
+
+            if (
+                displayValues.size() >
+                maxDisplayPoints
+                )
+            {
+                std::vector<
+                    SparklinePoint
+                > bucketedValues;
+
+                bucketedValues.reserve(
+                    maxDisplayPoints
+                );
+
+                const double pointsPerBucket =
+                    static_cast<double>(
+                        displayValues.size()
+                        ) /
+                    static_cast<double>(
+                        maxDisplayPoints
+                        );
+
+                for (
+                    size_t bucketIndex = 0;
+                    bucketIndex <
+                    maxDisplayPoints;
+                    ++bucketIndex
+                    )
+                {
+                    size_t firstIndex =
+                        static_cast<size_t>(
+                            static_cast<double>(
+                                bucketIndex
+                                ) *
+                            pointsPerBucket
+                            );
+
+                    size_t endIndex =
+                        static_cast<size_t>(
+                            static_cast<double>(
+                                bucketIndex + 1
+                                ) *
+                            pointsPerBucket
+                            );
+
+                    if (
+                        endIndex <=
+                        firstIndex
+                        )
+                    {
+                        endIndex =
+                            firstIndex + 1;
+                    }
+
+                    endIndex =
+                        std::min(
+                            endIndex,
+                            displayValues.size()
+                        );
+
+                    if (
+                        firstIndex >=
+                        displayValues.size()
+                        )
+                    {
+                        break;
+                    }
+
+                    double valueTotal =
+                        0.0;
+
+                    long double timestampTotal =
+                        0.0L;
+
+                    size_t count =
+                        0;
+
+                    for (
+                        size_t i = firstIndex;
+                        i < endIndex;
+                        ++i
+                        )
+                    {
+                        valueTotal +=
+                            static_cast<double>(
+                                displayValues[
+                                    i
+                                ].value
+                                );
+
+                        timestampTotal +=
+                            static_cast<
+                            long double
+                            >(
+                                displayValues[
+                                    i
+                                ].
+                                timestampUnixSeconds
+                                        );
+
+                        ++count;
+                    }
+
+                    if (count == 0)
+                    {
+                        continue;
+                    }
+
+                    SparklinePoint point;
+
+                    point.value =
+                        static_cast<float>(
+                            valueTotal /
+                            static_cast<double>(
+                                count
+                                )
+                            );
+
+                    point.timestampUnixSeconds =
+                        static_cast<uint64_t>(
+                            timestampTotal /
+                            static_cast<
+                            long double
+                            >(
+                                count
+                                )
+                            );
+
+                    bucketedValues.push_back(
+                        point
+                    );
+                }
+
+                displayValues =
+                    bucketedValues;
+            }
+
+            std::vector<
+                ImVec2
+            > drawPoints;
 
             drawPoints.reserve(
-                values.size()
+                displayValues.size()
             );
 
             const float valueDenominator =
@@ -3045,7 +3545,7 @@ void TradingPostUI::RenderTab(
 
             for (
                 const SparklinePoint& point :
-                values
+                displayValues
                 )
             {
                 const uint64_t clampedTimestamp =
@@ -3065,16 +3565,19 @@ void TradingPostUI::RenderTab(
                     timeDenominator;
 
                 const float x =
-                    start.x +
+                    plotLeft +
                     static_cast<float>(
                         timeFraction
                         ) *
-                    width;
+                    plotWidth;
 
                 float normalized =
                     0.5f;
 
-                if (valueDenominator > 0.0f)
+                if (
+                    valueDenominator >
+                    0.0f
+                    )
                 {
                     normalized =
                         (
@@ -3085,12 +3588,9 @@ void TradingPostUI::RenderTab(
                 }
 
                 const float y =
-                    start.y +
-                    height -
-                    (
-                        normalized *
-                        height
-                        );
+                    plotBottom -
+                    normalized *
+                    plotHeight;
 
                 drawPoints.emplace_back(
                     x,
@@ -3100,26 +3600,338 @@ void TradingPostUI::RenderTab(
 
             const ImVec4 brighterLineColor(
                 lineColor.x +
-                (1.0f - lineColor.x) * 0.18f,
+                (
+                    1.0f -
+                    lineColor.x
+                    ) *
+                0.18f,
                 lineColor.y +
-                (1.0f - lineColor.y) * 0.18f,
+                (
+                    1.0f -
+                    lineColor.y
+                    ) *
+                0.18f,
                 lineColor.z +
-                (1.0f - lineColor.z) * 0.18f,
+                (
+                    1.0f -
+                    lineColor.z
+                    ) *
+                0.18f,
                 1.0f
             );
+
+            const ImU32 lineU32 =
+                ImGui::
+                ColorConvertFloat4ToU32(
+                    brighterLineColor
+                );
 
             drawList->AddPolyline(
                 drawPoints.data(),
                 static_cast<int>(
                     drawPoints.size()
                     ),
+                lineU32,
+                false,
+                2.0f
+            );
+
+            if (!drawPoints.empty())
+            {
+                const ImVec2 latestPoint =
+                    drawPoints.back();
+
+                //
+                // Keep the newest-price marker visible at all times.
+                //
+                drawList->AddCircleFilled(
+                    latestPoint,
+                    3.3f,
+                    lineU32
+                );
+
+                //
+                // Subtle "live price" sparkle:
+                // every ~4 seconds, briefly expand a faint ring and glint
+                // around the newest-price dot. The effect is short-lived so
+                // it draws attention without constantly pulsing.
+                //
+                const float sparkleCycleSeconds =
+                    4.0f;
+
+                const float sparkleDurationSeconds =
+                    0.85f;
+
+                const float sparklePhase =
+                    std::fmod(
+                        static_cast<float>(
+                            ImGui::GetTime()
+                            ),
+                        sparkleCycleSeconds
+                    );
+
+                if (
+                    sparklePhase <
+                    sparkleDurationSeconds
+                    )
+                {
+                    const float sparkleProgress =
+                        sparklePhase /
+                        sparkleDurationSeconds;
+
+                    const float sparkleFade =
+                        1.0f -
+                        sparkleProgress;
+
+                    const float ringRadius =
+                        4.6f +
+                        sparkleProgress *
+                        7.0f;
+
+                    const ImU32 ringColor =
+                        ImGui::
+                        ColorConvertFloat4ToU32(
+                            ImVec4(
+                                brighterLineColor.x,
+                                brighterLineColor.y,
+                                brighterLineColor.z,
+                                0.62f *
+                                sparkleFade
+                            )
+                        );
+
+                    drawList->AddCircle(
+                        latestPoint,
+                        ringRadius,
+                        ringColor,
+                        24,
+                        1.4f
+                    );
+
+                    //
+                    // Small four-point glint that fades faster than the ring.
+                    //
+                    const float glintFade =
+                        sparkleFade *
+                        sparkleFade;
+
+                    const float glintLength =
+                        3.0f +
+                        sparkleProgress *
+                        3.0f;
+
+                    const ImU32 glintColor =
+                        ImGui::
+                        ColorConvertFloat4ToU32(
+                            ImVec4(
+                                brighterLineColor.x,
+                                brighterLineColor.y,
+                                brighterLineColor.z,
+                                0.90f *
+                                glintFade
+                            )
+                        );
+
+                    drawList->AddLine(
+                        ImVec2(
+                            latestPoint.x -
+                            glintLength,
+                            latestPoint.y
+                        ),
+                        ImVec2(
+                            latestPoint.x +
+                            glintLength,
+                            latestPoint.y
+                        ),
+                        glintColor,
+                        1.0f
+                    );
+
+                    drawList->AddLine(
+                        ImVec2(
+                            latestPoint.x,
+                            latestPoint.y -
+                            glintLength
+                        ),
+                        ImVec2(
+                            latestPoint.x,
+                            latestPoint.y +
+                            glintLength
+                        ),
+                        glintColor,
+                        1.0f
+                    );
+                }
+            }
+
+            //
+            // X-axis labels: full selected Trend Window, exact half-window,
+            // and Now.
+            //
+            const std::string leftLabel =
+                std::string(
+                    fullWindowLabel
+                ) +
+                " ago";
+
+            const std::string middleLabel =
+                std::string(
+                    halfWindowLabel
+                ) +
+                " ago";
+
+            const char* rightLabel =
+                "Now";
+
+            drawList->AddText(
+                ImVec2(
+                    plotLeft,
+                    plotBottom + 3.0f
+                ),
+                mutedTextColor,
+                leftLabel.c_str()
+            );
+
+            const float middleWidth =
+                ImGui::CalcTextSize(
+                    middleLabel.c_str()
+                ).x;
+
+            drawList->AddText(
+                ImVec2(
+                    plotMidX -
+                    middleWidth *
+                    0.5f,
+                    plotBottom + 3.0f
+                ),
+                mutedTextColor,
+                middleLabel.c_str()
+            );
+
+            const float rightWidth =
+                ImGui::CalcTextSize(
+                    rightLabel
+                ).x;
+
+            drawList->AddText(
+                ImVec2(
+                    plotRight -
+                    rightWidth,
+                    plotBottom + 3.0f
+                ),
+                mutedTextColor,
+                rightLabel
+            );
+
+            //
+            // Current price and selected-window change.
+            //
+            const float statsX =
+                plotRight +
+                statsGap;
+
+            drawList->AddText(
+                ImVec2(
+                    statsX,
+                    plotTop
+                ),
+                mutedTextColor,
+                "Current Price"
+            );
+
+            const std::string currentPriceText =
+                FormatCoinValue(
+                    currentPriceCopper
+                );
+
+            drawList->AddText(
+                ImVec2(
+                    statsX,
+                    plotTop +
+                    ImGui::GetTextLineHeight() +
+                    1.0f
+                ),
+                lineU32,
+                currentPriceText.c_str()
+            );
+
+            const std::string changeHeader =
+                "Change (" +
+                std::string(
+                    fullWindowLabel
+                ) +
+                ")";
+
+            drawList->AddText(
+                ImVec2(
+                    statsX,
+                    plotTop +
+                    ImGui::GetTextLineHeight() *
+                    2.40f
+                ),
+                mutedTextColor,
+                changeHeader.c_str()
+            );
+
+            const ImU32 changeU32 =
                 ImGui::
                 ColorConvertFloat4ToU32(
-                    brighterLineColor
-                ),
-                false,
-                3.0f
-            );
+                    changeColor
+                );
+
+            if (trend.available)
+            {
+                const std::string deltaText =
+                    FormatTrendCoinDelta(
+                        trend.copperChange
+                    );
+
+                char percentText[32] = {};
+
+                std::snprintf(
+                    percentText,
+                    sizeof(
+                        percentText
+                        ),
+                    "%+.2f%%",
+                    trend.percentChange
+                );
+
+                drawList->AddText(
+                    ImVec2(
+                        statsX,
+                        plotTop +
+                        ImGui::GetTextLineHeight() *
+                        3.40f
+                    ),
+                    changeU32,
+                    deltaText.c_str()
+                );
+
+                drawList->AddText(
+                    ImVec2(
+                        statsX,
+                        plotTop +
+                        ImGui::GetTextLineHeight() *
+                        4.40f
+                    ),
+                    changeU32,
+                    percentText
+                );
+            }
+            else
+            {
+                drawList->AddText(
+                    ImVec2(
+                        statsX,
+                        plotTop +
+                        ImGui::GetTextLineHeight() *
+                        3.40f
+                    ),
+                    mutedTextColor,
+                    "Developing"
+                );
+            }
         };
 
     ImGui::TextUnformatted(
@@ -6090,6 +6902,9 @@ void TradingPostUI::RenderTab(
                     const float sellSectionTopY =
                         ImGui::GetCursorPosY();
 
+                    const ImVec2 sellMarketCardTopLeft =
+                        ImGui::GetCursorScreenPos();
+
                     ImGui::TextColored(
                         sellColor,
                         "SELL LISTINGS"
@@ -6354,6 +7169,76 @@ void TradingPostUI::RenderTab(
                         );
                     }
 
+                    //
+                    // Box the left-side sell market data into a subtle card.
+                    // Keep the fill transparent so it does not overpower the
+                    // analysis text, and use the sell color as the accent.
+                    //
+                    {
+                        const ImVec2 sellMarketCardBottomCursor =
+                            ImGui::GetCursorScreenPos();
+
+                        ImDrawList* marketCardDrawList =
+                            ImGui::GetWindowDrawList();
+
+                        const float marketCardWidth =
+                            400.0f;
+
+                        const ImVec2 cardMin(
+                            sellMarketCardTopLeft.x -
+                            8.0f,
+                            sellMarketCardTopLeft.y -
+                            5.0f
+                        );
+
+                        const ImVec2 cardMax(
+                            sellMarketCardTopLeft.x +
+                            marketCardWidth,
+                            sellMarketCardBottomCursor.y +
+                            5.0f
+                        );
+
+                        marketCardDrawList->AddRect(
+                            cardMin,
+                            cardMax,
+                            ImGui::
+                            ColorConvertFloat4ToU32(
+                                ImVec4(
+                                    sellColor.x,
+                                    sellColor.y,
+                                    sellColor.z,
+                                    0.34f
+                                )
+                            ),
+                            4.0f,
+                            0,
+                            1.0f
+                        );
+
+                        marketCardDrawList->AddLine(
+                            ImVec2(
+                                cardMin.x,
+                                cardMin.y +
+                                4.0f
+                            ),
+                            ImVec2(
+                                cardMin.x,
+                                cardMax.y -
+                                4.0f
+                            ),
+                            ImGui::
+                            ColorConvertFloat4ToU32(
+                                ImVec4(
+                                    sellColor.x,
+                                    sellColor.y,
+                                    sellColor.z,
+                                    0.82f
+                                )
+                            ),
+                            2.0f
+                        );
+                    }
+
                     if (
                         analysisSellHistoryGold.size() >= 2
                         )
@@ -6363,7 +7248,7 @@ void TradingPostUI::RenderTab(
 
                         const float sellSparklineWidth =
                             std::max(
-                                250.0f,
+                                520.0f,
                                 ImGui::GetWindowWidth() -
                                 470.0f -
                                 26.0f
@@ -6386,12 +7271,23 @@ void TradingPostUI::RenderTab(
                             analysisSparklineStartTimestamp,
                             analysisSparklineEndTimestamp,
                             sellColor,
+                            listingDirectionColor,
+                            trendWindowLabel,
+                            halfTrendWindowLabel.c_str(),
+                            observedSellTrend,
+                            static_cast<uint64_t>(
+                                price.sellUnitPrice
+                                ),
                             sellSparklineWidth,
-                            38.0f
+                            82.0f
                         );
 
                         ImGui::SetCursorPosY(
-                            sellSectionBottomY
+                            std::max(
+                                sellSectionBottomY,
+                                sellSectionTopY +
+                                108.0f
+                            )
                         );
                     }
 
@@ -6401,6 +7297,9 @@ void TradingPostUI::RenderTab(
 
                     const float buySectionTopY =
                         ImGui::GetCursorPosY();
+
+                    const ImVec2 buyMarketCardTopLeft =
+                        ImGui::GetCursorScreenPos();
 
                     ImGui::TextColored(
                         buyColor,
@@ -6672,6 +7571,74 @@ void TradingPostUI::RenderTab(
                         );
                     }
 
+                    //
+                    // Matching card for buy-order market data.
+                    //
+                    {
+                        const ImVec2 buyMarketCardBottomCursor =
+                            ImGui::GetCursorScreenPos();
+
+                        ImDrawList* marketCardDrawList =
+                            ImGui::GetWindowDrawList();
+
+                        const float marketCardWidth =
+                            400.0f;
+
+                        const ImVec2 cardMin(
+                            buyMarketCardTopLeft.x -
+                            8.0f,
+                            buyMarketCardTopLeft.y -
+                            5.0f
+                        );
+
+                        const ImVec2 cardMax(
+                            buyMarketCardTopLeft.x +
+                            marketCardWidth,
+                            buyMarketCardBottomCursor.y +
+                            5.0f
+                        );
+
+                        marketCardDrawList->AddRect(
+                            cardMin,
+                            cardMax,
+                            ImGui::
+                            ColorConvertFloat4ToU32(
+                                ImVec4(
+                                    buyColor.x,
+                                    buyColor.y,
+                                    buyColor.z,
+                                    0.34f
+                                )
+                            ),
+                            4.0f,
+                            0,
+                            1.0f
+                        );
+
+                        marketCardDrawList->AddLine(
+                            ImVec2(
+                                cardMin.x,
+                                cardMin.y +
+                                4.0f
+                            ),
+                            ImVec2(
+                                cardMin.x,
+                                cardMax.y -
+                                4.0f
+                            ),
+                            ImGui::
+                            ColorConvertFloat4ToU32(
+                                ImVec4(
+                                    buyColor.x,
+                                    buyColor.y,
+                                    buyColor.z,
+                                    0.82f
+                                )
+                            ),
+                            2.0f
+                        );
+                    }
+
                     if (
                         analysisBuyHistoryGold.size() >= 2
                         )
@@ -6681,7 +7648,7 @@ void TradingPostUI::RenderTab(
 
                         const float buySparklineWidth =
                             std::max(
-                                250.0f,
+                                520.0f,
                                 ImGui::GetWindowWidth() -
                                 470.0f -
                                 26.0f
@@ -6704,12 +7671,23 @@ void TradingPostUI::RenderTab(
                             analysisSparklineStartTimestamp,
                             analysisSparklineEndTimestamp,
                             buyColor,
+                            orderDirectionColor,
+                            trendWindowLabel,
+                            halfTrendWindowLabel.c_str(),
+                            observedBuyTrend,
+                            static_cast<uint64_t>(
+                                price.buyUnitPrice
+                                ),
                             buySparklineWidth,
-                            38.0f
+                            82.0f
                         );
 
                         ImGui::SetCursorPosY(
-                            buySectionBottomY
+                            std::max(
+                                buySectionBottomY,
+                                buySectionTopY +
+                                108.0f
+                            )
                         );
                     }
 
