@@ -148,12 +148,25 @@ Copper&Claw also reports:
 - selected-window coverage
 - sample count inside the selected trend window
 
-When the Collector is available, coverage is based on completed Collector scan timestamps so unchanged prices still count as real observations. Without the Collector, Copper&Claw uses its gap-aware local-history fallback.
+When the Collector is available, coverage is based on completed Collector scan timestamps so unchanged prices still count as real observations. 
+
+<img width="674" height="208" alt="collector statusup" src="https://github.com/user-attachments/assets/19b6452c-a33d-453b-9884-242508d960a1" />
+
+
+
+
+
+
+
+---
+Without the Collector, Copper&Claw uses its gap-aware local-history fallback.
+
+
+<img width="706" height="214" alt="collector statusdown" src="https://github.com/user-attachments/assets/ca837810-c4ae-4bd7-a33e-378fa63983c1" />
+
 
 Selected-window analysis stays **DEVELOPING** when the requested time window is not sufficiently covered, preventing partial history from being presented as a complete 3-day, 7-day, or longer conclusion.
 
-
-<img width="350" height="350" alt="newmarketlook2" src="https://github.com/user-attachments/assets/3e42ed4c-67cf-48b5-bfcf-072823799c49" />
 
 ---
 
@@ -216,7 +229,7 @@ Copper&Claw can distinguish variants such as:
 - Expertise
 - Condition Damage
 
-<img width="541" height="214" alt="varientsearch" src="https://github.com/user-attachments/assets/f352a56f-e1df-4e14-9b0b-5d0120f96611" />
+<img width="341" height="214" alt="varientsearch" src="https://github.com/user-attachments/assets/f352a56f-e1df-4e14-9b0b-5d0120f96611" />
 
 This makes it easier to select the exact Trading Post listing you intended to watch.
 
@@ -227,7 +240,7 @@ This makes it easier to select the exact Trading Post listing you intended to wa
 Copper&Claw preserves its own local Trading Post history and can also import historical market data from the standalone Copper&Claw Collector when that service is available.
 
 
-<img width="674" height="208" alt="collector status" src="https://github.com/user-attachments/assets/a5c22fcf-5f71-4cf7-9c1b-cd18e66836f8" />
+
 
 
 Current behavior:
@@ -444,6 +457,8 @@ Copper&Claw saves:
 Aurene's Bite is added as a **first-run starter item**, but it can be removed normally and stays removed after restart.
 
 ---
+> [!IMPORTANT]
+> If the hosted Collector loses connection, Copper&Claw falls back to the Guild Wars 2 API. During that time, local history continues to be recorded only for items currently on your watch list.
 
 ## Installation
 
