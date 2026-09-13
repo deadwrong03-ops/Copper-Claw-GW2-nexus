@@ -22,6 +22,23 @@ struct TradingPostIndexedItem
     // Used by the UI to request the item's icon through Nexus.
     //
     std::string iconUrl;
+
+    //
+    // Small metadata set retained from /v2/items for hover tooltips.
+    // itemSubtype is the details.type value when the item exposes one
+    // (Food, Utility, LongBow, Rune, etc.).
+    //
+    std::string itemType;
+    std::string itemSubtype;
+    std::string rarity;
+    uint32_t level = 0;
+
+    //
+    // Preformatted short effect/stat summary built while the item index is
+    // refreshed. Keeping this in the local index means icon hover tooltips
+    // never need to make a network request.
+    //
+    std::string tooltipText;
 };
 
 namespace TradingPostItemIndexManager
@@ -64,7 +81,7 @@ namespace TradingPostItemIndexManager
 
     //
     // Looks up one indexed Trading Post item by item ID.
-    // Used by the UI to retrieve metadata such as the GW2 item icon URL.
+    // Used by the UI to retrieve icon and hover-tooltip metadata.
     //
     bool TryGetItem(
         uint32_t itemID,

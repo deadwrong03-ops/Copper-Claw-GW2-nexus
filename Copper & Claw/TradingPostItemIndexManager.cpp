@@ -856,7 +856,10 @@ namespace
             return "Vitality";
         }
 
-        if (attribute == "Ferocity")
+        if (
+            attribute == "Ferocity" ||
+            attribute == "CritDamage"
+            )
         {
             return "Ferocity";
         }
@@ -947,6 +950,1083 @@ namespace
         }
 
         return label;
+    }
+
+    bool ExtractJsonObject(
+        const std::string& json,
+        const std::string& key,
+        std::string& outObject
+    )
+    {
+        outObject.clear();
+
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (keyPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition + searchKey.size()
+            );
+
+        if (colonPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        const size_t objectStart =
+            json.find(
+                '{',
+                colonPosition + 1
+            );
+
+        if (objectStart == std::string::npos)
+        {
+            return false;
+        }
+
+        bool inString = false;
+        bool escaped = false;
+        int depth = 0;
+
+        for (size_t i = objectStart;
+            i < json.size();
+            ++i)
+        {
+            const char character = json[i];
+
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (character == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (character == '{')
+            {
+                ++depth;
+            }
+            else if (character == '}')
+            {
+                --depth;
+
+                if (depth == 0)
+                {
+                    outObject =
+                        json.substr(
+                            objectStart,
+                            i - objectStart + 1
+                        );
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool ExtractJsonArray(
+        const std::string& json,
+        const std::string& key,
+        std::string& outArray
+    )
+    {
+        outArray.clear();
+
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (keyPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition + searchKey.size()
+            );
+
+        if (colonPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        const size_t arrayStart =
+            json.find(
+                '[',
+                colonPosition + 1
+            );
+
+        if (arrayStart == std::string::npos)
+        {
+            return false;
+        }
+
+        bool inString = false;
+        bool escaped = false;
+        int depth = 0;
+
+        for (size_t i = arrayStart;
+            i < json.size();
+            ++i)
+        {
+            const char character = json[i];
+
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (character == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (character == '[')
+            {
+                ++depth;
+            }
+            else if (character == ']')
+            {
+                --depth;
+
+                if (depth == 0)
+                {
+                    outArray =
+                        json.substr(
+                            arrayStart,
+                            i - arrayStart + 1
+                        );
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    std::vector<std::string> ExtractObjectsFromArray(
+        const std::string& arrayText
+    )
+    {
+        std::vector<std::string> objects;
+
+        bool inString = false;
+        bool escaped = false;
+        int depth = 0;
+        size_t objectStart = std::string::npos;
+
+        for (size_t i = 0;
+            i < arrayText.size();
+            ++i)
+        {
+            const char character = arrayText[i];
+
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (character == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (character == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (character == '{')
+            {
+                if (depth == 0)
+                {
+                    objectStart = i;
+                }
+
+                ++depth;
+            }
+            else if (
+                character == '}' &&
+                depth > 0
+                )
+            {
+                --depth;
+
+                if (
+                    depth == 0 &&
+                    objectStart != std::string::npos
+                    )
+                {
+                    objects.push_back(
+                        arrayText.substr(
+                            objectStart,
+                            i - objectStart + 1
+                        )
+                    );
+
+                    objectStart =
+                        std::string::npos;
+                }
+            }
+        }
+
+        return objects;
+    }
+
+    std::vector<std::string> ExtractStringArray(
+        const std::string& json,
+        const std::string& key
+    )
+    {
+        std::vector<std::string> values;
+        std::string arrayText;
+
+        if (
+            !ExtractJsonArray(
+                json,
+                key,
+                arrayText
+            )
+            )
+        {
+            return values;
+        }
+
+        bool inString = false;
+        bool escaped = false;
+        std::string current;
+
+        for (size_t i = 1;
+            i + 1 < arrayText.size();
+            ++i)
+        {
+            const char character =
+                arrayText[i];
+
+            if (!inString)
+            {
+                if (character == '"')
+                {
+                    inString = true;
+                    escaped = false;
+                    current.clear();
+                }
+
+                continue;
+            }
+
+            if (escaped)
+            {
+                switch (character)
+                {
+                case 'n':
+                    current += '\n';
+                    break;
+                case 'r':
+                    break;
+                case 't':
+                    current += ' ';
+                    break;
+                default:
+                    current += character;
+                    break;
+                }
+
+                escaped = false;
+                continue;
+            }
+
+            if (character == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (character == '"')
+            {
+                inString = false;
+
+                if (!current.empty())
+                {
+                    values.push_back(
+                        current
+                    );
+                }
+
+                continue;
+            }
+
+            current += character;
+        }
+
+        return values;
+    }
+
+    void ReplaceAll(
+        std::string& value,
+        const std::string& from,
+        const std::string& to
+    )
+    {
+        if (from.empty())
+        {
+            return;
+        }
+
+        size_t position = 0;
+
+        while (
+            (position = value.find(
+                from,
+                position
+            )) != std::string::npos
+            )
+        {
+            value.replace(
+                position,
+                from.size(),
+                to
+            );
+
+            position +=
+                to.size();
+        }
+    }
+
+    std::string CleanGw2TooltipText(
+        const std::string& value
+    )
+    {
+        std::string cleaned = value;
+
+        ReplaceAll(cleaned, "<br>", "\n");
+        ReplaceAll(cleaned, "<br/>", "\n");
+        ReplaceAll(cleaned, "<br />", "\n");
+        ReplaceAll(cleaned, "&amp;", "&");
+        ReplaceAll(cleaned, "&lt;", "<");
+        ReplaceAll(cleaned, "&gt;", ">");
+        ReplaceAll(cleaned, "&quot;", "\"");
+        ReplaceAll(cleaned, "&#39;", "'");
+
+        std::string withoutMarkup;
+        withoutMarkup.reserve(
+            cleaned.size()
+        );
+
+        bool insideTag = false;
+
+        for (char character : cleaned)
+        {
+            if (character == '<')
+            {
+                insideTag = true;
+                continue;
+            }
+
+            if (insideTag)
+            {
+                if (character == '>')
+                {
+                    insideTag = false;
+                }
+
+                continue;
+            }
+
+            if (character == '\r')
+            {
+                continue;
+            }
+
+            if (character == '\t')
+            {
+                withoutMarkup += ' ';
+                continue;
+            }
+
+            withoutMarkup += character;
+        }
+
+        std::string result;
+        result.reserve(
+            withoutMarkup.size()
+        );
+
+        bool lineHasText = false;
+        bool previousWasSpace = false;
+
+        for (char character : withoutMarkup)
+        {
+            if (character == '\n')
+            {
+                while (
+                    !result.empty() &&
+                    result.back() == ' '
+                    )
+                {
+                    result.pop_back();
+                }
+
+                if (
+                    !result.empty() &&
+                    result.back() != '\n'
+                    )
+                {
+                    result += '\n';
+                }
+
+                lineHasText = false;
+                previousWasSpace = false;
+                continue;
+            }
+
+            if (character == ' ')
+            {
+                if (
+                    lineHasText &&
+                    !previousWasSpace
+                    )
+                {
+                    result += ' ';
+                }
+
+                previousWasSpace = true;
+                continue;
+            }
+
+            result += character;
+            lineHasText = true;
+            previousWasSpace = false;
+        }
+
+        while (
+            !result.empty() &&
+            (
+                result.back() == ' ' ||
+                result.back() == '\n'
+                )
+            )
+        {
+            result.pop_back();
+        }
+
+        size_t start = 0;
+
+        while (
+            start < result.size() &&
+            result[start] == ' '
+            )
+        {
+            ++start;
+        }
+
+        return
+            start == 0
+            ? result
+            : result.substr(start);
+    }
+
+    void AppendTooltipLines(
+        std::vector<std::string>& lines,
+        const std::string& text
+    )
+    {
+        const std::string cleaned =
+            CleanGw2TooltipText(
+                text
+            );
+
+        size_t start = 0;
+
+        while (start <= cleaned.size())
+        {
+            const size_t end =
+                cleaned.find(
+                    '\n',
+                    start
+                );
+
+            const size_t length =
+                end == std::string::npos
+                ? cleaned.size() - start
+                : end - start;
+
+            std::string line =
+                cleaned.substr(
+                    start,
+                    length
+                );
+
+            while (
+                !line.empty() &&
+                line.front() == ' '
+                )
+            {
+                line.erase(
+                    line.begin()
+                );
+            }
+
+            while (
+                !line.empty() &&
+                line.back() == ' '
+                )
+            {
+                line.pop_back();
+            }
+
+            if (
+                !line.empty() &&
+                std::find(
+                    lines.begin(),
+                    lines.end(),
+                    line
+                ) == lines.end()
+                )
+            {
+                lines.push_back(
+                    std::move(line)
+                );
+            }
+
+            if (end == std::string::npos)
+            {
+                break;
+            }
+
+            start = end + 1;
+        }
+    }
+
+    std::string FormatDurationMilliseconds(
+        uint32_t durationMilliseconds
+    )
+    {
+        if (durationMilliseconds == 0)
+        {
+            return {};
+        }
+
+        const uint64_t totalSeconds =
+            static_cast<uint64_t>(
+                durationMilliseconds
+                ) /
+            1000ULL;
+
+        if (totalSeconds >= 3600ULL)
+        {
+            const uint64_t hours =
+                totalSeconds /
+                3600ULL;
+
+            const uint64_t minutes =
+                (totalSeconds % 3600ULL) /
+                60ULL;
+
+            std::string value =
+                std::to_string(hours) +
+                " hr";
+
+            if (hours != 1)
+            {
+                value += "s";
+            }
+
+            if (minutes > 0)
+            {
+                value +=
+                    " " +
+                    std::to_string(minutes) +
+                    " min";
+            }
+
+            return value;
+        }
+
+        if (totalSeconds >= 60ULL)
+        {
+            return
+                std::to_string(
+                    totalSeconds / 60ULL
+                ) +
+                " min";
+        }
+
+        return
+            std::to_string(
+                totalSeconds
+            ) +
+            " sec";
+    }
+
+    std::string BuildTooltipText(
+        const std::string& itemObject,
+        const std::string& itemType
+    )
+    {
+        std::vector<std::string> lines;
+        std::string detailsObject;
+
+        const bool hasDetails =
+            ExtractJsonObject(
+                itemObject,
+                "details",
+                detailsObject
+            );
+
+        if (hasDetails)
+        {
+            std::string effectDescription;
+
+            if (
+                ExtractJsonString(
+                    detailsObject,
+                    "description",
+                    effectDescription
+                ) &&
+                !effectDescription.empty()
+                )
+            {
+                AppendTooltipLines(
+                    lines,
+                    effectDescription
+                );
+            }
+
+            std::string attributesArray;
+
+            if (
+                ExtractJsonArray(
+                    detailsObject,
+                    "attributes",
+                    attributesArray
+                )
+                )
+            {
+                const std::vector<std::string>
+                    attributeObjects =
+                    ExtractObjectsFromArray(
+                        attributesArray
+                    );
+
+                for (
+                    const std::string& attributeObject :
+                    attributeObjects
+                    )
+                {
+                    std::string attribute;
+                    uint32_t modifier = 0;
+
+                    if (
+                        ExtractJsonString(
+                            attributeObject,
+                            "attribute",
+                            attribute
+                        ) &&
+                        ExtractJsonUInt(
+                            attributeObject,
+                            "modifier",
+                            modifier
+                        )
+                        )
+                    {
+                        const std::string friendly =
+                            ToFriendlyAttributeName(
+                                attribute
+                            );
+
+                        if (!friendly.empty())
+                        {
+                            AppendTooltipLines(
+                                lines,
+                                "+" +
+                                std::to_string(modifier) +
+                                " " +
+                                friendly
+                            );
+                        }
+                    }
+                }
+            }
+
+            const std::vector<std::string> bonuses =
+                ExtractStringArray(
+                    detailsObject,
+                    "bonuses"
+                );
+
+            for (
+                const std::string& bonus :
+                bonuses
+                )
+            {
+                AppendTooltipLines(
+                    lines,
+                    bonus
+                );
+            }
+
+            uint32_t durationMilliseconds = 0;
+
+            if (
+                ExtractJsonUInt(
+                    detailsObject,
+                    "duration_ms",
+                    durationMilliseconds
+                ) &&
+                durationMilliseconds > 0
+                )
+            {
+                AppendTooltipLines(
+                    lines,
+                    "Duration: " +
+                    FormatDurationMilliseconds(
+                        durationMilliseconds
+                    )
+                );
+            }
+
+            if (itemType == "Weapon")
+            {
+                uint32_t minimumPower = 0;
+                uint32_t maximumPower = 0;
+
+                if (
+                    ExtractJsonUInt(
+                        detailsObject,
+                        "min_power",
+                        minimumPower
+                    ) &&
+                    ExtractJsonUInt(
+                        detailsObject,
+                        "max_power",
+                        maximumPower
+                    )
+                    )
+                {
+                    AppendTooltipLines(
+                        lines,
+                        "Weapon Strength: " +
+                        std::to_string(minimumPower) +
+                        " - " +
+                        std::to_string(maximumPower)
+                    );
+                }
+            }
+
+            if (itemType == "Armor")
+            {
+                uint32_t defense = 0;
+
+                if (
+                    ExtractJsonUInt(
+                        detailsObject,
+                        "defense",
+                        defense
+                    ) &&
+                    defense > 0
+                    )
+                {
+                    AppendTooltipLines(
+                        lines,
+                        "Defense: " +
+                        std::to_string(defense)
+                    );
+                }
+            }
+
+            if (itemType == "Bag")
+            {
+                uint32_t slots = 0;
+
+                if (
+                    ExtractJsonUInt(
+                        detailsObject,
+                        "size",
+                        slots
+                    ) &&
+                    slots > 0
+                    )
+                {
+                    AppendTooltipLines(
+                        lines,
+                        std::to_string(slots) +
+                        " slots"
+                    );
+                }
+            }
+        }
+
+        if (lines.empty())
+        {
+            std::string description;
+
+            if (
+                ExtractJsonString(
+                    itemObject,
+                    "description",
+                    description
+                ) &&
+                !description.empty()
+                )
+            {
+                AppendTooltipLines(
+                    lines,
+                    description
+                );
+            }
+        }
+
+        // Keep hover cards useful and compact. Very large rune/effect lists are
+        // intentionally abbreviated instead of recreating the full game tooltip.
+        constexpr size_t MAX_TOOLTIP_LINES = 8;
+
+        if (lines.size() > MAX_TOOLTIP_LINES)
+        {
+            lines.resize(
+                MAX_TOOLTIP_LINES
+            );
+
+            lines.push_back(
+                "..."
+            );
+        }
+
+        std::string result;
+
+        for (size_t i = 0;
+            i < lines.size();
+            ++i)
+        {
+            if (i > 0)
+            {
+                result += '\n';
+            }
+
+            result += lines[i];
+        }
+
+        return result;
+    }
+
+    std::string SanitizeCacheSingleLine(
+        std::string value
+    )
+    {
+        value.erase(
+            std::remove(
+                value.begin(),
+                value.end(),
+                '\r'
+            ),
+            value.end()
+        );
+
+        std::replace(
+            value.begin(),
+            value.end(),
+            '\n',
+            ' '
+        );
+
+        std::replace(
+            value.begin(),
+            value.end(),
+            '\t',
+            ' '
+        );
+
+        return value;
+    }
+
+    std::string EncodeCacheMultiline(
+        const std::string& value
+    )
+    {
+        std::string encoded;
+        encoded.reserve(
+            value.size() + 16
+        );
+
+        for (char character : value)
+        {
+            if (character == '\r')
+            {
+                continue;
+            }
+
+            if (character == '\\')
+            {
+                encoded += "\\\\";
+            }
+            else if (character == '\n')
+            {
+                encoded += "\\n";
+            }
+            else if (character == '\t')
+            {
+                encoded += ' ';
+            }
+            else
+            {
+                encoded += character;
+            }
+        }
+
+        return encoded;
+    }
+
+    std::string DecodeCacheMultiline(
+        const std::string& value
+    )
+    {
+        std::string decoded;
+        decoded.reserve(
+            value.size()
+        );
+
+        bool escaped = false;
+
+        for (char character : value)
+        {
+            if (escaped)
+            {
+                if (character == 'n')
+                {
+                    decoded += '\n';
+                }
+                else
+                {
+                    decoded += character;
+                }
+
+                escaped = false;
+                continue;
+            }
+
+            if (character == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            decoded += character;
+        }
+
+        if (escaped)
+        {
+            decoded += '\\';
+        }
+
+        return decoded;
+    }
+
+    std::vector<std::string> SplitTsvLine(
+        const std::string& line
+    )
+    {
+        std::vector<std::string> fields;
+        size_t start = 0;
+
+        while (true)
+        {
+            const size_t separator =
+                line.find(
+                    '\t',
+                    start
+                );
+
+            if (separator == std::string::npos)
+            {
+                fields.push_back(
+                    line.substr(start)
+                );
+
+                break;
+            }
+
+            fields.push_back(
+                line.substr(
+                    start,
+                    separator - start
+                )
+            );
+
+            start = separator + 1;
+        }
+
+        return fields;
     }
 
     bool HttpGet(
@@ -1338,6 +2418,8 @@ namespace
                     uint32_t itemID = 0;
                     std::string name;
                     std::string iconUrl;
+                    std::string itemType;
+                    std::string rarity;
 
                     if (
                         ExtractJsonUInt(
@@ -1375,6 +2457,57 @@ namespace
                         item.iconUrl =
                             std::move(
                                 iconUrl
+                            );
+
+                        ExtractJsonString(
+                            object,
+                            "type",
+                            itemType
+                        );
+
+                        item.itemType =
+                            std::move(
+                                itemType
+                            );
+
+                        ExtractJsonString(
+                            object,
+                            "rarity",
+                            rarity
+                        );
+
+                        item.rarity =
+                            std::move(
+                                rarity
+                            );
+
+                        ExtractJsonUInt(
+                            object,
+                            "level",
+                            item.level
+                        );
+
+                        std::string detailsObject;
+
+                        if (
+                            ExtractJsonObject(
+                                object,
+                                "details",
+                                detailsObject
+                            )
+                            )
+                        {
+                            ExtractJsonString(
+                                detailsObject,
+                                "type",
+                                item.itemSubtype
+                            );
+                        }
+
+                        item.tooltipText =
+                            BuildTooltipText(
+                                object,
+                                item.itemType
                             );
 
                         items.push_back(
@@ -1525,84 +2658,44 @@ namespace
             records
             )
         {
-            std::string safeName =
-                record.item.name;
+            const std::string safeName =
+                SanitizeCacheSingleLine(
+                    record.item.name
+                );
 
-            safeName.erase(
-                std::remove(
-                    safeName.begin(),
-                    safeName.end(),
-                    '\r'
-                ),
-                safeName.end()
-            );
+            const std::string safeVariant =
+                SanitizeCacheSingleLine(
+                    record.item.variantLabel
+                );
 
-            std::replace(
-                safeName.begin(),
-                safeName.end(),
-                '\n',
-                ' '
-            );
+            const std::string safeIconUrl =
+                SanitizeCacheSingleLine(
+                    record.item.iconUrl
+                );
 
-            std::replace(
-                safeName.begin(),
-                safeName.end(),
-                '\t',
-                ' '
-            );
+            const std::string safeItemType =
+                SanitizeCacheSingleLine(
+                    record.item.itemType
+                );
 
-            std::string safeVariant =
-                record.item.variantLabel;
+            const std::string safeItemSubtype =
+                SanitizeCacheSingleLine(
+                    record.item.itemSubtype
+                );
 
-            safeVariant.erase(
-                std::remove(
-                    safeVariant.begin(),
-                    safeVariant.end(),
-                    '\r'
-                ),
-                safeVariant.end()
-            );
+            const std::string safeRarity =
+                SanitizeCacheSingleLine(
+                    record.item.rarity
+                );
 
-            std::replace(
-                safeVariant.begin(),
-                safeVariant.end(),
-                '\n',
-                ' '
-            );
+            const std::string safeTooltip =
+                EncodeCacheMultiline(
+                    record.item.tooltipText
+                );
 
-            std::replace(
-                safeVariant.begin(),
-                safeVariant.end(),
-                '\t',
-                ' '
-            );
-
-            std::string safeIconUrl =
-                record.item.iconUrl;
-
-            safeIconUrl.erase(
-                std::remove(
-                    safeIconUrl.begin(),
-                    safeIconUrl.end(),
-                    '\r'
-                ),
-                safeIconUrl.end()
-            );
-
-            std::replace(
-                safeIconUrl.begin(),
-                safeIconUrl.end(),
-                '\n',
-                ' '
-            );
-
-            std::replace(
-                safeIconUrl.begin(),
-                safeIconUrl.end(),
-                '\t',
-                ' '
-            );
-
+            // Current cache format:
+            // itemID, name, variantLabel, iconUrl, itemType, itemSubtype,
+            // rarity, level, tooltipText.
             file
                 << record.item.itemID
                 << '\t'
@@ -1611,6 +2704,16 @@ namespace
                 << safeVariant
                 << '\t'
                 << safeIconUrl
+                << '\t'
+                << safeItemType
+                << '\t'
+                << safeItemSubtype
+                << '\t'
+                << safeRarity
+                << '\t'
+                << record.item.level
+                << '\t'
+                << safeTooltip
                 << '\n';
         }
 
@@ -1725,15 +2828,12 @@ namespace
             )
             )
         {
-            const size_t separator =
-                line.find(
-                    '\t'
+            const std::vector<std::string> fields =
+                SplitTsvLine(
+                    line
                 );
 
-            if (
-                separator ==
-                std::string::npos
-                )
+            if (fields.size() < 2)
             {
                 continue;
             }
@@ -1745,89 +2845,58 @@ namespace
                 item.itemID =
                     static_cast<uint32_t>(
                         std::stoul(
-                            line.substr(
-                                0,
-                                separator
-                            )
+                            fields[0]
                         )
                         );
 
-                const size_t secondSeparator =
-                    line.find(
-                        '\t',
-                        separator + 1
-                    );
+                item.name =
+                    fields[1];
 
-                if (
-                    secondSeparator ==
-                    std::string::npos
-                    )
+                if (fields.size() >= 3)
                 {
-                    //
-                    // Original two-column cache:
-                    // itemID, name
-                    //
-                    legacyCacheFormat =
-                        true;
+                    item.variantLabel =
+                        fields[2];
+                }
 
-                    item.name =
-                        line.substr(
-                            separator + 1
+                if (fields.size() >= 4)
+                {
+                    item.iconUrl =
+                        fields[3];
+                }
+
+                if (fields.size() >= 9)
+                {
+                    item.itemType =
+                        fields[4];
+
+                    item.itemSubtype =
+                        fields[5];
+
+                    item.rarity =
+                        fields[6];
+
+                    if (!fields[7].empty())
+                    {
+                        item.level =
+                            static_cast<uint32_t>(
+                                std::stoul(
+                                    fields[7]
+                                )
+                                );
+                    }
+
+                    item.tooltipText =
+                        DecodeCacheMultiline(
+                            fields[8]
                         );
                 }
                 else
                 {
-                    const size_t thirdSeparator =
-                        line.find(
-                            '\t',
-                            secondSeparator + 1
-                        );
-
-                    item.name =
-                        line.substr(
-                            separator + 1,
-                            secondSeparator -
-                            separator - 1
-                        );
-
-                    if (
-                        thirdSeparator ==
-                        std::string::npos
-                        )
-                    {
-                        //
-                        // Previous three-column cache:
-                        // itemID, name, variantLabel
-                        //
-                        // It remains usable for search immediately, but mark it
-                        // stale so the background rebuild can add icon URLs.
-                        //
-                        legacyCacheFormat =
-                            true;
-
-                        item.variantLabel =
-                            line.substr(
-                                secondSeparator + 1
-                            );
-                    }
-                    else
-                    {
-                        //
-                        // Current four-column cache:
-                        // itemID, name, variantLabel, iconUrl
-                        //
-                        item.variantLabel =
-                            line.substr(
-                                secondSeparator + 1,
-                                thirdSeparator -
-                                secondSeparator - 1
-                            );
-
-                        item.iconUrl =
-                            line.substr(
-                                thirdSeparator + 1
-                            );
-                    }
+                    // Older 2/3/4-column cache formats remain usable for
+                    // search/icons immediately, but are marked stale so the
+                    // background refresh can populate tooltip metadata.
+                    legacyCacheFormat =
+                        true;
                 }
 
                 if (

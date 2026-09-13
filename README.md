@@ -19,6 +19,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 - Watch multiple Trading Post items
 - Official Guild Wars 2 item icons beside watched items
+- Hover item icons for brief indexed item details and stats without making a new network request on hover
 - Collector-aware automatic refresh: 5 minutes when the hosted Collector is available, 60 seconds when falling back to the Guild Wars 2 API
 - Manual per-item refresh and Refresh All with a shared 10-second manual-refresh cooldown
 - Current **lowest sell listing**
@@ -49,6 +50,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Dragon Bash-style **Target Reached** alerts
 - Built-in automatic **Backup & Restore** for local Copper&Claw data
 - One-time post-update notice when an item-index rebuild may be required
+- Compact game-screen item-index build progress overlay that remains visible without opening Copper&Claw
 
 ---
 
@@ -389,18 +391,17 @@ On first launch, Copper&Claw builds a searchable Trading Post item index using t
 
 <img width="543" height="56" alt="itemindex" src="https://github.com/user-attachments/assets/fe8e9588-9d5b-43ab-80d9-0b0cb555a305" />
 
+While indexing is active, Copper&Claw displays a compact **ITEM INDEX // BUILDING** progress overlay directly on the game screen. The overlay does not require the Copper&Claw options panel to be open and shows processed / total item counts plus percentage once the total is known.
+
 While the index is building:
 
 - search results may be incomplete
 - variant labels may not appear yet
 - item icons may not appear yet
+- hover details may not be available for every item yet
 - some items may temporarily be missing from autocomplete
 
-If you see:
-
-`Building item search index...`
-
-allow it to finish before judging search behavior.
+Allow the index build to finish before judging search or indexed-item metadata behavior. The progress overlay disappears automatically when indexing completes.
 
 ---
 
@@ -413,6 +414,8 @@ When this applies, Copper&Claw displays a one-time notice after the updated addo
 <img width="470" height="146" alt="updatenotification" src="https://github.com/user-attachments/assets/f6074c48-49f1-4e53-9b9c-3d53635ad518" />
 
 The rebuild starts automatically and may take a couple minutes.
+
+If an index build is active, the compact game-screen progress overlay appears beneath the update notice. Dismissing the notice does not stop the index build; the progress overlay remains visible near the upper center of the game screen until indexing finishes.
 
 The notice only needs to be acknowledged once for each addon version.
 

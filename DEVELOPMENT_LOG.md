@@ -15,6 +15,139 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+## 2026-09-13 — Release-Candidate UI, Item-Index Overlay & Debug Updater Validation
+
+Continued post-v0.1.4 development with a Trading Post layout/performance pass, richer indexed-item hover information, a true game-screen item-index progress indicator, and Debug-only Nexus GitHub update-provider validation.
+
+### Single-live Item Analysis performance model
+
+Testing showed that keeping multiple heavy watched-item Details/Analysis bodies live at the same time caused cumulative UI degradation as more items were expanded.
+
+A one-live-analysis diagnostic confirmed the source of the problem.
+
+Current constraint:
+
+- only one heavy selected-item Analysis body remains live at a time
+- the existing details-analysis cache is retained
+- the current split-dashboard presentation uses one selected watched item and one live analysis pane
+- do not return to multiple simultaneously live heavy analysis bodies without a separate virtualization/suspension design
+
+**Result: PASS — ONE-LIVE-ANALYSIS MODEL RETAINED**
+
+### Janthir split-dashboard release-candidate presentation
+
+The Trading Post workspace was refined into the current Janthir-themed split-dashboard release candidate.
+
+Current presentation includes:
+
+- wider compact watch list on the left
+- one selected-item Analysis pane on the right
+- stacked item icon row above the watched-item name so long names have more horizontal room
+- minimal selected-item header with an `ACTIONS` control instead of repeating price/target information
+- additional vertical breathing room between Sell Listings and Buy Orders
+- Confidence / Coverage / Samples / Market Volatility / Spread kept below the primary Sell / Buy analysis
+- only one heavy selected-item analysis remains live
+
+The accepted spacing/presentation baseline was preserved before the item-index progress work.
+
+**Result: PASS — RELEASE-CANDIDATE BASELINE**
+
+### Indexed-item hover tooltips
+
+Indexed Guild Wars 2 item metadata is now reused for hover information on watched-item icons.
+
+Behavior:
+
+- hovering the item icon can show a brief item description / indexed stats when available
+- tooltip data comes from metadata already downloaded for the local item index
+- no new Guild Wars 2 API request is made merely because the user hovers an icon
+- rebuilt index metadata is allowed to populate before judging tooltip completeness
+
+In-game testing confirmed the hover tooltips work after the item index has rebuilt with the richer metadata.
+
+**Result: PASS**
+
+### True game-screen item-index progress overlay
+
+Several progress-indicator placements were tested.
+
+Earlier versions placed the progress UI inside the Trading Post workspace or reused an ImGui window associated with Copper&Claw's update-notice rendering. Those versions were rejected because the progress indicator still read as part of the addon window.
+
+The accepted implementation deliberately keeps item-index progress UI out of `TradingPostUI.cpp`.
+
+Current behavior:
+
+- progress rendering lives in the global `RT_Render` / `AddonRender` path in `entry.cpp`
+- rendering uses `ImGui::GetForegroundDrawList()` instead of a child/options window
+- the panel is therefore drawn directly on the game-screen foreground layer
+- the compact Janthir-themed panel shows `ITEM INDEX // BUILDING`
+- processed / total item counts and percentage are shown when the total is known
+- while the `Copper&Claw Updated` notice is visible, the progress panel appears directly beneath it
+- after the update notice is dismissed, the progress panel remains near the upper center of the game screen
+- the user does not need to open the Copper&Claw options panel to see indexing progress
+- the progress panel disappears automatically when the index build completes
+
+Fresh-install testing confirmed the progress overlay appears independently on the actual game screen.
+
+**Result: PASS**
+
+### Fresh-install data restoration validation
+
+The first-run indexing test used temporary fresh copies of Copper&Claw's normal local data files.
+
+After the progress-overlay test completed:
+
+- Guild Wars 2 was closed
+- the newly generated test data files were removed
+- the previously saved original Copper&Claw data files were restored
+- normal settings, watched-item data, history, and item-index data were recovered successfully
+
+**Result: PASS — ORIGINAL DATA RESTORED**
+
+### Debug-only Nexus GitHub update provider
+
+The current Nexus API header was checked before enabling the updater.
+
+Confirmed API support:
+
+- `EUpdateProvider::UP_GitHub`
+- `AddonDefinition_t::Provider`
+- `AddonDefinition_t::UpdateLink`
+
+The updater is intentionally isolated to Debug builds for now.
+
+Current `entry.cpp` behavior:
+
+```cpp
+#ifdef _DEBUG
+    AddonDef.Provider = UP_GitHub;
+    AddonDef.UpdateLink =
+        "https://github.com/deadwrong03-ops/Copper-Claw-GW2-nexus";
+#else
+    AddonDef.Provider = UP_None;
+    AddonDef.UpdateLink = nullptr;
+#endif
+```
+
+This keeps existing non-Debug / Release behavior unchanged while allowing Nexus GitHub-release update handling to be tested safely with the development DLL.
+
+The Debug build loaded successfully with the GitHub update provider configured.
+
+**Result: PASS — DEBUG-ONLY UPDATER CONFIGURATION**
+
+### Pending pre-release cleanup
+
+The current development `entry.cpp` still contains the temporary raw mouse-wheel diagnostic handler / counters from earlier UI input investigation.
+
+That diagnostic code was intentionally left unchanged while the item-index overlay and Debug-only updater were being validated.
+
+Before the next public Release build, review and remove the temporary wheel diagnostics as a separate change so they are not mixed into unrelated UI/updater work.
+
+**Status: PENDING CLEANUP**
+
+No new public release was published during this checkpoint. Latest published release remains `v0.1.4`.
+
+---
 
 ## 2026-09-12 — v0.1.4 Release
 
