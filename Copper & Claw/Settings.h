@@ -38,6 +38,24 @@ struct CopperAndClawSettings
     // Slim is the current/default layout.
     int tradingPostViewDensityIndex = 1;
 
+    // Trading Post visual theme:
+    // 0 = Janthir Wilds
+    // 1 = Cyberpunk 2077
+    // 2 = Heart of Thorns
+    // 3 = Path of Fire
+    // 4 = End of Dragons
+    // 5 = Secrets of the Obscure
+    // 6 = Visions of Eternity
+    // 7 = Living World Season 1
+    // 8 = Living World Season 2
+    // 9 = Living World Season 3
+    // 10 = Living World Season 4
+    // 11 = The Icebrood Saga
+    //
+    // Existing theme indices are intentionally preserved.
+    // Janthir Wilds remains the default/release-candidate theme.
+    int tradingPostThemeIndex = 0;
+
     // Automatic backup settings:
     // interval:
     // 0 = 6h

@@ -15,6 +15,82 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+## 2026-09-14 — Persistent Expansion & Living World Theme System
+
+Added a persistent visual-theme system to the current #5K/#5N Trading Post split-dashboard without changing the accepted layout, spacing, analysis model, or one-live-analysis performance constraint.
+
+### Theme persistence foundation
+
+Added `tradingPostThemeIndex` to Copper&Claw settings and persistence.
+
+Behavior:
+
+- Janthir Wilds remains the default / release-candidate baseline
+- theme selection is saved in `CopperAndClaw.ini`
+- the selected theme survives a full Guild Wars 2 restart
+- existing Janthir and Cyberpunk theme indices were preserved while additional themes were appended
+
+A full restart with Cyberpunk selected confirmed persistence.
+
+**Result: PASS — THEME PERSISTENCE**
+
+### Available themes
+
+Current theme set:
+
+- **Janthir Wilds**
+- **Cyberpunk 2077**
+- **Heart of Thorns**
+- **Path of Fire**
+- **End of Dragons**
+- **Secrets of the Obscure**
+- **Visions of Eternity**
+- **Scarlet's War (LW1)**
+- **Glint's Prophecy (LW2)**
+- **Glint's Legacy (LW3)**
+- **Rise of Kralkatorrik (LW4)**
+- **The Icebrood Saga (LW5)**
+
+The expansion / Living World palettes alter dashboard identity colors such as borders, headers, accents, selected-item treatment, panel surfaces, telemetry accents, and ACTIONS styling while retaining the same underlying workspace structure.
+
+Visions of Eternity was moved to a more magenta-forward identity so it reads more distinctly from Path of Fire's orange/crimson desert palette.
+
+### Semantic Sell / Buy colors locked across themes
+
+Testing exposed that cosmetic theme colors could make watch-list Sell and Buy prices too similar.
+
+The theme system was corrected so market-side colors remain semantic across every visual theme:
+
+- **Sell = green**
+- **Buy = blue**
+
+The surrounding theme palette can change freely without changing the meaning of Trading Post price colors.
+
+**Result: PASS — CONSISTENT MARKET-SIDE COLORS**
+
+### Cyberpunk ACTIONS contrast polish
+
+The initial Cyberpunk ACTIONS button used a bright accent treatment that made the label difficult to read, especially on hover.
+
+The button was adjusted so:
+
+- normal and hover states retain the Cyberpunk identity
+- text uses strong contrast against cyan / acid-yellow button states
+- active-state contrast remains readable
+- Janthir and the other theme layouts remain unaffected
+
+In-game testing confirmed the revised ACTIONS button is substantially clearer.
+
+**Result: PASS — CYBERPUNK ACTIONS CONTRAST**
+
+### Theme-set checkpoint
+
+The full theme dropdown was tested in-game and the current palette set was accepted for now.
+
+No public release was published during this checkpoint. Latest published release remains `v0.1.4`.
+
+---
+
 ## 2026-09-13 — Release-Candidate UI, Item-Index Overlay & Debug Updater Validation
 
 Continued post-v0.1.4 development with a Trading Post layout/performance pass, richer indexed-item hover information, a true game-screen item-index progress indicator, and Debug-only Nexus GitHub update-provider validation.

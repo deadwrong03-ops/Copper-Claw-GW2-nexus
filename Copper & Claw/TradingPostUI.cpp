@@ -1322,6 +1322,22 @@ void TradingPostUI::RenderTab(
         "Ultra Slim"
     };
 
+    const char* tradingPostThemeLabels[] =
+    {
+        "Janthir Wilds",
+        "Cyberpunk 2077",
+        "Heart of Thorns",
+        "Path of Fire",
+        "End of Dragons",
+        "Secrets of the Obscure",
+        "Visions of Eternity",
+        "Scarlet's War (LW1)",
+        "Glint's Prophecy (LW2)",
+        "Glint's Legacy (LW3)",
+        "Rise of Kralkatorrik (LW4)",
+        "The Icebrood Saga (LW5)"
+    };
+
     const uint64_t trendWindowSeconds =
         trendWindowSecondsOptions[
             g_Settings.tradingPostTrendWindowIndex
@@ -4546,6 +4562,21 @@ void TradingPostUI::RenderTab(
 
     ImGui::Spacing();
 
+    ImGui::TextDisabled("Theme:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(230.0f);
+
+    if (ImGui::Combo(
+        "##TradingPostTheme",
+        &g_Settings.tradingPostThemeIndex,
+        tradingPostThemeLabels,
+        static_cast<int>(sizeof(tradingPostThemeLabels) / sizeof(tradingPostThemeLabels[0]))))
+    {
+        Settings::Save(moduleHandle);
+    }
+
+    ImGui::Spacing();
+
     ImGui::TextDisabled(
         "Historical note: Copper&Claw uses Collector scan history when available and local history as fallback."
     );
@@ -6897,75 +6928,1063 @@ void TradingPostUI::RenderTab(
         };
 
     //
-    // LAYOUT #5I - INTEGRATED JANTHIR HUD:
-    // Keep the futuristic split-dashboard geometry, but let the lower workspace
-    // share the same charcoal family as the Nexus panel above. Janthir blues now
-    // act as identity/accent colors rather than large background fields so the
-    // Trading Post reads as one continuous interface instead of a second window.
+    // THEME FOUNDATION - #5K/#5N SPLIT DASHBOARD:
     //
-    const ImVec4 janthirBlue(
+    // Themes change the dashboard's visual identity only. Layout, spacing,
+    // caching, and the one-live-analysis performance model remain untouched.
+    //
+    // IMPORTANT SEMANTIC COLOR RULE:
+    // Trading Post SELL is always green and BUY is always blue, regardless
+    // of the selected cosmetic theme.
+    //
+    const ImVec4 themeSellPrice =
+        sellColor;
+
+    const ImVec4 themeBuyPrice =
+        buyColor;
+
+    //
+    // Janthir Wilds defaults / release-candidate baseline.
+    //
+    ImVec4 themePrimary(
         0.26f,
         0.58f,
         0.82f,
         1.00f
     );
 
-    const ImVec4 janthirIce(
+    ImVec4 themeTelemetry(
         0.55f,
         0.80f,
         0.92f,
         1.00f
     );
 
-    //
-    // Secondary Janthir Wilds palette for the analysis side. Keeping the
-    // watch list mountain blue and the analysis pane navy prevents the full layout
-    // from reading as one large green surface while staying inside the same
-    // same expansion-inspired blue family.
-    //
-    const ImVec4 janthirNavyAccent(
+    ImVec4 themeSecondary(
         0.22f,
         0.38f,
         0.66f,
         1.00f
     );
 
-    const ImVec4 janthirRightPanel(
+    ImVec4 themeRightPanel(
         0.045f,
         0.047f,
         0.060f,
         0.97f
     );
 
-    const ImVec4 janthirRightPanelRaised(
+    ImVec4 themeRightPanelRaised(
         0.058f,
         0.062f,
         0.080f,
         0.98f
     );
 
-    const ImVec4 janthirDanger(
+    ImVec4 themeDanger(
         0.90f,
         0.26f,
         0.30f,
         1.00f
     );
 
-    const ImVec4 janthirPanel(
+    ImVec4 themePanel(
         0.043f,
         0.046f,
         0.058f,
         0.97f
     );
 
-    const ImVec4 janthirPanelRaised(
+    ImVec4 themePanelRaised(
         0.055f,
         0.062f,
         0.078f,
         0.98f
     );
 
-    const float janthirPulse =
+    ImVec4 themeActionHovered(
+        0.42f,
+        0.68f,
+        0.96f,
+        1.00f
+    );
+
+    ImVec4 themeActionActive(
+        0.16f,
+        0.30f,
+        0.58f,
+        1.00f
+    );
+
+    ImVec4 themeActionText(
+        0.94f,
+        0.97f,
+        1.00f,
+        1.00f
+    );
+
+    ImVec4 themePopupBg(
+        0.050f,
+        0.052f,
+        0.066f,
+        0.99f
+    );
+
+    switch (g_Settings.tradingPostThemeIndex)
+    {
+    case 1:
+    {
+        //
+        // Cyberpunk 2077:
+        // acid yellow + cyan telemetry + red danger + near-black panels.
+        //
+        themePrimary = ImVec4(
+            0.99f,
+            0.91f,
+            0.04f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.00f,
+            0.88f,
+            0.96f,
+            1.00f
+        );
+
+        themeSecondary = themeTelemetry;
+
+        themeDanger = ImVec4(
+            1.00f,
+            0.08f,
+            0.25f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.025f,
+            0.029f,
+            0.034f,
+            0.96f
+        );
+
+        themePanelRaised = ImVec4(
+            0.055f,
+            0.062f,
+            0.070f,
+            0.96f
+        );
+
+        themeRightPanel =
+            themePanel;
+
+        themeRightPanelRaised =
+            themePanelRaised;
+
+        themeActionHovered = ImVec4(
+            1.00f,
+            0.96f,
+            0.24f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.68f,
+            0.60f,
+            0.02f,
+            1.00f
+        );
+
+        // Dark text keeps both cyan and yellow button states readable.
+        themeActionText = ImVec4(
+            0.015f,
+            0.020f,
+            0.025f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.025f,
+            0.029f,
+            0.034f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 2:
+    {
+        //
+        // Heart of Thorns:
+        // jungle green + acid foliage + restrained Auric gold.
+        //
+        themePrimary = ImVec4(
+            0.57f,
+            0.72f,
+            0.24f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.78f,
+            0.61f,
+            0.24f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.25f,
+            0.49f,
+            0.14f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.84f,
+            0.24f,
+            0.18f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.034f,
+            0.047f,
+            0.031f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.052f,
+            0.071f,
+            0.043f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.032f,
+            0.042f,
+            0.031f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.050f,
+            0.064f,
+            0.043f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.40f,
+            0.66f,
+            0.20f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.18f,
+            0.38f,
+            0.12f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.030f,
+            0.042f,
+            0.028f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 3:
+    {
+        //
+        // Path of Fire:
+        // desert orange + crimson + warm Elonian gold.
+        //
+        themePrimary = ImVec4(
+            0.91f,
+            0.36f,
+            0.17f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.84f,
+            0.64f,
+            0.29f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.70f,
+            0.08f,
+            0.30f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.92f,
+            0.12f,
+            0.20f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.052f,
+            0.036f,
+            0.038f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.075f,
+            0.048f,
+            0.050f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.046f,
+            0.034f,
+            0.040f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.070f,
+            0.045f,
+            0.055f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.96f,
+            0.48f,
+            0.22f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.55f,
+            0.07f,
+            0.22f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.048f,
+            0.032f,
+            0.036f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 4:
+    {
+        //
+        // End of Dragons:
+        // jade + pale jade light with deep red reserved for danger.
+        //
+        themePrimary = ImVec4(
+            0.09f,
+            0.66f,
+            0.61f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.46f,
+            0.84f,
+            0.79f,
+            1.00f
+        );
+
+        // Keep the secondary identity in the jade family so the clean
+        // dashboard does not become a red/green split surface.
+        themeSecondary = ImVec4(
+            0.07f,
+            0.42f,
+            0.39f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.66f,
+            0.20f,
+            0.24f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.030f,
+            0.049f,
+            0.047f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.043f,
+            0.073f,
+            0.069f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.030f,
+            0.044f,
+            0.045f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.043f,
+            0.066f,
+            0.066f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.18f,
+            0.62f,
+            0.58f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.05f,
+            0.34f,
+            0.32f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.027f,
+            0.044f,
+            0.042f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 5:
+    {
+        //
+        // Secrets of the Obscure:
+        // wizard gold + indigo + restrained violet telemetry.
+        //
+        themePrimary = ImVec4(
+            0.79f,
+            0.61f,
+            0.24f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.50f,
+            0.40f,
+            0.66f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.29f,
+            0.25f,
+            0.42f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.78f,
+            0.22f,
+            0.34f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.044f,
+            0.040f,
+            0.055f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.062f,
+            0.055f,
+            0.080f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.040f,
+            0.038f,
+            0.052f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.057f,
+            0.052f,
+            0.075f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.55f,
+            0.46f,
+            0.72f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.25f,
+            0.21f,
+            0.38f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.040f,
+            0.036f,
+            0.052f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 6:
+    {
+        //
+        // Visions of Eternity:
+        // magenta-forward identity + warm yellow telemetry + orange support.
+        // This deliberately separates it from Path of Fire's desert-orange look.
+        //
+        themePrimary = ImVec4(
+            0.70f,
+            0.23f,
+            0.48f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.95f,
+            0.72f,
+            0.25f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.95f,
+            0.47f,
+            0.20f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.88f,
+            0.14f,
+            0.28f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.050f,
+            0.031f,
+            0.047f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.074f,
+            0.041f,
+            0.066f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.040f,
+            0.031f,
+            0.051f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.060f,
+            0.041f,
+            0.072f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.90f,
+            0.34f,
+            0.62f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.46f,
+            0.12f,
+            0.31f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.044f,
+            0.028f,
+            0.043f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 7:
+    {
+        //
+        // Living World Season 1:
+        // Scarlet red + molten orange + industrial steel.
+        //
+        themePrimary = ImVec4(
+            0.82f,
+            0.12f,
+            0.18f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.95f,
+            0.45f,
+            0.16f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.24f,
+            0.30f,
+            0.36f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            1.00f,
+            0.16f,
+            0.20f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.045f,
+            0.039f,
+            0.041f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.068f,
+            0.053f,
+            0.055f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.038f,
+            0.041f,
+            0.045f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.055f,
+            0.060f,
+            0.066f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.42f,
+            0.50f,
+            0.58f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.18f,
+            0.23f,
+            0.28f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.042f,
+            0.034f,
+            0.037f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 8:
+    {
+        //
+        // Living World Season 2:
+        // dry Maguuma olive + sandy gold + weathered earth.
+        //
+        themePrimary = ImVec4(
+            0.50f,
+            0.57f,
+            0.22f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.82f,
+            0.68f,
+            0.36f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.35f,
+            0.29f,
+            0.18f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.76f,
+            0.25f,
+            0.19f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.046f,
+            0.045f,
+            0.033f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.068f,
+            0.064f,
+            0.043f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.042f,
+            0.041f,
+            0.033f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.061f,
+            0.057f,
+            0.043f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.52f,
+            0.44f,
+            0.25f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.28f,
+            0.24f,
+            0.15f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.043f,
+            0.041f,
+            0.030f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 9:
+    {
+        //
+        // Living World Season 3:
+        // ley-line violet + electric blue + Bloodstone crimson.
+        //
+        themePrimary = ImVec4(
+            0.48f,
+            0.32f,
+            0.78f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.25f,
+            0.68f,
+            0.95f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.50f,
+            0.16f,
+            0.29f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.86f,
+            0.17f,
+            0.26f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.038f,
+            0.036f,
+            0.055f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.056f,
+            0.050f,
+            0.080f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.033f,
+            0.038f,
+            0.057f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.047f,
+            0.054f,
+            0.081f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.62f,
+            0.43f,
+            0.88f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.33f,
+            0.21f,
+            0.57f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.035f,
+            0.033f,
+            0.052f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 10:
+    {
+        //
+        // Living World Season 4:
+        // branded crystal violet + bright turquoise + deep amethyst.
+        //
+        themePrimary = ImVec4(
+            0.66f,
+            0.32f,
+            0.78f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.20f,
+            0.78f,
+            0.78f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.30f,
+            0.17f,
+            0.44f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.90f,
+            0.24f,
+            0.45f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.041f,
+            0.033f,
+            0.052f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.061f,
+            0.044f,
+            0.077f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.031f,
+            0.040f,
+            0.050f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.043f,
+            0.059f,
+            0.072f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.48f,
+            0.31f,
+            0.65f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.25f,
+            0.14f,
+            0.38f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.037f,
+            0.030f,
+            0.048f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 11:
+    {
+        //
+        // The Icebrood Saga:
+        // glacial cyan + frost-white telemetry + deep Jormag navy.
+        //
+        themePrimary = ImVec4(
+            0.42f,
+            0.75f,
+            0.90f,
+            1.00f
+        );
+
+        themeTelemetry = ImVec4(
+            0.76f,
+            0.90f,
+            0.96f,
+            1.00f
+        );
+
+        themeSecondary = ImVec4(
+            0.16f,
+            0.27f,
+            0.48f,
+            1.00f
+        );
+
+        themeDanger = ImVec4(
+            0.62f,
+            0.27f,
+            0.52f,
+            1.00f
+        );
+
+        themePanel = ImVec4(
+            0.028f,
+            0.041f,
+            0.055f,
+            0.97f
+        );
+
+        themePanelRaised = ImVec4(
+            0.039f,
+            0.058f,
+            0.078f,
+            0.98f
+        );
+
+        themeRightPanel = ImVec4(
+            0.025f,
+            0.036f,
+            0.052f,
+            0.97f
+        );
+
+        themeRightPanelRaised = ImVec4(
+            0.036f,
+            0.051f,
+            0.074f,
+            0.98f
+        );
+
+        themeActionHovered = ImVec4(
+            0.30f,
+            0.48f,
+            0.72f,
+            1.00f
+        );
+
+        themeActionActive = ImVec4(
+            0.12f,
+            0.22f,
+            0.42f,
+            1.00f
+        );
+
+        themePopupBg = ImVec4(
+            0.024f,
+            0.035f,
+            0.050f,
+            0.99f
+        );
+
+        break;
+    }
+
+    case 0:
+    default:
+    {
+        // Janthir defaults above.
+        break;
+    }
+    }
+
+    const float themePulse =
         0.72f +
         0.28f *
         std::sin(
@@ -7037,33 +8056,33 @@ void TradingPostUI::RenderTab(
         ),
         ImGui::GetColorU32(
             ImVec4(
-                janthirBlue.x,
-                janthirBlue.y,
-                janthirBlue.z,
+                themePrimary.x,
+                themePrimary.y,
+                themePrimary.z,
                 0.54f
             )
         ),
         ImGui::GetColorU32(
             ImVec4(
-                janthirNavyAccent.x,
-                janthirNavyAccent.y,
-                janthirNavyAccent.z,
+                themeSecondary.x,
+                themeSecondary.y,
+                themeSecondary.z,
                 0.30f
             )
         ),
         ImGui::GetColorU32(
             ImVec4(
-                janthirNavyAccent.x,
-                janthirNavyAccent.y,
-                janthirNavyAccent.z,
+                themeSecondary.x,
+                themeSecondary.y,
+                themeSecondary.z,
                 0.18f
             )
         ),
         ImGui::GetColorU32(
             ImVec4(
-                janthirBlue.x,
-                janthirBlue.y,
-                janthirBlue.z,
+                themePrimary.x,
+                themePrimary.y,
+                themePrimary.z,
                 0.26f
             )
         )
@@ -7073,7 +8092,7 @@ void TradingPostUI::RenderTab(
 
     ImGui::PushStyleColor(
         ImGuiCol_Text,
-        janthirBlue
+        themePrimary
     );
 
     ImGui::SetWindowFontScale(
@@ -7106,9 +8125,9 @@ void TradingPostUI::RenderTab(
         ),
         ImGui::GetColorU32(
             ImVec4(
-                janthirBlue.x,
-                janthirBlue.y,
-                janthirBlue.z,
+                themePrimary.x,
+                themePrimary.y,
+                themePrimary.z,
                 0.42f
             )
         ),
@@ -7135,7 +8154,7 @@ void TradingPostUI::RenderTab(
 
     ImGui::PushStyleColor(
         ImGuiCol_ChildBg,
-        janthirPanel
+        themePanel
     );
 
     ImGui::PushStyleColor(
@@ -7151,9 +8170,9 @@ void TradingPostUI::RenderTab(
     ImGui::PushStyleColor(
         ImGuiCol_ScrollbarGrab,
         ImVec4(
-            janthirBlue.x,
-            janthirBlue.y,
-            janthirBlue.z,
+            themePrimary.x,
+            themePrimary.y,
+            themePrimary.z,
             0.48f
         )
     );
@@ -7279,7 +8298,7 @@ void TradingPostUI::RenderTab(
             );
 
             ImVec4 cardColor =
-                janthirPanelRaised;
+                themePanelRaised;
 
             ImVec4 cardBorder(
                 0.10f,
@@ -7300,9 +8319,9 @@ void TradingPostUI::RenderTab(
 
                 cardBorder =
                     ImVec4(
-                        janthirIce.x,
-                        janthirIce.y,
-                        janthirIce.z,
+                        themeTelemetry.x,
+                        themeTelemetry.y,
+                        themeTelemetry.z,
                         0.52f
                     );
             }
@@ -7319,9 +8338,9 @@ void TradingPostUI::RenderTab(
 
                 cardBorder =
                     ImVec4(
-                        janthirBlue.x,
-                        janthirBlue.y,
-                        janthirBlue.z,
+                        themePrimary.x,
+                        themePrimary.y,
+                        themePrimary.z,
                         0.96f
                     );
             }
@@ -7353,11 +8372,11 @@ void TradingPostUI::RenderTab(
                 ),
                 ImGui::GetColorU32(
                     compactSelected
-                    ? janthirBlue
+                    ? themePrimary
                     : ImVec4(
-                        janthirIce.x,
-                        janthirIce.y,
-                        janthirIce.z,
+                        themeTelemetry.x,
+                        themeTelemetry.y,
+                        themeTelemetry.z,
                         cardHovered
                         ? 0.62f
                         : 0.22f
@@ -7409,9 +8428,9 @@ void TradingPostUI::RenderTab(
                     ),
                     ImGui::GetColorU32(
                         ImVec4(
-                            janthirIce.x,
-                            janthirIce.y,
-                            janthirIce.z,
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
                             compactSelected
                             ? 0.58f
                             : 0.24f
@@ -7597,7 +8616,7 @@ void TradingPostUI::RenderTab(
 
             ImGui::TextColored(
                 compactSelected
-                ? janthirBlue
+                ? themePrimary
                 : itemNameColor,
                 "%s",
                 item.name.c_str()
@@ -7619,7 +8638,7 @@ void TradingPostUI::RenderTab(
                 )
             {
                 ImGui::TextColored(
-                    janthirIce,
+                    themeSellPrice,
                     "SELL %s",
                     FormatCoinValue(
                         compactPrice.sellUnitPrice
@@ -7639,12 +8658,7 @@ void TradingPostUI::RenderTab(
                 );
 
                 ImGui::TextColored(
-                    ImVec4(
-                        0.74f,
-                        0.90f,
-                        0.84f,
-                        1.00f
-                    ),
+                    themeBuyPrice,
                     "BUY %s",
                     FormatCoinValue(
                         compactPrice.buyUnitPrice
@@ -7672,7 +8686,7 @@ void TradingPostUI::RenderTab(
                 )
             {
                 ImGui::TextColored(
-                    janthirBlue,
+                    themePrimary,
                     "TARGET // HIT"
                 );
             }
@@ -7683,9 +8697,9 @@ void TradingPostUI::RenderTab(
             {
                 ImGui::TextColored(
                     ImVec4(
-                        janthirIce.x,
-                        janthirIce.y,
-                        janthirIce.z,
+                        themeTelemetry.x,
+                        themeTelemetry.y,
+                        themeTelemetry.z,
                         0.62f
                     ),
                     "TARGET // ARMED"
@@ -7727,7 +8741,7 @@ void TradingPostUI::RenderTab(
 
     ImGui::PushStyleColor(
         ImGuiCol_Text,
-        janthirNavyAccent
+        themeSecondary
     );
 
     ImGui::SetWindowFontScale(
@@ -7764,15 +8778,15 @@ void TradingPostUI::RenderTab(
 
     ImGui::PushStyleColor(
         ImGuiCol_ChildBg,
-        janthirRightPanel
+        themeRightPanel
     );
 
     ImGui::PushStyleColor(
         ImGuiCol_Separator,
         ImVec4(
-            janthirNavyAccent.x,
-            janthirNavyAccent.y,
-            janthirNavyAccent.z,
+            themeSecondary.x,
+            themeSecondary.y,
+            themeSecondary.z,
             0.24f
         )
     );
@@ -7790,9 +8804,9 @@ void TradingPostUI::RenderTab(
     ImGui::PushStyleColor(
         ImGuiCol_ScrollbarGrab,
         ImVec4(
-            janthirNavyAccent.x,
-            janthirNavyAccent.y,
-            janthirNavyAccent.z,
+            themeSecondary.x,
+            themeSecondary.y,
+            themeSecondary.z,
             0.46f
         )
     );
@@ -7840,9 +8854,9 @@ void TradingPostUI::RenderTab(
                 ),
                 ImGui::GetColorU32(
                     ImVec4(
-                        janthirIce.x,
-                        janthirIce.y,
-                        janthirIce.z,
+                        themeTelemetry.x,
+                        themeTelemetry.y,
+                        themeTelemetry.z,
                         0.018f
                     )
                 ),
@@ -7873,9 +8887,9 @@ void TradingPostUI::RenderTab(
             ),
             ImGui::GetColorU32(
                 ImVec4(
-                    janthirNavyAccent.x,
-                    janthirNavyAccent.y,
-                    janthirNavyAccent.z,
+                    themeSecondary.x,
+                    themeSecondary.y,
+                    themeSecondary.z,
                     0.040f
                 )
             ),
@@ -7893,9 +8907,9 @@ void TradingPostUI::RenderTab(
             ),
             ImGui::GetColorU32(
                 ImVec4(
-                    janthirNavyAccent.x,
-                    janthirNavyAccent.y,
-                    janthirNavyAccent.z,
+                    themeSecondary.x,
+                    themeSecondary.y,
+                    themeSecondary.z,
                     0.62f
                 )
             ),
@@ -7913,9 +8927,9 @@ void TradingPostUI::RenderTab(
             ),
             ImGui::GetColorU32(
                 ImVec4(
-                    janthirNavyAccent.x,
-                    janthirNavyAccent.y,
-                    janthirNavyAccent.z,
+                    themeSecondary.x,
+                    themeSecondary.y,
+                    themeSecondary.z,
                     0.62f
                 )
             ),
@@ -8046,20 +9060,20 @@ void TradingPostUI::RenderTab(
                 janthirHeaderEnd,
                 ImGui::GetColorU32(
                     ImVec4(
-                        janthirRightPanelRaised.x,
-                        janthirRightPanelRaised.y,
-                        janthirRightPanelRaised.z,
-                        janthirRightPanelRaised.w
+                        themeRightPanelRaised.x,
+                        themeRightPanelRaised.y,
+                        themeRightPanelRaised.z,
+                        themeRightPanelRaised.w
                     )
                 ),
                 ImGui::GetColorU32(
                     ImVec4(
-                        janthirNavyAccent.x,
-                        janthirNavyAccent.y,
-                        janthirNavyAccent.z,
+                        themeSecondary.x,
+                        themeSecondary.y,
+                        themeSecondary.z,
                         0.60f +
                         0.24f *
-                        janthirPulse
+                        themePulse
                     )
                 ),
                 11.0f,
@@ -8073,7 +9087,7 @@ void TradingPostUI::RenderTab(
                     janthirHeaderEnd.y
                 ),
                 ImGui::GetColorU32(
-                    janthirNavyAccent
+                    themeSecondary
                 )
             );
 
@@ -8115,37 +9129,22 @@ void TradingPostUI::RenderTab(
 
             ImGui::PushStyleColor(
                 ImGuiCol_Button,
-                janthirNavyAccent
+                themeSecondary
             );
 
             ImGui::PushStyleColor(
                 ImGuiCol_ButtonHovered,
-                ImVec4(
-                    0.42f,
-                    0.68f,
-                    0.96f,
-                    1.00f
-                )
+                themeActionHovered
             );
 
             ImGui::PushStyleColor(
                 ImGuiCol_ButtonActive,
-                ImVec4(
-                    0.16f,
-                    0.30f,
-                    0.58f,
-                    1.00f
-                )
+                themeActionActive
             );
 
             ImGui::PushStyleColor(
                 ImGuiCol_Text,
-                ImVec4(
-                    0.94f,
-                    0.97f,
-                    1.00f,
-                    1.00f
-                )
+                themeActionText
             );
 
             ImGui::PushStyleVar(
@@ -8182,20 +9181,15 @@ void TradingPostUI::RenderTab(
 
             ImGui::PushStyleColor(
                 ImGuiCol_PopupBg,
-                ImVec4(
-                    0.050f,
-                    0.052f,
-                    0.066f,
-                    0.99f
-                )
+                themePopupBg
             );
 
             ImGui::PushStyleColor(
                 ImGuiCol_HeaderHovered,
                 ImVec4(
-                    janthirNavyAccent.x,
-                    janthirNavyAccent.y,
-                    janthirNavyAccent.z,
+                    themeSecondary.x,
+                    themeSecondary.y,
+                    themeSecondary.z,
                     0.26f
                 )
             );
@@ -8203,9 +9197,9 @@ void TradingPostUI::RenderTab(
             ImGui::PushStyleColor(
                 ImGuiCol_HeaderActive,
                 ImVec4(
-                    janthirNavyAccent.x,
-                    janthirNavyAccent.y,
-                    janthirNavyAccent.z,
+                    themeSecondary.x,
+                    themeSecondary.y,
+                    themeSecondary.z,
                     0.24f
                 )
             );
@@ -8241,7 +9235,7 @@ void TradingPostUI::RenderTab(
                 {
                     ImGui::PushStyleColor(
                         ImGuiCol_Text,
-                        janthirDanger
+                        themeDanger
                     );
 
                     if (
@@ -8669,9 +9663,9 @@ void TradingPostUI::RenderTab(
                 ),
                 ImGui::GetColorU32(
                     ImVec4(
-                        janthirIce.x,
-                        janthirIce.y,
-                        janthirIce.z,
+                        themeTelemetry.x,
+                        themeTelemetry.y,
+                        themeTelemetry.z,
                         0.34f
                     )
                 ),
@@ -8690,9 +9684,9 @@ void TradingPostUI::RenderTab(
                 ),
                 ImGui::GetColorU32(
                     ImVec4(
-                        janthirBlue.x,
-                        janthirBlue.y,
-                        janthirBlue.z,
+                        themePrimary.x,
+                        themePrimary.y,
+                        themePrimary.z,
                         0.92f
                     )
                 ),

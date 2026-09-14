@@ -113,6 +113,15 @@ bool Settings::Load(
             }
             else if (
                 key ==
+                "tradingPostThemeIndex"
+                )
+            {
+                g_Settings
+                    .tradingPostThemeIndex =
+                    std::stoi(value);
+            }
+            else if (
+                key ==
                 "backupAutoEnabled"
                 )
             {
@@ -214,6 +223,13 @@ bool Settings::Load(
             2
         );
 
+    g_Settings.tradingPostThemeIndex =
+        std::clamp(
+            g_Settings.tradingPostThemeIndex,
+            0,
+            11
+        );
+
     g_Settings.backupIntervalIndex =
         std::clamp(
             g_Settings.backupIntervalIndex,
@@ -312,6 +328,12 @@ bool Settings::Save(
         << "tradingPostViewDensityIndex="
         << g_Settings
         .tradingPostViewDensityIndex
+        << '\n';
+
+    file
+        << "tradingPostThemeIndex="
+        << g_Settings
+        .tradingPostThemeIndex
         << '\n';
 
     file

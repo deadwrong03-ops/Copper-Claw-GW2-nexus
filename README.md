@@ -44,6 +44,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Colored **Market Volatility** classification based on scan-to-scan movement
 - Sortable watch list
 - **Normal / Slim / Ultra Slim** watch-list views
+- Persistent visual themes for expansions, Living World eras, and the Cyberpunk 2077 alternate style
 - Optional per-item **Favorites** with an instant Favorites-only view
 - Sell / Buy price-history sparklines that follow the selected **Trend Window**, with time/price axes, current-price and change readouts, and a subtle live endpoint sparkle
 - Historical minimum / average / maximum prices
@@ -99,6 +100,36 @@ All three views keep the core watch-list actions available.
 Items can also be marked as **Favorites** using the star beside the item. The normal **All Items** view remains one continuous watch list, while **Favorites** instantly filters the list to starred items only.
 
 Favorites are optional. Newly watched items do not require any organization or setup, and favorite state persists across restarts.
+
+---
+
+## Visual Themes
+
+Copper&Claw includes a persistent Trading Post theme selector. Themes change the dashboard's visual identity while preserving the same layout, spacing, analysis behavior, and one-live-analysis performance model.
+
+Available themes:
+
+- **Janthir Wilds** — blue / navy / ice
+- **Cyberpunk 2077** — acid yellow / cyan / red
+- **Heart of Thorns** — jungle green / foliage green / Auric gold
+- **Path of Fire** — desert orange / crimson / Elonian gold
+- **End of Dragons** — jade / pale jade
+- **Secrets of the Obscure** — wizard gold / indigo / violet
+- **Visions of Eternity** — magenta-forward with warm yellow / orange support
+- **Scarlet's War (LW1)** — Scarlet red / molten orange / industrial steel
+- **Glint's Prophecy (LW2)** — dry Maguuma olive / sandy gold / weathered earth
+- **Glint's Legacy (LW3)** — ley-line violet / electric blue / Bloodstone crimson
+- **Rise of Kralkatorrik (LW4)** — branded crystal violet / turquoise / deep amethyst
+- **The Icebrood Saga (LW5)** — glacial cyan / frost-white / deep navy
+
+The selected theme persists across Guild Wars 2 restarts.
+
+Trading Post market-side colors remain semantic across every theme:
+
+- **Sell** stays green
+- **Buy** stays blue
+
+This keeps Sell / Buy information immediately recognizable even when the surrounding dashboard palette changes.
 
 ---
 
@@ -447,6 +478,7 @@ Copper&Claw saves:
 - selected Trend Window
 - selected watch-list sort mode
 - selected watch-list view density
+- selected Trading Post visual theme
 - backup settings
 - last restored backup information
 - acknowledged update-notice version
