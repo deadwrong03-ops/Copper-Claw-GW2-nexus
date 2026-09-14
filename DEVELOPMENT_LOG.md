@@ -135,15 +135,48 @@ The Debug build loaded successfully with the GitHub update provider configured.
 
 **Result: PASS — DEBUG-ONLY UPDATER CONFIGURATION**
 
-### Pending pre-release cleanup
+Updater behavior was then tested with a temporary Debug-only `0.1.3.0` version against the existing public `v0.1.4` GitHub release.
 
-The current development `entry.cpp` still contains the temporary raw mouse-wheel diagnostic handler / counters from earlier UI input investigation.
+Nexus attempted to query:
 
-That diagnostic code was intentionally left unchanged while the item-index overlay and Debug-only updater were being validated.
+```text
+/repos/deadwrong03-ops/Copper-Claw-GW2-nexus/releases
+```
 
-Before the next public Release build, review and remove the temporary wheel diagnostics as a separate change so they are not mixed into unrelated UI/updater work.
+but GitHub returned `404 Not Found` to the unauthenticated request. Direct unauthenticated checks against both the repository and the `deadwrong03-ops` user endpoint also returned `404`, while the signed-in GitHub UI showed the repository as Public.
 
-**Status: PENDING CLEANUP**
+Conclusion:
+
+- Nexus is reaching the configured GitHub repository path
+- the current updater code should remain unchanged
+- the live update test is blocked by GitHub account/repository visibility to unauthenticated clients, not by Copper&Claw's update-provider wiring
+- the temporary `0.1.3.0` test build was discarded afterward and normal `0.1.4.0` development state was restored
+
+**Status: GITHUB VISIBILITY ISSUE BLOCKS LIVE UPDATE TEST**
+
+### Temporary mouse-wheel diagnostics removed
+
+The temporary raw mouse-wheel diagnostic code from the earlier UI input investigation has now been removed from `entry.cpp`.
+
+Removed diagnostic-only pieces included:
+
+- `CopperAndClawWndProc`
+- raw `WM_MOUSEWHEEL` counters
+- `WndProc_Register` / `WndProc_Deregister`
+- the `WHEEL DEBUG` readout
+- the `Reset Wheel Debug` control
+- ImGui wheel-event counters used only for diagnosis
+
+The cleanup intentionally preserved the accepted #5N game-screen item-index overlay and the Debug-only GitHub updater configuration.
+
+In-game validation after rebuilding confirmed:
+
+- Nexus reports Copper&Claw `0.1.4.0`
+- the Copper&Claw footer reports `v0.1.4`
+- the wheel-debug UI is gone
+- Copper&Claw continues to load and render normally
+
+**Result: PASS — TEMPORARY WHEEL DIAGNOSTICS REMOVED**
 
 No new public release was published during this checkpoint. Latest published release remains `v0.1.4`.
 

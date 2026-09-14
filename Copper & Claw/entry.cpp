@@ -17,29 +17,11 @@ void AddonLoad(AddonAPI_t* aApi);
 void AddonUnload();
 void AddonRender();
 void AddonOptions();
-UINT CopperAndClawWndProc(
-    HWND hWnd,
-    UINT uMsg,
-    WPARAM wParam,
-    LPARAM lParam
-);
-
 AddonDefinition_t AddonDef = {};
 
 HMODULE hSelf = nullptr;
 AddonAPI_t* APIDefs = nullptr;
 NexusLinkData_t* NexusLink = nullptr;
-
-//
-// Temporary raw mouse-wheel diagnostics.
-//
-// These counters let us compare the WM_MOUSEWHEEL messages Nexus sends to
-// Copper&Claw against ImGui::GetIO().MouseWheel while the options tab is open.
-//
-volatile LONG g_RawWheelMessageCount = 0;
-volatile LONG g_RawWheelAbsoluteDelta = 0;
-volatile LONG g_RawWheelLastDelta = 0;
-
 
 namespace
 {
@@ -479,50 +461,6 @@ AddonDefinition_t* GetAddonDef()
     return &AddonDef;
 }
 
-UINT CopperAndClawWndProc(
-    HWND,
-    UINT uMsg,
-    WPARAM wParam,
-    LPARAM
-)
-{
-    if (uMsg == WM_MOUSEWHEEL)
-    {
-        const LONG wheelDelta =
-            static_cast<LONG>(
-                GET_WHEEL_DELTA_WPARAM(
-                    wParam
-                )
-                );
-
-        const LONG absoluteDelta =
-            wheelDelta >= 0
-            ? wheelDelta
-            : -wheelDelta;
-
-        InterlockedIncrement(
-            &g_RawWheelMessageCount
-        );
-
-        InterlockedExchangeAdd(
-            &g_RawWheelAbsoluteDelta,
-            absoluteDelta
-        );
-
-        InterlockedExchange(
-            &g_RawWheelLastDelta,
-            wheelDelta
-        );
-    }
-
-    //
-    // Do not consume or alter the message. Nexus WndProc callbacks return the
-    // message value that should continue through the chain, so return uMsg
-    // unchanged for this diagnostic-only handler.
-    //
-    return uMsg;
-}
-
 void AddonLoad(
     AddonAPI_t* aApi
 )
@@ -602,16 +540,6 @@ void AddonLoad(
         AddonOptions
     );
 
-    if (
-        APIDefs->WndProc_Register !=
-        nullptr
-        )
-    {
-        APIDefs->WndProc_Register(
-            CopperAndClawWndProc
-        );
-    }
-
     APIDefs->Log(
         LOGL_INFO,
         "Copper&Claw",
@@ -648,16 +576,6 @@ void AddonUnload()
 
     if (APIDefs != nullptr)
     {
-        if (
-            APIDefs->WndProc_Deregister !=
-            nullptr
-            )
-        {
-            APIDefs->WndProc_Deregister(
-                CopperAndClawWndProc
-            );
-        }
-
         APIDefs->GUI_Deregister(
             AddonRender
         );
@@ -749,124 +667,9 @@ void AddonRender()
 
 void AddonOptions()
 {
-    //
-    // Temporary ImGui-side wheel diagnostics. Raw WM_MOUSEWHEEL events are
-    // counted by CopperAndClawWndProc above. Comparing the two tells us whether
-    // wheel input is being lost before it reaches ImGui or whether scrolling
-    // is being routed incorrectly after ImGui receives it.
-    //
-    static unsigned long long
-        imguiWheelEventFrameCount = 0ULL;
-
-    static float
-        imguiWheelAbsoluteTotal = 0.0f;
-
-    static float
-        imguiWheelLastNonZero = 0.0f;
-
-    const float currentImGuiWheel =
-        ImGui::GetIO().MouseWheel;
-
-    if (currentImGuiWheel != 0.0f)
-    {
-        ++imguiWheelEventFrameCount;
-
-        imguiWheelAbsoluteTotal +=
-            currentImGuiWheel >= 0.0f
-            ? currentImGuiWheel
-            : -currentImGuiWheel;
-
-        imguiWheelLastNonZero =
-            currentImGuiWheel;
-    }
-
-    const LONG rawWheelMessageCount =
-        InterlockedCompareExchange(
-            &g_RawWheelMessageCount,
-            0,
-            0
-        );
-
-    const LONG rawWheelAbsoluteDelta =
-        InterlockedCompareExchange(
-            &g_RawWheelAbsoluteDelta,
-            0,
-            0
-        );
-
-    const LONG rawWheelLastDelta =
-        InterlockedCompareExchange(
-            &g_RawWheelLastDelta,
-            0,
-            0
-        );
-
     ImGui::TextUnformatted(
         "Copper&Claw"
     );
-
-    ImGui::Separator();
-
-    ImGui::TextColored(
-        ImVec4(
-            1.00f,
-            0.78f,
-            0.25f,
-            1.00f
-        ),
-        "WHEEL DEBUG"
-    );
-
-    ImGui::SameLine(
-        0.0f,
-        8.0f
-    );
-
-    ImGui::TextDisabled(
-        "Raw msgs: %ld | Raw notches: %.1f | Raw last: %ld | ImGui frames: %llu | ImGui total: %.1f | ImGui last: %.2f",
-        rawWheelMessageCount,
-        static_cast<double>(
-            rawWheelAbsoluteDelta
-            ) /
-        static_cast<double>(
-            WHEEL_DELTA
-            ),
-        rawWheelLastDelta,
-        imguiWheelEventFrameCount,
-        imguiWheelAbsoluteTotal,
-        imguiWheelLastNonZero
-    );
-
-    if (
-        ImGui::SmallButton(
-            "Reset Wheel Debug"
-        )
-        )
-    {
-        InterlockedExchange(
-            &g_RawWheelMessageCount,
-            0
-        );
-
-        InterlockedExchange(
-            &g_RawWheelAbsoluteDelta,
-            0
-        );
-
-        InterlockedExchange(
-            &g_RawWheelLastDelta,
-            0
-        );
-
-        imguiWheelEventFrameCount =
-            0ULL;
-
-        imguiWheelAbsoluteTotal =
-            0.0f;
-
-        imguiWheelLastNonZero =
-            0.0f;
-    }
 
     ImGui::Separator();
 
