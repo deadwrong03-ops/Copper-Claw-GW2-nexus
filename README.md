@@ -51,7 +51,6 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Collector snapshot-aware confidence and coverage, with gap-aware local-history fallback
 - Colored **Market Volatility** classification based on scan-to-scan movement
 - Sortable watch list
-- **Normal / Slim / Ultra Slim** watch-list views
 - Persistent visual themes for expansions, Living World eras, and the Cyberpunk 2077 alternate style
 - Sell / Buy price-history charts that follow the selected **Trend Window**
 - Trend Windows from **15 Minutes** through **1 Year**
@@ -95,27 +94,18 @@ Volatility sorting uses the same readiness rules as the **Market Volatility** ba
 
 ---
 
-## Watch List Views, Heatmap, Groups & Favorites
+## Watchlist Heatmap, Groups & Favorites
 
-Copper&Claw supports two Watchlist presentation modes:
-
-- **List** — the normal grouped watch-card presentation
-- **Heatmap** — a compact two-column market-state grid for quickly scanning watched items
-
-List mode retains the three existing density options:
-
-- **Normal** — roomier rows with additional item metadata
-- **Slim** — the default balanced layout
-- **Ultra Slim** — a compact Item / Sell / Buy / Actions layout
+Copper&Claw's Watchlist uses the current compact card layout and also includes a **Heatmap** presentation for quickly scanning watched items.
 
 Heatmap tiles show the item icon, current Sell price, selected-window percentage movement, volatility, current Prowl state when present, and Follow / Favorite indicators. Strong market states use the tile background/border for faster visual scanning, and active Prowl tiles receive a subtle pulse.
 
-Heatmap interaction keeps the Watchlist functional rather than becoming a read-only summary:
+Heatmap interaction remains fully functional:
 
 - left-click a tile to open that item in **Item Analysis**
 - right-click a tile for Favorite, Follow, Move to Group, Refresh Price, and Remove actions
 
-The selected List / Heatmap mode is persisted in `CopperAndClaw.ini`.
+The Heatmap preference persists across Guild Wars 2 restarts.
 
 The Watchlist can also be collapsed into a narrow icon rail. Watched-item icons remain selectable from the rail so Item Analysis can still be switched without reopening the full list.
 
@@ -576,7 +566,7 @@ Copper&Claw saves:
 - watched items
 - Watchlist group assignments
 - Favorites
-- selected List / Heatmap Watchlist presentation
+- Heatmap presentation preference
 - Prowl Follow List and follow expiration times
 - Sell Targets
 - Buy Targets
@@ -584,7 +574,6 @@ Copper&Claw saves:
 - settings, including Collector host / port / HTTPS connection values
 - selected Trend Window
 - selected watch-list sort mode
-- selected watch-list view density
 - selected Trading Post visual theme
 - backup settings
 - last restored backup information

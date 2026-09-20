@@ -105,16 +105,9 @@ In-game testing confirmed a followed Valkyrie Barbaric Helm appeared by itself i
 
 ### Watchlist Heatmap
 
-Added a persistent Watchlist presentation selector:
+Added a persistent **Heatmap** presentation to the current Watchlist workspace.
 
-```text
-List
-Heatmap
-```
-
-List mode keeps the existing grouped Watchlist cards and Normal / Slim / Ultra Slim density system.
-
-Heatmap mode provides a compact two-column market-state grid.
+Heatmap provides a compact two-column market-state grid without documenting the older Watchlist density/view dropdown model that has since been superseded by the current UI.
 
 Each tile can show:
 
@@ -139,7 +132,7 @@ Interaction remains fully functional:
 - Refresh Price
 - Remove from Watch List
 
-The selected List / Heatmap mode persists through restart.
+The Heatmap preference persists through restart.
 
 **Result: PASS — HEATMAP FUNCTIONALITY VALIDATED IN GAME**
 
@@ -1635,17 +1628,13 @@ Final release validation still requires a clean Release x64 rebuild and in-game 
 
 Completed a focused post-v0.1.2 Trading Post UI cleanup intended to reduce bulk without removing the underlying market-analysis functionality.
 
-### Watch-list density modes
+### Historical Watchlist density experiment
 
-Added three selectable watch-list views:
+Earlier development builds included **Normal / Slim / Ultra Slim** Watchlist density modes.
 
-- **Normal** — roomier rows with additional item metadata
-- **Slim** — balanced compact layout and the default view
-- **Ultra Slim** — compact Item / Sell / Buy / Actions presentation
+That control belonged to an older stage of the Trading Post UI and has since been superseded by the current Watchlist design. The old density dropdown is no longer documented as part of the current user interface.
 
-The selected view density is persisted in `CopperAndClaw.ini`.
-
-All density modes retain access to watched-item actions and target editing.
+**Status: HISTORICAL / SUPERSEDED**
 
 ### Analysis sparklines
 
@@ -1717,24 +1706,14 @@ Row 1:
 
 Row 2:
 
-- View
 - Show: All Items / Favorites
 
-A final label polish changed the controls to natural label-first presentation:
-
-- `Trend Window: [7d]`
-- `Sort: [Name A-Z]`
-- `View: [Normal]`
-- `Show: All Items / Favorites`
-
-The existing two-row structure was retained.
+The earlier density/view control from this development phase was later superseded by the current Watchlist UI.
 
 ### In-game validation
 
 Verified in-game:
 
-- Normal / Slim / Ultra Slim views render correctly
-- Slim remains the default
 - target editing remains available
 - Analysis sparklines render correctly
 - sparklines follow the selected Trend Window
