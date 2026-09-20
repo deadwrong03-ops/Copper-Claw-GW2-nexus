@@ -16,10 +16,12 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 ## Main Features
 
-
 - Watch multiple Trading Post items
 - Official Guild Wars 2 item icons beside watched items
 - Hover item icons for brief indexed item details and stats without making a new network request on hover
+- Persistent **Watchlist groups**: Ungrouped, Investments, Consumables, and Materials
+- Persistent per-item **Favorites**
+- Collapsible Watchlist with a compact icon rail when collapsed
 - Collector-aware automatic refresh: 5 minutes when the hosted Collector is available, 60 seconds when falling back to the Guild Wars 2 API
 - Manual per-item refresh and Refresh All with a shared 10-second manual-refresh cooldown
 - Current **lowest sell listing**
@@ -28,25 +30,28 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Per-item **Buy Targets**
 - Independent Sell and Buy target alerts
 - Compact target display with dedicated **Edit Targets** controls
-- Persistent watch list, targets, settings, and price history
+- Persistent watch list, group assignments, targets, settings, and price history
 - Optional integration with the standalone Copper&Claw Collector for broader historical data
 - Hosted Collector connection over HTTPS by default
 - Configurable Collector host, port, and HTTP/HTTPS connection settings
 - Automatic migration from legacy `localhost:5177` and `127.0.0.1:5177` HTTP defaults
-- Efficient 90-day bounded Collector history imports with pre-window state anchoring
-- Efficient 90-day bounded Collector completed-snapshot timeline for analysis coverage
+- Bounded Collector history and completed-snapshot requests instead of unbounded lifetime downloads
+- On-demand **1 Year** history with Collector-first coverage and cached GW2TP gap filling when older coverage is missing
 - Compact Collector status line showing connection state, active price source, analysis source, last successful contact, and last completed scan age
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
-- Boxed Sell / Buy analysis cards for clearer visual separation
+- Time-normalized **Avg** and local **Roll Avg** chart references
+- Compact **Market Depth** order-book diagnostics for Sell Listings and Buy Orders
+- **Market Prowl** scanner for unusual whole-market price/depth behavior
+- Historical Market Prowl markers on item charts
 - Collector snapshot-aware confidence and coverage, with gap-aware local-history fallback
 - Colored **Market Volatility** classification based on scan-to-scan movement
 - Sortable watch list
 - **Normal / Slim / Ultra Slim** watch-list views
 - Persistent visual themes for expansions, Living World eras, and the Cyberpunk 2077 alternate style
-- Optional per-item **Favorites** with an instant Favorites-only view
-- Sell / Buy price-history sparklines that follow the selected **Trend Window**, with time/price axes, current-price and change readouts, and a subtle live endpoint sparkle
+- Sell / Buy price-history charts that follow the selected **Trend Window**
+- Trend Windows from **15 Minutes** through **1 Year**
 - Historical minimum / average / maximum prices
 - Dragon Bash-style **Target Reached** alerts
 - Built-in automatic **Backup & Restore** for local Copper&Claw data
@@ -87,7 +92,7 @@ Volatility sorting uses the same readiness rules as the **Market Volatility** ba
 
 ---
 
-## Watch List Views & Favorites
+## Watch List Views, Groups & Favorites
 
 Copper&Claw includes three watch-list density options:
 
@@ -97,9 +102,20 @@ Copper&Claw includes three watch-list density options:
 
 All three views keep the core watch-list actions available.
 
-Items can also be marked as **Favorites** using the star beside the item. The normal **All Items** view remains one continuous watch list, while **Favorites** instantly filters the list to starred items only.
+The Watchlist can also be collapsed into a narrow icon rail. Watched-item icons remain selectable from the rail so Item Analysis can still be switched without reopening the full list.
 
-Favorites are optional. Newly watched items do not require any organization or setup, and favorite state persists across restarts.
+Watched items can be organized into four groups:
+
+- **Ungrouped**
+- **Investments**
+- **Consumables**
+- **Materials**
+
+Items can be moved between groups from their watch-list controls. Group assignments are saved in `CopperAndClaw.ini` and survive a full Guild Wars 2 restart. Moving an item back to **Ungrouped** removes its saved group assignment, and removing a watched item also removes any stale group assignment.
+
+Items can also be marked as **Favorites** using the star beside the item. **All Items** shows the complete watch list, while **Favorites** instantly filters the list to starred items only.
+
+Favorites and group assignments are optional. Newly watched items begin ungrouped and do not require any organization before they can be tracked.
 
 ---
 
@@ -135,41 +151,83 @@ This keeps Sell / Buy information immediately recognizable even when the surroun
 
 ## Market Analysis
 
-Copper&Claw separates the two sides of the Trading Post market.
+Copper&Claw separates the two sides of the Trading Post market while keeping supporting context in the same Item Analysis view.
 
 ### Sell Listings
 
 - Direction
 - % movement
-- Recent average
-- Price position
-- Buyer-facing signal
+- selected-window average
+- price position
+- buyer-facing signal
 
 ### Buy Orders
 
 - Direction
 - % movement
-- Recent average
-- Price position
-- Seller-facing signal
+- selected-window average
+- price position
+- seller-facing signal
 
 Buyer- and seller-facing signals are kept consistent with the displayed Price Position. For example, a Sell Listing that is above its recent average will not simultaneously be labeled favorable for buyers.
 
+### Avg & Roll Avg
+
+The chart includes two different average references:
+
+- **Avg** — the time-normalized average price across the entire selected Trend Window
+- **Roll Avg** — a moving local average intended to follow the item's more recent short-term direction
+
+The whole-window Avg is also used by the surrounding price analysis so the chart and analysis cards refer to the same reference level.
+
+### Market Depth
+
+The compact **Market Depth** strip shows current order-book size and the newest quantity change for:
+
+- **Sell Listings**
+- **Buy Orders**
+
+Market Depth is **order-book depth, not completed trade volume**. A decrease means fewer units remain in the order book, but Copper&Claw cannot determine from public market snapshots whether those units were filled, cancelled, or removed for another reason.
+
+### Market Prowl
+
+**Market Prowl** compares current market behavior with each item's recent rolling normal and surfaces confirmed unusual movement.
+
+The Market Prowl tab provides plain-language filters:
+
+- **Getting Pricier**
+- **Getting Cheaper**
+- **Fewer Listings**
+- **Unusual**
+
+Current sort options include:
+
+- **Most Significant**
+- **Biggest % Move**
+- **Newest**
+- **Name A-Z**
+
+Prowl cards show current Sell / Buy prices, movement, first-seen time, and item details. The Item Analysis snapshot also shows the selected item's current Prowl state.
+
+Confirmed Prowl events are drawn as purple historical markers on both the Sell and Buy charts so both sides of the market can be inspected at the event timestamp. The marker does not mean both sides moved; it marks the same market event on each chart for comparison.
+
+Prowl is a live detector. Imported older price history can appear on long Trend Windows without retroactively creating Prowl events that were never detected live.
+
 ### Market Volatility
 
-Copper&Claw summarizes overall market movement with a simple colored badge:
+Copper&Claw summarizes overall market instability with a colored badge:
 
-- **CALM**
-- **NORMAL**
-- **ACTIVE**
-- **WILD**
-- **DEVELOPING**
+- **CALM** — movement score below 0.25%
+- **NORMAL** — 0.25% to below 0.75%
+- **ACTIVE** — 0.75% to below 2.00%
+- **WILD** — 2.00% or higher
+- **DEVELOPING** — insufficient reliable selected-window data
 
-Market Volatility measures scan-to-scan percentage movement rather than dispersion around an average. Sell Listing and Buy Order movement are calculated separately, and the more active side determines the single overall market-volatility label.
+Market Volatility measures scan-to-scan percentage movement rather than direction or dispersion around an average. Sell Listing and Buy Order movement are calculated separately, and the more active side determines the single overall badge.
 
-This avoids treating one sustained price step as if the market were repeatedly swinging. A one-time move followed by stable prices contributes less volatility than repeated large back-and-forth movement.
+A market can therefore be **WILD** even if it eventually returns near its starting price. Repeated large swings matter more than one isolated jump followed by stable prices.
 
-The badge uses the selected Trend Window and stays **DEVELOPING** until enough reliable history has been collected.
+Hovering the Volatility badge shows the current badge meaning, selected Trend Window, movement score, thresholds, and an explanation that volatility measures instability rather than price direction.
 
 ### Confidence & Coverage
 
@@ -177,27 +235,17 @@ Copper&Claw also reports:
 
 - Confidence
 - selected-window coverage
-- sample count inside the selected trend window
+- sample count inside the selected Trend Window
 
-When the Collector is available, coverage is based on completed Collector scan timestamps so unchanged prices still count as real observations. 
+When Collector-backed snapshots are available, coverage uses completed Collector scan timestamps so unchanged prices still count as real observations.
 
 <img width="674" height="208" alt="collector statusup" src="https://github.com/user-attachments/assets/19b6452c-a33d-453b-9884-242508d960a1" />
 
-
-
-
-
-
-
----
 Without the Collector, Copper&Claw uses its gap-aware local-history fallback.
-
 
 <img width="706" height="214" alt="collector statusdown" src="https://github.com/user-attachments/assets/ca837810-c4ae-4bd7-a33e-378fa63983c1" />
 
-
-Selected-window analysis stays **DEVELOPING** when the requested time window is not sufficiently covered, preventing partial history from being presented as a complete 3-day, 7-day, or longer conclusion.
-
+Selected-window analysis stays **DEVELOPING** when the requested time window is not sufficiently covered, preventing partial history from being presented as a complete longer-window conclusion.
 
 ---
 
@@ -270,52 +318,63 @@ This makes it easier to select the exact Trading Post listing you intended to wa
 
 Copper&Claw preserves its own local Trading Post history and can also import historical market data from the standalone Copper&Claw Collector when that service is available.
 
-
-
-
-
 Current behavior:
 
-- preserves every successfully recorded local observation
+- preserves successfully recorded local observations
 - does **not** automatically discard or compact older local observations
-- retains history across game restarts
+- retains local history across game restarts
 - merges Collector history into existing Copper&Claw history
 - skips exact duplicate imported observations
 - uses the combined available history for trends and analysis
 - newly watched items can immediately gain earlier history already collected by the Collector
 - continues working from local history if the Collector is unavailable
+- can request additional 1-year history on demand when the **1 Year** Trend Window is selected
 
-If the Collector has never observed an item, Copper&Claw still begins with only the history available locally from the time tracking started.
+If the Collector has never observed an item, Copper&Claw begins with whatever history is available locally.
 
-The old standalone History panel has been removed from the watch-list UI to keep Details focused on useful analysis. Historical observations are still collected normally and continue to power trends, confidence, coverage, volatility, statistics, and sparklines.
+The old standalone History panel has been removed from the watch-list UI. Historical observations continue to power charts, trends, confidence, coverage, volatility, statistics, Market Prowl context, and rolling analysis.
 
 ### Trend Windows
 
-- 15m
-- 30m
-- 1h
-- 6h
-- 24h
-- 3d
-- 7d
-- 30d
-- 90d
+- 15 Minutes
+- 30 Minutes
+- 1 Hour
+- 6 Hours
+- 24 Hours
+- 3 Days
+- 7 Days
+- 30 Days
+- 3 Months
+- 6 Months
+- 1 Year
 
-The Sell and Buy sparklines in Analysis use the currently selected **Trend Window**, so the graph and the surrounding market analysis refer to the same period.
+The Sell and Buy charts use the currently selected **Trend Window**, so the graphs and surrounding market analysis refer to the same period.
 
 Current chart presentation includes:
 
 - timestamp-based horizontal spacing
-- Y-axis price labels sized dynamically for low- and high-value items
-- X-axis labels for the full selected window, half-window, and **Now**
-- a faint midpoint guide
+- a continuous observed-price line designed to remain readable with dense Collector samples
+- dynamically sized HIGH / AVG / LOW price references
+- X-axis labels for the full selected window, midpoint, and **Now**
+- dashed whole-window **Avg**
+- solid **Roll Avg**
 - current price shown beside the chart
 - absolute coin change and percentage change for the selected Trend Window
-- a small latest-price endpoint marker with a brief periodic sparkle/pulse to indicate live data
+- a small latest-price endpoint marker
+- historical Market Prowl event markers
+- hover tooltips for exact historical values and Prowl events
 
-The sparkle is intentionally limited to the endpoint; the chart itself remains clean and unfilled.
+The observed-price renderer changes presentation only. Exact stored history remains the source for analysis, hover values, statistics, averages, and Prowl positioning.
 
-Trend direction is also strict to the selected window. If history does not reach the requested boundary, Copper&Claw shows **Developing** instead of silently falling back to a longer period of history.
+Trend direction is strict to the selected window. If available history does not reach the requested boundary, Copper&Claw shows **Developing** rather than silently treating a shorter history period as complete.
+
+### 1-Year / Hybrid History
+
+The **1 Year** view remains Collector-first.
+
+When the Collector already covers the requested year, Collector history is used directly. If older coverage is missing, the Collector can use its persistent cached GW2TP 1-year fallback to fill only the older uncovered portion. Collector observations remain authoritative wherever the two sources overlap.
+
+When both sources are involved, Copper&Claw can identify the analysis source as **Hybrid History**.
 
 ---
 
@@ -347,27 +406,28 @@ localhost:5177 over HTTP
 Current integration behavior:
 
 - current watched-item prices are requested from the Collector first
-- current-price, history, and completed-snapshot Collector requests all use the configured host, port, and HTTP/HTTPS mode
-- historical Collector data is imported for watched items
-- Collector history imports are bounded to 90 days, matching Copper&Claw's longest selectable Trend Window
-- completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations for analysis
-- completed-snapshot requests are bounded to 90 days
+- current-price, history, Market Prowl, Market Depth, and completed-snapshot requests use the configured Collector connection
+- historical Collector data can be imported for watched items
+- bounded history requests are used instead of downloading unlimited lifetime history for routine analysis
+- completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations
+- completed-snapshot requests are time-bounded rather than downloading the Collector's entire scan timeline
+- explicit **1 Year** history requests are handled on demand
+- the Collector checks its own 1-year coverage before considering the cached GW2TP fallback
+- GW2TP is used only to fill older missing 1-year history and is not continuously polled by Copper&Claw
+- Collector data remains authoritative where Collector and cached GW2TP history overlap
 - existing Copper&Claw local history is preserved
 - imported Collector history is merged with local history
 - exact duplicate historical observations are skipped
-- if the Collector is unavailable when Guild Wars 2 starts, history import is retried later automatically
+- if the Collector is unavailable when Guild Wars 2 starts, history import can retry later automatically
 - automatic refresh uses a 5-minute cadence while the Collector is available
 - automatic refresh falls back to 60 seconds when the Collector is unavailable
 - manual Refresh and Refresh All remain immediate when accepted, with a shared 10-second cooldown
 - if the Collector cannot provide current pricing, Copper&Claw falls back to the official Guild Wars 2 API
-- the Trading Post tab shows a compact Collector status line with connection state, current price source, current analysis source, last successful Collector contact, and last completed Collector scan age
+- the Trading Post tab shows Collector connection state, active price source, active analysis source, last successful Collector contact, and last completed Collector scan age
+- analysis source can report **Collector Snapshots**, **Local History**, or **Hybrid History** as appropriate
 - completed scan age is shown normally while fresh, turns yellow at 10 minutes, and red at 15 minutes or older
 
-The status line distinguishes service reachability from data freshness. `Contact` shows how long it has been since Copper&Claw last successfully requested a price from the Collector, while `Scan` shows the age of the newest completed Collector market scan.
-
-Collector history requests use `GET /item/{itemID}/history?days=90`. The Collector includes the newest history event immediately before the 90-day cutoff when one exists so Copper&Claw can reconstruct the price state already active at the start of the requested window.
-
-Completed Collector scan timestamps are requested with `GET /snapshots/completed?days=90`.
+The status line distinguishes service reachability from data freshness. `Contact` shows how long it has been since Copper&Claw last successfully requested data from the Collector, while `Scan` shows the age of the newest completed Collector market scan.
 
 The Collector remains optional from the addon's point of view. If the hosted Collector cannot be reached, Copper&Claw continues using the Guild Wars 2 API for current pricing and its own local history for analysis.
 
@@ -419,7 +479,7 @@ After a successful restore, Copper&Claw records which backup was restored and sh
 
 Backups include:
 
-- Copper&Claw settings
+- Copper&Claw settings, including persistent Watchlist group assignments
 - watched items
 - Sell Targets
 - Buy Targets
@@ -470,6 +530,7 @@ The notice only needs to be acknowledged once for each addon version.
 Copper&Claw saves:
 
 - watched items
+- Watchlist group assignments
 - Favorites
 - Sell Targets
 - Buy Targets

@@ -40,12 +40,16 @@ namespace
 
     std::queue<uint32_t> g_PriceRequests;
     std::queue<uint32_t> g_ItemLookupRequests;
+    std::queue<uint32_t> g_OneYearHistoryRequests;
 
     std::unordered_set<uint32_t>
         g_QueuedItemIDs;
 
     std::unordered_set<uint32_t>
         g_QueuedLookupItemIDs;
+
+    std::unordered_set<uint32_t>
+        g_QueuedOneYearHistoryItemIDs;
 
     std::thread g_WorkerThread;
 
@@ -690,6 +694,7 @@ namespace
         {
             uint32_t itemID = 0;
             bool isLookupRequest = false;
+            bool isOneYearHistoryRequest = false;
 
             {
                 std::unique_lock<std::mutex> lock(
@@ -703,6 +708,7 @@ namespace
                         return
                             g_StopWorker ||
                             !g_ItemLookupRequests.empty() ||
+                            !g_OneYearHistoryRequests.empty() ||
                             !g_PriceRequests.empty();
                     }
                 );
@@ -710,6 +716,7 @@ namespace
                 if (
                     g_StopWorker &&
                     g_ItemLookupRequests.empty() &&
+                    g_OneYearHistoryRequests.empty() &&
                     g_PriceRequests.empty()
                     )
                 {
@@ -726,6 +733,18 @@ namespace
                     g_ItemLookupRequests.pop();
 
                     isLookupRequest =
+                        true;
+                }
+                else if (
+                    !g_OneYearHistoryRequests.empty()
+                    )
+                {
+                    itemID =
+                        g_OneYearHistoryRequests.front();
+
+                    g_OneYearHistoryRequests.pop();
+
+                    isOneYearHistoryRequest =
                         true;
                 }
                 else
@@ -749,6 +768,21 @@ namespace
                 );
 
                 g_QueuedLookupItemIDs.erase(
+                    itemID
+                );
+            }
+            else if (isOneYearHistoryRequest)
+            {
+                TradingPostHistoryManager::
+                    TryImportCollectorOneYearHistory(
+                        itemID
+                    );
+
+                std::lock_guard<std::mutex> lock(
+                    g_RequestMutex
+                );
+
+                g_QueuedOneYearHistoryItemIDs.erase(
                     itemID
                 );
             }
@@ -869,8 +903,14 @@ void TradingPostPriceManager::Shutdown()
             g_ItemLookupRequests.pop();
         }
 
+        while (!g_OneYearHistoryRequests.empty())
+        {
+            g_OneYearHistoryRequests.pop();
+        }
+
         g_QueuedItemIDs.clear();
         g_QueuedLookupItemIDs.clear();
+        g_QueuedOneYearHistoryItemIDs.clear();
     }
 }
 
@@ -973,6 +1013,50 @@ void TradingPostPriceManager::RequestItemLookup(
         );
 
         g_ItemLookupRequests.push(
+            itemID
+        );
+    }
+
+    g_RequestCondition.notify_one();
+}
+
+void TradingPostPriceManager::RequestOneYearHistory(
+    uint32_t itemID
+)
+{
+    if (itemID == 0)
+    {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(
+            g_RequestMutex
+        );
+
+        if (
+            !g_WorkerRunning ||
+            g_StopWorker
+            )
+        {
+            return;
+        }
+
+        if (
+            g_QueuedOneYearHistoryItemIDs.find(
+                itemID
+            ) !=
+            g_QueuedOneYearHistoryItemIDs.end()
+            )
+        {
+            return;
+        }
+
+        g_QueuedOneYearHistoryItemIDs.insert(
+            itemID
+        );
+
+        g_OneYearHistoryRequests.push(
             itemID
         );
     }

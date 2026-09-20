@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 CopperAndClawSettings g_Settings{};
 
@@ -101,6 +102,90 @@ bool Settings::Load(
                 g_Settings
                     .tradingPostWatchSortMode =
                     std::stoi(value);
+            }
+            else if (
+                key ==
+                "tradingPostWatchGroups"
+                )
+            {
+                g_Settings
+                    .tradingPostWatchGroupAssignments
+                    .clear();
+
+                size_t entryStart = 0;
+
+                while (
+                    entryStart <
+                    value.size()
+                    )
+                {
+                    const size_t entryEnd =
+                        value.find(
+                            ',',
+                            entryStart
+                        );
+
+                    const std::string entry =
+                        value.substr(
+                            entryStart,
+                            entryEnd ==
+                            std::string::npos
+                            ? std::string::npos
+                            : entryEnd -
+                            entryStart
+                        );
+
+                    const size_t groupSeparator =
+                        entry.find(':');
+
+                    if (
+                        groupSeparator !=
+                        std::string::npos
+                        )
+                    {
+                        const uint32_t itemID =
+                            static_cast<uint32_t>(
+                                std::stoul(
+                                    entry.substr(
+                                        0,
+                                        groupSeparator
+                                    )
+                                )
+                                );
+
+                        const int groupIndex =
+                            std::stoi(
+                                entry.substr(
+                                    groupSeparator +
+                                    1
+                                )
+                            );
+
+                        if (
+                            itemID > 0 &&
+                            groupIndex >= 1 &&
+                            groupIndex <= 3
+                            )
+                        {
+                            g_Settings
+                                .tradingPostWatchGroupAssignments[
+                                    itemID
+                                ] =
+                                groupIndex;
+                        }
+                    }
+
+                    if (
+                        entryEnd ==
+                        std::string::npos
+                        )
+                    {
+                        break;
+                    }
+
+                    entryStart =
+                        entryEnd + 1;
+                }
             }
             else if (
                 key ==
@@ -206,7 +291,7 @@ bool Settings::Load(
         std::clamp(
             g_Settings.tradingPostTrendWindowIndex,
             0,
-            8
+            10
         );
 
     g_Settings.tradingPostWatchSortMode =
@@ -323,6 +408,70 @@ bool Settings::Save(
         << g_Settings
         .tradingPostWatchSortMode
         << '\n';
+
+    //
+    // Persist watch-list grouping in one compact deterministic line:
+    // tradingPostWatchGroups=itemID:group,itemID:group,...
+    //
+    std::vector<std::pair<uint32_t, int>>
+        savedWatchGroups;
+
+    savedWatchGroups.reserve(
+        g_Settings
+        .tradingPostWatchGroupAssignments
+        .size()
+    );
+
+    for (
+        const auto& entry :
+        g_Settings.tradingPostWatchGroupAssignments
+        )
+    {
+        if (
+            entry.first > 0 &&
+            entry.second >= 1 &&
+            entry.second <= 3
+            )
+        {
+            savedWatchGroups.push_back(
+                entry
+            );
+        }
+    }
+
+    std::sort(
+        savedWatchGroups.begin(),
+        savedWatchGroups.end(),
+        [](
+            const auto& left,
+            const auto& right
+            )
+        {
+            return left.first < right.first;
+        }
+    );
+
+    file
+        << "tradingPostWatchGroups=";
+
+    for (
+        size_t index = 0;
+        index < savedWatchGroups.size();
+        ++index
+        )
+    {
+        if (index > 0)
+        {
+            file << ',';
+        }
+
+        file
+            << savedWatchGroups[index].first
+            << ':'
+            << savedWatchGroups[index].second;
+    }
+
+    file << '\n';
 
     file
         << "tradingPostViewDensityIndex="

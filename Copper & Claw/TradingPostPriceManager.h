@@ -65,6 +65,16 @@ namespace TradingPostPriceManager
     );
 
     //
+    // Queues an asynchronous on-demand 1-year Collector history import.
+    //
+    // The worker calls TradingPostHistoryManager's dedicated 1-year path
+    // so the potentially slower 365-day request never blocks ImGui rendering.
+    //
+    void RequestOneYearHistory(
+        uint32_t itemID
+    );
+
+    //
     // Attempts to retrieve the result of an item lookup.
     //
     bool TryGetItemLookup(

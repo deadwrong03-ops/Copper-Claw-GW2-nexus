@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 struct CopperAndClawSettings
 {
@@ -14,7 +15,9 @@ struct CopperAndClawSettings
     // 5 = 3d
     // 6 = 7d
     // 7 = 30d
-    // 8 = 90d
+    // 8 = 3mo
+    // 9 = 6mo
+    // 10 = 1y
     int tradingPostTrendWindowIndex = 1;
 
     // Watch-list display sorting:
@@ -29,6 +32,17 @@ struct CopperAndClawSettings
     // This changes display order only. The saved watch list
     // remains in its original added order.
     int tradingPostWatchSortMode = 0;
+
+    //
+    // Watch-list group assignments.
+    //
+    // Key   = GW2 item ID
+    // Value = 1 Investments, 2 Consumables, 3 Materials
+    //
+    // Ungrouped items are intentionally omitted.
+    //
+    std::unordered_map<uint32_t, int>
+        tradingPostWatchGroupAssignments;
 
     // Trading Post watch-list view density:
     // 0 = Normal

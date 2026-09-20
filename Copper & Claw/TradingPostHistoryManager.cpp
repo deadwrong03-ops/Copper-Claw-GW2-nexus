@@ -61,6 +61,11 @@ namespace
     std::unordered_set<uint32_t>
         g_CollectorImportAttemptedItemIDs;
 
+    std::unordered_set<uint32_t>
+        g_CollectorOneYearImportAttemptedItemIDs;
+
+    bool g_CollectorOneYearSnapshotsLoaded = false;
+
     std::vector<uint64_t>
         g_CollectorCompletedSnapshotTimestamps;
 
@@ -99,7 +104,8 @@ namespace
 
     bool CollectorHttpGet(
         const std::wstring& path,
-        std::string& response
+        std::string& response,
+        DWORD timeoutMilliseconds = 1000
     )
     {
         response.clear();
@@ -120,10 +126,10 @@ namespace
 
         WinHttpSetTimeouts(
             session,
-            1000,
-            1000,
-            1000,
-            1000
+            timeoutMilliseconds,
+            timeoutMilliseconds,
+            timeoutMilliseconds,
+            timeoutMilliseconds
         );
 
         std::wstring collectorHost(
@@ -471,6 +477,19 @@ namespace
         }
 
         if (
+            numberStart + 4 <= json.size() &&
+            json.compare(
+                numberStart,
+                4,
+                "null"
+            ) == 0
+            )
+        {
+            outValue = 0;
+            return true;
+        }
+
+        if (
             numberStart >= json.size() ||
             json[numberStart] < '0' ||
             json[numberStart] > '9'
@@ -622,17 +641,32 @@ namespace
     }
 
     bool FetchCollectorCompletedSnapshotTimestamps(
+        uint32_t days,
         std::vector<uint64_t>& outTimestamps
     )
     {
         outTimestamps.clear();
 
+        if (days == 0)
+        {
+            return false;
+        }
+
         std::string response;
+
+        const std::wstring path =
+            L"/snapshots/completed?days=" +
+            std::to_wstring(
+                days
+            );
 
         if (
             !CollectorHttpGet(
-                L"/snapshots/completed?days=90",
-                response
+                path,
+                response,
+                days >= 365
+                ? 5000
+                : 1000
             )
             )
         {
@@ -728,6 +762,30 @@ namespace
         return true;
     }
 
+    void MergeCollectorCompletedSnapshotTimestampsLocked(
+        const std::vector<uint64_t>& timestamps
+    )
+    {
+        g_CollectorCompletedSnapshotTimestamps.insert(
+            g_CollectorCompletedSnapshotTimestamps.end(),
+            timestamps.begin(),
+            timestamps.end()
+        );
+
+        std::sort(
+            g_CollectorCompletedSnapshotTimestamps.begin(),
+            g_CollectorCompletedSnapshotTimestamps.end()
+        );
+
+        g_CollectorCompletedSnapshotTimestamps.erase(
+            std::unique(
+                g_CollectorCompletedSnapshotTimestamps.begin(),
+                g_CollectorCompletedSnapshotTimestamps.end()
+            ),
+            g_CollectorCompletedSnapshotTimestamps.end()
+        );
+    }
+
     void RefreshCollectorCompletedSnapshotsIfNeeded()
     {
         const uint64_t nowUnixSeconds =
@@ -769,6 +827,7 @@ namespace
 
         if (
             !FetchCollectorCompletedSnapshotTimestamps(
+                90,
                 timestamps
             )
             )
@@ -789,55 +848,333 @@ namespace
             return;
         }
 
-        g_CollectorCompletedSnapshotTimestamps =
-            std::move(
-                timestamps
+        MergeCollectorCompletedSnapshotTimestampsLocked(
+            timestamps
+        );
+    }
+
+    bool RefreshCollectorCompletedOneYearSnapshotsIfNeeded()
+    {
+        {
+            std::lock_guard<std::mutex> lock(
+                g_HistoryMutex
             );
+
+            if (!g_Started)
+            {
+                return false;
+            }
+
+            if (g_CollectorOneYearSnapshotsLoaded)
+            {
+                return true;
+            }
+        }
+
+        std::vector<uint64_t> timestamps;
+
+        if (
+            !FetchCollectorCompletedSnapshotTimestamps(
+                365,
+                timestamps
+            )
+            )
+        {
+            return false;
+        }
+
+        //
+        // A full year of five-minute scan timestamps can become large.
+        // Preserve every snapshot in the newest 90 days, then retain one
+        // representative timestamp per 30-minute bucket for older history.
+        // This keeps normal 90-day analysis unchanged while making 1Y
+        // analysis practical once the Collector itself has >90 days of data.
+        //
+        const uint64_t nowUnixSeconds =
+            GetCurrentUnixSeconds();
+
+        const uint64_t recentCutoff =
+            nowUnixSeconds >
+            90 * SECONDS_PER_DAY
+            ? nowUnixSeconds -
+            90 * SECONDS_PER_DAY
+            : 0;
+
+        std::vector<uint64_t> retainedTimestamps;
+
+        retainedTimestamps.reserve(
+            timestamps.size()
+        );
+
+        uint64_t lastOlderBucket =
+            UINT64_MAX;
+
+        for (
+            const uint64_t timestamp :
+        timestamps
+            )
+        {
+            if (timestamp >= recentCutoff)
+            {
+                retainedTimestamps.push_back(
+                    timestamp
+                );
+
+                continue;
+            }
+
+            const uint64_t bucket =
+                timestamp /
+                THIRTY_MINUTE_BUCKET_SECONDS;
+
+            if (
+                !retainedTimestamps.empty() &&
+                bucket ==
+                lastOlderBucket
+                )
+            {
+                retainedTimestamps.back() =
+                    timestamp;
+            }
+            else
+            {
+                retainedTimestamps.push_back(
+                    timestamp
+                );
+
+                lastOlderBucket =
+                    bucket;
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        if (!g_Started)
+        {
+            return false;
+        }
+
+        MergeCollectorCompletedSnapshotTimestampsLocked(
+            retainedTimestamps
+        );
+
+        g_CollectorOneYearSnapshotsLoaded =
+            true;
+
+        return true;
+    }
+
+    bool FindJsonArrayRange(
+        const std::string& json,
+        const std::string& key,
+        size_t& outArrayStart,
+        size_t& outArrayEnd
+    )
+    {
+        outArrayStart =
+            std::string::npos;
+
+        outArrayEnd =
+            std::string::npos;
+
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (
+            keyPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition +
+                searchKey.size()
+            );
+
+        if (
+            colonPosition ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        const size_t arrayStart =
+            json.find(
+                '[',
+                colonPosition + 1
+            );
+
+        if (
+            arrayStart ==
+            std::string::npos
+            )
+        {
+            return false;
+        }
+
+        size_t depth = 0;
+        bool inString = false;
+        bool escapeNext = false;
+
+        for (
+            size_t i = arrayStart;
+            i < json.size();
+            ++i
+            )
+        {
+            const char ch =
+                json[i];
+
+            if (inString)
+            {
+                if (escapeNext)
+                {
+                    escapeNext =
+                        false;
+
+                    continue;
+                }
+
+                if (ch == '\\')
+                {
+                    escapeNext =
+                        true;
+
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString =
+                        false;
+                }
+
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inString =
+                    true;
+
+                continue;
+            }
+
+            if (ch == '[')
+            {
+                ++depth;
+                continue;
+            }
+
+            if (ch == ']')
+            {
+                if (depth == 0)
+                {
+                    return false;
+                }
+
+                --depth;
+
+                if (depth == 0)
+                {
+                    outArrayStart =
+                        arrayStart;
+
+                    outArrayEnd =
+                        i;
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     std::vector<
         TradingPostHistoryPoint
     > FetchCollectorHistory(
-        uint32_t itemID
+        uint32_t itemID,
+        uint32_t days,
+        const std::string& historyArrayKey
     )
     {
         std::vector<
             TradingPostHistoryPoint
         > history;
 
-        if (itemID == 0)
+        if (
+            itemID == 0 ||
+            days == 0 ||
+            historyArrayKey.empty()
+            )
         {
             return history;
         }
 
         std::string response;
 
-        //
-        // Copper&Claw's longest selectable Trend Window is currently 90 days.
-        // Request only that range from the Collector instead of downloading
-        // the item's entire lifetime history. The Collector automatically
-        // includes the newest history event immediately before the cutoff so
-        // the price state active at the start of the window can still be
-        // reconstructed correctly.
-        //
         const std::wstring path =
             L"/item/" +
             std::to_wstring(
                 itemID
             ) +
-            L"/history?days=90";
+            L"/history?days=" +
+            std::to_wstring(
+                days
+            );
+
+        //
+        // A live 1Y cache miss can require the Collector to perform its
+        // rate-limited GW2TP fallback before replying. Give that explicit
+        // on-demand request a longer timeout without slowing normal 90-day
+        // Collector requests when the service is unavailable.
+        //
+        const DWORD timeoutMilliseconds =
+            days >= 365
+            ? 30000
+            : 1000;
 
         if (
             !CollectorHttpGet(
                 path,
-                response
+                response,
+                timeoutMilliseconds
             )
             )
         {
             return history;
         }
 
-        size_t searchPosition = 0;
+        size_t arrayStart = 0;
+        size_t arrayEnd = 0;
+
+        if (
+            !FindJsonArrayRange(
+                response,
+                historyArrayKey,
+                arrayStart,
+                arrayEnd
+            )
+            )
+        {
+            return history;
+        }
+
+        size_t searchPosition =
+            arrayStart + 1;
 
         while (true)
         {
@@ -849,7 +1186,9 @@ namespace
 
             if (
                 observedPosition ==
-                std::string::npos
+                std::string::npos ||
+                observedPosition >=
+                arrayEnd
                 )
             {
                 break;
@@ -872,7 +1211,9 @@ namespace
                 std::string::npos ||
                 objectEnd ==
                 std::string::npos ||
-                objectEnd <= objectStart
+                objectEnd <= objectStart ||
+                objectEnd >
+                arrayEnd
                 )
             {
                 break;
@@ -978,14 +1319,18 @@ namespace
     }
 
     bool ImportCollectorHistory(
-        uint32_t itemID
+        uint32_t itemID,
+        uint32_t days,
+        const std::string& historyArrayKey
     )
     {
         const std::vector<
             TradingPostHistoryPoint
         > collectorHistory =
             FetchCollectorHistory(
-                itemID
+                itemID,
+                days,
+                historyArrayKey
             );
 
         if (collectorHistory.empty())
@@ -1770,6 +2115,8 @@ void TradingPostHistoryManager::Start(
 
     g_WatchedItemIDs.clear();
     g_CollectorImportAttemptedItemIDs.clear();
+    g_CollectorOneYearImportAttemptedItemIDs.clear();
+    g_CollectorOneYearSnapshotsLoaded = false;
     g_CollectorCompletedSnapshotTimestamps.clear();
     g_LastCollectorSnapshotRefreshAttemptUnixSeconds = 0;
 
@@ -1792,6 +2139,8 @@ void TradingPostHistoryManager::Shutdown()
 
     g_WatchedItemIDs.clear();
     g_CollectorImportAttemptedItemIDs.clear();
+    g_CollectorOneYearImportAttemptedItemIDs.clear();
+    g_CollectorOneYearSnapshotsLoaded = false;
     g_CollectorCompletedSnapshotTimestamps.clear();
     g_History.clear();
 
@@ -1842,7 +2191,9 @@ RegisterWatchedItem(
     if (
         shouldImportFromCollector &&
         ImportCollectorHistory(
-            itemID
+            itemID,
+            90,
+            "history"
         )
         )
     {
@@ -1897,7 +2248,9 @@ TryImportCollectorHistory(
 
     if (
         !ImportCollectorHistory(
-            itemID
+            itemID,
+            90,
+            "history"
         )
         )
     {
@@ -1910,6 +2263,85 @@ TryImportCollectorHistory(
         );
 
         g_CollectorImportAttemptedItemIDs.insert(
+            itemID
+        );
+    }
+
+    return true;
+}
+
+bool TradingPostHistoryManager::
+TryImportCollectorOneYearHistory(
+    uint32_t itemID
+)
+{
+    if (itemID == 0)
+    {
+        return false;
+    }
+
+    bool historyAlreadyImported =
+        false;
+
+    {
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        if (
+            !g_Started ||
+            g_WatchedItemIDs.find(
+                itemID
+            ) ==
+            g_WatchedItemIDs.end()
+            )
+        {
+            return false;
+        }
+
+        historyAlreadyImported =
+            g_CollectorOneYearImportAttemptedItemIDs.find(
+                itemID
+            ) !=
+            g_CollectorOneYearImportAttemptedItemIDs.end();
+    }
+
+    //
+    // Keep the completed-snapshot timeline capable of representing Collector
+    // coverage beyond the normal 90-day automatic import. This request never
+    // contacts GW2TP directly; it only asks the Copper&Claw Collector for its
+    // own completed scan timestamps.
+    //
+    RefreshCollectorCompletedOneYearSnapshotsIfNeeded();
+
+    if (historyAlreadyImported)
+    {
+        return true;
+    }
+
+    //
+    // The 365-day Collector response contains both the Collector-only
+    // "history" array and the preferred merged "mergedHistory" array.
+    // Parse only mergedHistory so GW2TP gap-fill rows are consumed once and
+    // Collector data keeps its precedence in overlap periods.
+    //
+    if (
+        !ImportCollectorHistory(
+            itemID,
+            365,
+            "mergedHistory"
+        )
+        )
+    {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(
+            g_HistoryMutex
+        );
+
+        g_CollectorOneYearImportAttemptedItemIDs.insert(
             itemID
         );
     }

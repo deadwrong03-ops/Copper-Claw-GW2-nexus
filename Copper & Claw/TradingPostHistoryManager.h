@@ -54,6 +54,21 @@ namespace TradingPostHistoryManager
     );
 
     //
+    // Requests the on-demand 1-year history path for one watched item.
+    //
+    // This is separate from the normal automatic 90-day import so
+    // selecting the 1-year Trend Window does not change startup or
+    // watch-registration behavior for every watched item.
+    //
+    // The Collector remains the addon's only history source. For a
+    // 365-day request, the Collector may return merged Collector +
+    // cached GW2TP history according to its own fallback policy.
+    //
+    bool TryImportCollectorOneYearHistory(
+        uint32_t itemID
+    );
+
+    //
     // Stops future history recording for an item.
     // Existing historical observations are preserved.
     //

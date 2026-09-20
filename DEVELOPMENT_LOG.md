@@ -15,6 +15,279 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+## 2026-09-19 — Market Prowl, 1-Year Analysis, Chart Reliability & Persistent Watchlist Groups
+
+Completed a large post-v0.1.4 market-analysis and Trading Post UI development pass centered on Market Prowl, longer historical context, clearer chart interpretation, order-book diagnostics, and restart-safe Watchlist organization.
+
+### Market Prowl live scanner and dedicated tab
+
+Added the current **Market Prowl** experience backed by the Copper&Claw Collector.
+
+Market Prowl compares live market behavior with each item's rolling recent normal and exposes confirmed unusual moves in plain language.
+
+Current user-facing filters:
+
+- **All**
+- **Getting Pricier**
+- **Getting Cheaper**
+- **Fewer Listings**
+- **Unusual**
+
+Current sort modes:
+
+- **Most Significant**
+- **Biggest % Move**
+- **Newest**
+- **Name A-Z**
+
+The Prowl view uses compact item cards and currently limits the main presentation to the strongest meaningful active candidates instead of flooding the user with every backend signal.
+
+Card actions support adding an item to the Watchlist or jumping to an already watched item.
+
+The Watchlist theme selector remains the single shared theme control; Market Prowl inherits the same active theme instead of maintaining a second independent theme selector.
+
+**Result: PASS — MARKET PROWL LIVE UI**
+
+### Market Prowl historical markers
+
+Confirmed Prowl events are drawn as purple historical markers on the selected item's Sell and Buy charts.
+
+The same event timestamp is drawn on both charts so the user can compare what each side of the market was doing when Prowl fired. A marker on the Buy chart does not imply that the Buy price itself moved.
+
+Marker behavior includes:
+
+- exact event timestamps in hover tooltips
+- active/resolved event history
+- screen-space clustering when markers are too close together
+- cluster tooltips capped to the newest five events to prevent extremely tall tooltip stacks
+- markers separating naturally as the user selects a shorter Trend Window
+
+Prowl markers represent events actually detected by Prowl. Imported historical prices do not retroactively manufacture simulated Prowl events.
+
+**Result: PASS — HISTORICAL PROWL CONTEXT**
+
+### Cheap-item Prowl ranking normalization
+
+Added presentation-side normalization so extremely cheap items do not dominate the Market Prowl card ranking merely because a one- or two-copper move creates a very large percentage.
+
+The UI applies an absolute copper-movement floor that scales gently with item price and caps at one silver before an active signal can enter the ranked card set.
+
+This normalization affects Market Prowl **presentation/ranking only**. It does not change the Collector-side analyzer that creates the underlying signals.
+
+Stress testing later exposed that the analyzer itself can still create a mathematically valid but economically weak cheap-item signal. Bronze Helmet Casing produced an `OUT OF BALANCE` event from a roughly 4c -> 5c Buy move.
+
+No Collector analyzer threshold change has been committed yet. Additional real examples are being collected before changing detection behavior.
+
+**Status: OPEN VALIDATION ITEM — CHEAP-ITEM ANALYZER NOISE**
+
+### Prowl diagnostic stress-test endpoint
+
+Added a read-only Collector diagnostic endpoint for deliberately finding markets likely to expose hidden Prowl problems:
+
+```text
+/diagnostics/prowl-candidates
+```
+
+Default output returns five candidates in each of seven categories:
+
+- `cheapNoise`
+- `thinSellSide`
+- `thinBuySide`
+- `hugeSpread`
+- `oneSidedMove`
+- `depthCollapse`
+- `priceSpike`
+
+The diagnostic does not create Prowl signals or modify market data. It is a candidate finder for validation.
+
+Initial stress-test controls included:
+
+- **Bronze Helmet Casing** — cheap percentage-noise case
+- **Carrion Tribal Warhorn of Vision** — transient Buy-depth collapse that recovered
+- **Medallion of the Soldier** — major Buy-depth change with little price movement
+
+The Warhorn and Medallion returned to **CALM** rather than leaving stale active Prowl conditions, while Bronze Helmet Casing remains the strongest current example of possible cheap-item analyzer noise.
+
+A separate Valkyrie Barbaric Helm test produced a strong **LISTINGS THINNING** event where Sell price rose dramatically while Buy remained essentially flat, matching the intended Prowl interpretation.
+
+**Result: DIAGNOSTIC WORKING — ANALYZER VALIDATION IN PROGRESS**
+
+### Avg and Roll Avg chart references
+
+Expanded chart interpretation with two clearly separated average references.
+
+- **Avg** is the time-normalized average across the entire selected Trend Window.
+- **Roll Avg** is a local moving average intended to follow more recent short-term direction.
+
+The same whole-window Avg remains the canonical average used by Item Analysis so the chart and analysis metrics stay coherent.
+
+Hover tooltips were added to explain both Avg and Roll Avg without adding permanent UI clutter.
+
+**Result: PASS**
+
+### Market Depth order-book diagnostics
+
+Added a compact **Market Depth** strip beneath the Sell / Buy charts.
+
+It displays:
+
+- current Sell Listing quantity
+- latest Sell quantity change
+- current Buy Order quantity
+- latest Buy quantity change
+- a plain-language latest depth movement
+
+The final presentation deliberately removed Market Depth sparklines after in-game testing showed they added visual ambiguity and unnecessary alignment problems.
+
+The UI explicitly describes Market Depth as **order-book depth, not trade volume**. Public market snapshots cannot determine whether disappearing orders were filled, cancelled, or otherwise removed.
+
+Market Depth history is fetched separately from the existing price-only local history representation so quantity support does not require changing the stored `TradingPostHistoryPoint` format.
+
+**Result: PASS — COMPACT DEPTH STRIP**
+
+### Price-chart renderer reliability
+
+Dense Collector-backed charts exposed a rendering issue where the observed Sell / Buy line could visually break into small colored specks.
+
+Several rendering approaches were tested:
+
+1. denser ImGui polyline rendering
+2. render-only point reduction
+3. step-chart rendering
+4. custom continuous solid-ribbon rendering
+
+The step-chart version was rejected because it looked unnaturally blocky.
+
+The accepted renderer:
+
+- retains the normal continuous market-chart shape
+- resamples only the visible line in screen space
+- draws solid filled ribbon segments with overlapping joins
+- avoids dependence on ImGui polyline join behavior for the observed-price line
+- leaves the exact raw historical observations untouched for hover values, Prowl positioning, statistics, Avg, Roll Avg, and analysis calculations
+
+Mithril Ore 24-hour testing confirmed the broken/speckled appearance was eliminated while Sell, Buy, Avg, and Roll Avg remained visually distinct.
+
+**Result: PASS — SOLID RIBBON OBSERVED-PRICE RENDERER**
+
+### Coin-denomination display polish
+
+Updated coin formatting so zero-value denominations are omitted where possible.
+
+Examples:
+
+```text
+0g 56s 87c -> 56s 87c
+0g 0s 87c -> 87c
+1g 0s 5c -> 1g 5c
+```
+
+Gold, silver, and copper chunks now use subtle denomination-specific coloring across the Trading Post UI while Sell / Buy semantic colors remain intact.
+
+**Result: PASS**
+
+### Longer Trend Windows and Hybrid History
+
+The current Trend Window set is now:
+
+- 15 Minutes
+- 30 Minutes
+- 1 Hour
+- 6 Hours
+- 24 Hours
+- 3 Days
+- 7 Days
+- 30 Days
+- 3 Months
+- 6 Months
+- 1 Year
+
+The **1 Year** path remains Collector-first.
+
+When Collector coverage is incomplete, the Collector can use its persistent cached GW2TP 1-year fallback to fill only the older missing portion. Collector observations remain authoritative where the two sources overlap.
+
+Copper&Claw can display **Hybrid History** when the selected long-window analysis combines those sources.
+
+Market Depth avoids treating GW2TP fallback rows as real depth observations because the external OHLC fallback does not provide Collector order-book quantity history.
+
+**Result: PASS — 1Y / HYBRID HISTORY AVAILABLE**
+
+### Watchlist layout and grouping
+
+The accepted Watchlist presentation now includes:
+
+- stacked Sell / Buy prices on watched-item cards
+- a right-edge Watchlist collapse control
+- a narrow icon rail while collapsed
+- watched-item icon selection from the collapsed rail
+- persistent Watchlist groups:
+  - Ungrouped
+  - Investments
+  - Consumables
+  - Materials
+
+The first grouping implementation kept assignments only in a local in-memory map and therefore reset after a full game restart.
+
+Group assignments were moved into `CopperAndClawSettings` and are now serialized to `CopperAndClaw.ini`.
+
+Current behavior:
+
+- moving an item to a group saves immediately
+- moving back to **Ungrouped** removes the saved assignment
+- removing a watched item removes any stale saved group assignment
+- a full Guild Wars 2 restart restores the group assignments
+
+Restart testing with three items in **Investments** confirmed all three returned to the correct group.
+
+**Result: PASS — WATCHLIST GROUP PERSISTENCE**
+
+### Tooltip / interpretation pass
+
+Added or expanded contextual hover help for:
+
+- Market Prowl legend
+- Market Prowl item details
+- Avg
+- Roll Avg
+- Market Depth
+- Market Volatility
+
+The Volatility tooltip now explains the current badge rather than merely defining the word volatility.
+
+It shows:
+
+- the current classification
+- selected Trend Window
+- actual movement score
+- CALM / NORMAL / ACTIVE / WILD thresholds
+- that volatility measures instability, not direction
+- why repeated large swings matter more than one isolated jump followed by stable prices
+
+The main UI remains compact; the explanatory detail appears only on hover.
+
+**Result: PASS — CONTEXTUAL HELP WITHOUT PERMANENT CLUTTER**
+
+### Current validation state
+
+Recent in-game checks confirmed:
+
+- Market Prowl cards and historical markers render correctly
+- Prowl marker clustering remains readable
+- Market Depth is compact and aligned
+- Avg / Roll Avg / Prowl legend tooltips work
+- the custom observed-price renderer remains continuous under dense 24-hour data
+- Watchlist group assignments survive a full Guild Wars 2 restart
+- the 1 Year Trend Window remains available after the settings persistence update
+- no blocking regression was observed after the latest build fixes
+
+Current known follow-up:
+
+- continue observing cheap-item Prowl signals before changing Collector-side analyzer thresholds
+
+**Result: PASS — READY FOR COMMIT CHECKPOINT**
+
+---
+
 ## 2026-09-14 — Persistent Expansion & Living World Theme System
 
 Added a persistent visual-theme system to the current #5K/#5N Trading Post split-dashboard without changing the accepted layout, spacing, analysis model, or one-live-analysis performance constraint.
