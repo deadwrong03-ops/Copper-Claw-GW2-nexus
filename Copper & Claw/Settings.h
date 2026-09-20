@@ -44,6 +44,28 @@ struct CopperAndClawSettings
     std::unordered_map<uint32_t, int>
         tradingPostWatchGroupAssignments;
 
+    //
+    // Watch-list presentation:
+    // 0 = List
+    // 1 = Heatmap
+    //
+    // This only changes presentation. The same watched-item set,
+    // groups, favorites, targets, and Item Analysis remain intact.
+    //
+    int tradingPostWatchDisplayMode = 0;
+
+    //
+    // Prowl Follow List.
+    //
+    // Key   = GW2 item ID
+    // Value = expiration Unix timestamp
+    //
+    // A value of 0 means follow until manually removed.
+    // Expired timed follows are cleaned up automatically by the UI.
+    //
+    std::unordered_map<uint32_t, uint64_t>
+        tradingPostProwlFollowExpirations;
+
     // Trading Post watch-list view density:
     // 0 = Normal
     // 1 = Slim

@@ -15,6 +15,192 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+## 2026-09-20 — Prowl Radar, Follow List & Watchlist Heatmap
+
+Expanded the addon-side market intelligence workflow around Market Prowl and the Watchlist.
+
+### Prowl Radar live scanner
+
+Renamed and expanded the dedicated Market Prowl workspace into **Prowl Radar**.
+
+Radar now supports four high-level views:
+
+- **Live**
+- **New 1h**
+- **Following**
+- **Resolved 24h**
+
+The existing plain-language signal filters remain available:
+
+- **Getting Pricier**
+- **Getting Cheaper**
+- **Fewer Listings**
+- **Unusual**
+
+Existing sort modes remain available:
+
+- **Most Significant**
+- **Biggest % Move**
+- **Newest**
+- **Name A-Z**
+
+The scanner uses the existing horizontal two-column card layout and currently presents the top 12 matching items.
+
+Each card shows the current Prowl status, price movement, Sell / Buy prices, first-seen time, and item icon.
+
+**Result: PASS — RADAR UI VALIDATED IN GAME**
+
+### Separate active / resolved signal feeds
+
+The original `/signals?status=all&limit=500` request could be consumed entirely by active signals, making recent resolved events unavailable to the Radar even when they existed.
+
+The addon now requests:
+
+```text
+/signals?status=active&limit=500
+/signals?status=resolved&limit=500
+```
+
+separately and merges the results for presentation.
+
+This preserves room for the **Resolved 24h** view even when the active side is very large.
+
+The Collector currently caps each query at 500 rows. Radar now treats that as an explicit presentation limitation:
+
+- affected counts show `(cap)`
+- the header shows **FEED LIMIT**
+- the UI no longer implies that a capped count is the complete market total
+
+In-game validation showed the active query reaching `500 (cap)` while the Radar continued to render normally and expose the limitation.
+
+**Result: PASS — FEED LIMIT MADE EXPLICIT**
+
+### Persistent Prowl Follow List
+
+Added lightweight addon-side Prowl following.
+
+A user can follow a Prowl item for:
+
+- **24 hours**
+- **48 hours**
+- **Until removed**
+
+Follow state is stored in:
+
+```text
+CopperAndClaw.ini
+```
+
+using the item's GW2 item ID and an expiration Unix timestamp. An expiration value of `0` means the follow remains active until manually removed.
+
+Expired timed follows are cleaned up automatically by the UI.
+
+Followed items appear in the Radar **Following** view. Active Radar cards can also show remaining follow time or `UNTIL REMOVED`.
+
+The Follow system does not require permanently adding the item to the Watchlist.
+
+In-game testing confirmed a followed Valkyrie Barbaric Helm appeared by itself in the **Following** view and displayed the `FOLLOWING` state.
+
+**Result: PASS — FOLLOW WORKFLOW VALIDATED IN GAME**
+
+### Watchlist Heatmap
+
+Added a persistent Watchlist presentation selector:
+
+```text
+List
+Heatmap
+```
+
+List mode keeps the existing grouped Watchlist cards and Normal / Slim / Ultra Slim density system.
+
+Heatmap mode provides a compact two-column market-state grid.
+
+Each tile can show:
+
+- Guild Wars 2 item icon
+- item name
+- current Sell price
+- selected Trend Window percentage movement
+- current volatility state
+- current Prowl state when present
+- Follow indicator
+- Favorite indicator
+
+Tile backgrounds and borders communicate market state at a glance, and active Prowl states receive a subtle pulse.
+
+Interaction remains fully functional:
+
+- left-click opens the item in **Item Analysis**
+- right-click opens the item action menu
+- Favorite
+- Follow / stop following
+- Move to Group
+- Refresh Price
+- Remove from Watch List
+
+The selected List / Heatmap mode persists through restart.
+
+**Result: PASS — HEATMAP FUNCTIONALITY VALIDATED IN GAME**
+
+### Heatmap readability polish
+
+The first Heatmap pass placed percentage movement and some Prowl/status text on competing horizontal space, which caused overlap on narrow tiles.
+
+The final tile layout uses fixed rows:
+
+```text
+Item name
+Sell price
+Trend %        VOL state
+PROWL state
+FOLLOW / FAV
+```
+
+The Heatmap-only SupplySqueeze label was shortened from `FEWER LISTINGS` to `THINNING`.
+
+Tile height was increased enough to preserve the compact two-column layout while keeping trend, volatility, Prowl, and Follow/Favorite information separated.
+
+Long item names remain intentionally clipped/truncated in compact tiles rather than expanding tile width or height.
+
+In-game validation confirmed the overlap was removed, including on strong Prowl items such as Soft Longbow Stave.
+
+**Result: PASS — NO-OVERLAP HEATMAP**
+
+### Cheap-item signal presentation
+
+Radar and Heatmap keep the existing presentation-side filtering for economically trivial cheap-item percentage moves.
+
+This complements the newer Collector-side 5-copper absolute price-move floor that was validated separately against Bronze Helmet Casing.
+
+The addon presentation therefore avoids elevating stale or economically meaningless tiny-copper movement even when displaying persisted Prowl history.
+
+**Result: PASS**
+
+### Current checkpoint
+
+Validated in-game:
+
+- Prowl Radar loads and refreshes normally
+- Live Radar cards render in the two-column layout
+- New 1h / Following / Resolved 24h modes render
+- Follow state works
+- Heatmap mode works
+- Heatmap item selection opens Item Analysis
+- Heatmap action menu is available
+- Heatmap state coloring and item icons render
+- overlapping Heatmap text was corrected
+- Release x64 build passes after the final Heatmap layout fix
+
+Known follow-up:
+
+- Market Prowl signal-strength scoring can still saturate at `100`, reducing differentiation in **Most Significant** sorting
+- Collector signal pagination / a queryable result model would eventually remove the current 500-row Radar feed cap
+
+**Result: PASS — READY FOR SOURCE CONTROL CHECKPOINT**
+
+---
+
 ## 2026-09-19 — Market Prowl, 1-Year Analysis, Chart Reliability & Persistent Watchlist Groups
 
 Completed a large post-v0.1.4 market-analysis and Trading Post UI development pass centered on Market Prowl, longer historical context, clearer chart interpretation, order-book diagnostics, and restart-safe Watchlist organization.

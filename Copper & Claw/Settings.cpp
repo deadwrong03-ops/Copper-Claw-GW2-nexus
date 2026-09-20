@@ -189,6 +189,95 @@ bool Settings::Load(
             }
             else if (
                 key ==
+                "tradingPostWatchDisplayMode"
+                )
+            {
+                g_Settings
+                    .tradingPostWatchDisplayMode =
+                    std::stoi(value);
+            }
+            else if (
+                key ==
+                "tradingPostProwlFollows"
+                )
+            {
+                g_Settings
+                    .tradingPostProwlFollowExpirations
+                    .clear();
+
+                size_t entryStart = 0;
+
+                while (
+                    entryStart <
+                    value.size()
+                    )
+                {
+                    const size_t entryEnd =
+                        value.find(
+                            ',',
+                            entryStart
+                        );
+
+                    const std::string entry =
+                        value.substr(
+                            entryStart,
+                            entryEnd ==
+                            std::string::npos
+                            ? std::string::npos
+                            : entryEnd -
+                            entryStart
+                        );
+
+                    const size_t valueSeparator =
+                        entry.find(':');
+
+                    if (
+                        valueSeparator !=
+                        std::string::npos
+                        )
+                    {
+                        const uint32_t itemID =
+                            static_cast<uint32_t>(
+                                std::stoul(
+                                    entry.substr(
+                                        0,
+                                        valueSeparator
+                                    )
+                                )
+                                );
+
+                        const uint64_t expirationUnixSeconds =
+                            std::stoull(
+                                entry.substr(
+                                    valueSeparator +
+                                    1
+                                )
+                            );
+
+                        if (itemID > 0)
+                        {
+                            g_Settings
+                                .tradingPostProwlFollowExpirations[
+                                    itemID
+                                ] =
+                                expirationUnixSeconds;
+                        }
+                    }
+
+                    if (
+                        entryEnd ==
+                        std::string::npos
+                        )
+                    {
+                        break;
+                    }
+
+                    entryStart =
+                        entryEnd + 1;
+                }
+            }
+            else if (
+                key ==
                 "tradingPostViewDensityIndex"
                 )
             {
@@ -299,6 +388,13 @@ bool Settings::Load(
             g_Settings.tradingPostWatchSortMode,
             0,
             6
+        );
+
+    g_Settings.tradingPostWatchDisplayMode =
+        std::clamp(
+            g_Settings.tradingPostWatchDisplayMode,
+            0,
+            1
         );
 
     g_Settings.tradingPostViewDensityIndex =
@@ -469,6 +565,75 @@ bool Settings::Save(
             << savedWatchGroups[index].first
             << ':'
             << savedWatchGroups[index].second;
+    }
+
+    file << '\n';
+
+    file
+        << "tradingPostWatchDisplayMode="
+        << g_Settings
+        .tradingPostWatchDisplayMode
+        << '\n';
+
+    //
+    // Persist Prowl Follow state:
+    // tradingPostProwlFollows=itemID:expiration,itemID:expiration,...
+    //
+    // expiration = 0 means "until removed".
+    //
+    std::vector<std::pair<uint32_t, uint64_t>>
+        savedProwlFollows;
+
+    savedProwlFollows.reserve(
+        g_Settings
+        .tradingPostProwlFollowExpirations
+        .size()
+    );
+
+    for (
+        const auto& entry :
+        g_Settings
+        .tradingPostProwlFollowExpirations
+        )
+    {
+        if (entry.first > 0)
+        {
+            savedProwlFollows.push_back(
+                entry
+            );
+        }
+    }
+
+    std::sort(
+        savedProwlFollows.begin(),
+        savedProwlFollows.end(),
+        [](
+            const auto& left,
+            const auto& right
+            )
+        {
+            return left.first < right.first;
+        }
+    );
+
+    file
+        << "tradingPostProwlFollows=";
+
+    for (
+        size_t index = 0;
+        index < savedProwlFollows.size();
+        ++index
+        )
+    {
+        if (index > 0)
+        {
+            file << ',';
+        }
+
+        file
+            << savedProwlFollows[index].first
+            << ':'
+            << savedProwlFollows[index].second;
     }
 
     file << '\n';

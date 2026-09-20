@@ -21,6 +21,8 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Hover item icons for brief indexed item details and stats without making a new network request on hover
 - Persistent **Watchlist groups**: Ungrouped, Investments, Consumables, and Materials
 - Persistent per-item **Favorites**
+- **List / Heatmap** Watchlist presentation with compact market-state tiles
+- Persistent **Prowl Follow List** with 24-hour, 48-hour, or until-removed follow durations
 - Collapsible Watchlist with a compact icon rail when collapsed
 - Collector-aware automatic refresh: 5 minutes when the hosted Collector is available, 60 seconds when falling back to the Guild Wars 2 API
 - Manual per-item refresh and Refresh All with a shared 10-second manual-refresh cooldown
@@ -43,7 +45,8 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Separate **Sell Listings** and **Buy Orders** market analysis
 - Time-normalized **Avg** and local **Roll Avg** chart references
 - Compact **Market Depth** order-book diagnostics for Sell Listings and Buy Orders
-- **Market Prowl** scanner for unusual whole-market price/depth behavior
+- **Prowl Radar** live scanner for unusual whole-market price/depth behavior
+- Radar modes for **Live**, **New 1h**, **Following**, and **Resolved 24h**
 - Historical Market Prowl markers on item charts
 - Collector snapshot-aware confidence and coverage, with gap-aware local-history fallback
 - Colored **Market Volatility** classification based on scan-to-scan movement
@@ -92,15 +95,27 @@ Volatility sorting uses the same readiness rules as the **Market Volatility** ba
 
 ---
 
-## Watch List Views, Groups & Favorites
+## Watch List Views, Heatmap, Groups & Favorites
 
-Copper&Claw includes three watch-list density options:
+Copper&Claw supports two Watchlist presentation modes:
+
+- **List** — the normal grouped watch-card presentation
+- **Heatmap** — a compact two-column market-state grid for quickly scanning watched items
+
+List mode retains the three existing density options:
 
 - **Normal** — roomier rows with additional item metadata
 - **Slim** — the default balanced layout
 - **Ultra Slim** — a compact Item / Sell / Buy / Actions layout
 
-All three views keep the core watch-list actions available.
+Heatmap tiles show the item icon, current Sell price, selected-window percentage movement, volatility, current Prowl state when present, and Follow / Favorite indicators. Strong market states use the tile background/border for faster visual scanning, and active Prowl tiles receive a subtle pulse.
+
+Heatmap interaction keeps the Watchlist functional rather than becoming a read-only summary:
+
+- left-click a tile to open that item in **Item Analysis**
+- right-click a tile for Favorite, Follow, Move to Group, Refresh Price, and Remove actions
+
+The selected List / Heatmap mode is persisted in `CopperAndClaw.ini`.
 
 The Watchlist can also be collapsed into a narrow icon rail. Watched-item icons remain selectable from the rail so Item Analysis can still be switched without reopening the full list.
 
@@ -116,6 +131,20 @@ Items can be moved between groups from their watch-list controls. Group assignme
 Items can also be marked as **Favorites** using the star beside the item. **All Items** shows the complete watch list, while **Favorites** instantly filters the list to starred items only.
 
 Favorites and group assignments are optional. Newly watched items begin ungrouped and do not require any organization before they can be tracked.
+
+### Prowl Follow List
+
+Any item surfaced by Prowl can be followed without permanently adding it to the Watchlist.
+
+Available follow durations are:
+
+- **24 hours**
+- **48 hours**
+- **Until removed**
+
+Followed items appear in the Prowl Radar **Following** view and can also display a Follow indicator on Watchlist Heatmap tiles. Timed follows expire automatically; permanent follows remain until manually removed.
+
+Follow state is addon-side and persisted in `CopperAndClaw.ini`.
 
 ---
 
@@ -189,11 +218,18 @@ The compact **Market Depth** strip shows current order-book size and the newest 
 
 Market Depth is **order-book depth, not completed trade volume**. A decrease means fewer units remain in the order book, but Copper&Claw cannot determine from public market snapshots whether those units were filled, cancelled, or removed for another reason.
 
-### Market Prowl
+### Prowl Radar
 
-**Market Prowl** compares current market behavior with each item's recent rolling normal and surfaces confirmed unusual movement.
+**Prowl Radar** compares current market behavior with each item's recent rolling normal and surfaces confirmed unusual movement from the Collector.
 
-The Market Prowl tab provides plain-language filters:
+Radar has four high-level views:
+
+- **Live** — currently active Prowl signals
+- **New 1h** — active signals first detected within the last hour
+- **Following** — Prowl items the user explicitly chose to follow
+- **Resolved 24h** — signals that resolved during the previous 24 hours
+
+Plain-language signal filters remain available:
 
 - **Getting Pricier**
 - **Getting Cheaper**
@@ -207,7 +243,15 @@ Current sort options include:
 - **Newest**
 - **Name A-Z**
 
-Prowl cards show current Sell / Buy prices, movement, first-seen time, and item details. The Item Analysis snapshot also shows the selected item's current Prowl state.
+Radar cards show current Sell / Buy prices, movement, first-seen time, status, item details, and Follow state. Card actions can jump to an already watched item, add an item to the Watchlist, refresh its price, or follow it for 24 hours, 48 hours, or until manually removed.
+
+Active and resolved signals are requested separately from the Collector. This prevents a full active result set from crowding resolved events out of the Radar feed.
+
+The Collector signal endpoint currently caps each query at 500 rows. When either the active or resolved query reaches that cap, Radar displays **FEED LIMIT** and marks the affected count with `(cap)` instead of implying the visible count represents the entire market.
+
+Tiny-price percentage noise is also filtered from Radar presentation so economically trivial copper moves do not dominate the card set.
+
+The Item Analysis snapshot continues to show the selected item's current Prowl state.
 
 Confirmed Prowl events are drawn as purple historical markers on both the Sell and Buy charts so both sides of the market can be inspected at the event timestamp. The marker does not mean both sides moved; it marks the same market event on each chart for comparison.
 
@@ -532,6 +576,8 @@ Copper&Claw saves:
 - watched items
 - Watchlist group assignments
 - Favorites
+- selected List / Heatmap Watchlist presentation
+- Prowl Follow List and follow expiration times
 - Sell Targets
 - Buy Targets
 - Sell / Buy target alert state

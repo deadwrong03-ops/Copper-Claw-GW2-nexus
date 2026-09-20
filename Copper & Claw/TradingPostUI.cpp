@@ -124,6 +124,7 @@ namespace
         double strength = 0.0;
         std::string firstDetectedAtUtc;
         std::string lastSeenAtUtc;
+        std::string resolvedAtUtc;
         uint64_t currentBuyUnitPrice = 0;
         uint64_t currentSellUnitPrice = 0;
         uint64_t currentBuyQuantity = 0;
@@ -138,6 +139,8 @@ namespace
     struct MarketProwlFetchResult
     {
         bool success = false;
+        bool activeLimitReached = false;
+        bool resolvedLimitReached = false;
         std::string error;
         std::vector<MarketProwlSignalRow> signals;
     };
@@ -699,8 +702,8 @@ namespace
             session,
             2000,
             2000,
-            2000,
-            2000
+            2500,
+            2500
         );
 
         HINTERNET connection =
@@ -730,194 +733,394 @@ namespace
             ? WINHTTP_FLAG_SECURE
             : 0;
 
-        HINTERNET request =
-            WinHttpOpenRequest(
-                connection,
-                L"GET",
-                L"/signals?status=all&limit=500",
-                nullptr,
-                WINHTTP_NO_REFERER,
-                WINHTTP_DEFAULT_ACCEPT_TYPES,
-                requestFlags
-            );
-
-        if (request == nullptr)
-        {
-            WinHttpCloseHandle(
-                connection
-            );
-
-            WinHttpCloseHandle(
-                session
-            );
-
-            result.error =
-                "Could not create the Market Prowl request.";
-
-            return result;
-        }
-
-        const BOOL sent =
-            WinHttpSendRequest(
-                request,
-                WINHTTP_NO_ADDITIONAL_HEADERS,
-                0,
-                WINHTTP_NO_REQUEST_DATA,
-                0,
-                0,
-                0
-            );
-
-        if (
-            !sent ||
-            !WinHttpReceiveResponse(
-                request,
-                nullptr
-            )
-            )
-        {
-            WinHttpCloseHandle(
-                request
-            );
-
-            WinHttpCloseHandle(
-                connection
-            );
-
-            WinHttpCloseHandle(
-                session
-            );
-
-            result.error =
-                "Market Prowl did not receive a response from the Collector.";
-
-            return result;
-        }
-
-        DWORD statusCode = 0;
-        DWORD statusCodeSize =
-            sizeof(statusCode);
-
-        const BOOL statusRead =
-            WinHttpQueryHeaders(
-                request,
-                WINHTTP_QUERY_STATUS_CODE |
-                WINHTTP_QUERY_FLAG_NUMBER,
-                WINHTTP_HEADER_NAME_BY_INDEX,
-                &statusCode,
-                &statusCodeSize,
-                WINHTTP_NO_HEADER_INDEX
-            );
-
-        if (
-            !statusRead ||
-            statusCode != 200
-            )
-        {
-            WinHttpCloseHandle(
-                request
-            );
-
-            WinHttpCloseHandle(
-                connection
-            );
-
-            WinHttpCloseHandle(
-                session
-            );
-
-            result.error =
-                "Collector returned HTTP " +
-                std::to_string(
-                    statusCode
-                ) +
-                " for /signals.";
-
-            return result;
-        }
-
-        std::string response;
-
-        while (true)
-        {
-            DWORD available = 0;
-
-            if (
-                !WinHttpQueryDataAvailable(
-                    request,
-                    &available
-                )
-                )
+        auto AppendSignalRows =
+            [&](
+                const std::string& response,
+                bool& limitReached
+                ) -> bool
             {
+                if (
+                    response.find(
+                        "\"signals\""
+                    ) == std::string::npos
+                    )
+                {
+                    result.error =
+                        "Collector returned an invalid /signals payload.";
+
+                    return false;
+                }
+
+                const std::vector<std::string> objects =
+                    ExtractMarketProwlSignalObjects(
+                        response
+                    );
+
+                //
+                // The Collector currently caps a single /signals response at
+                // 500 records. Keep the cap visible to the UI rather than
+                // pretending a full-market count is exact when we hit it.
+                //
+                limitReached =
+                    objects.size() >= 500;
+
+                for (
+                    const std::string& object :
+                    objects
+                    )
+                {
+                    MarketProwlSignalRow row;
+
+                    uint64_t itemID = 0;
+
+                    ExtractJsonUInt64Value(
+                        object,
+                        "id",
+                        row.id
+                    );
+
+                    if (
+                        !ExtractJsonUInt64Value(
+                            object,
+                            "itemId",
+                            itemID
+                        ) ||
+                        itemID == 0 ||
+                        itemID > 0xFFFFFFFFULL
+                        )
+                    {
+                        continue;
+                    }
+
+                    row.itemID =
+                        static_cast<uint32_t>(
+                            itemID
+                            );
+
+                    if (
+                        !ExtractJsonStringValue(
+                            object,
+                            "name",
+                            row.name
+                        )
+                        )
+                    {
+                        row.name =
+                            "Item " +
+                            std::to_string(
+                                row.itemID
+                            );
+                    }
+
+                    if (
+                        !ExtractJsonStringValue(
+                            object,
+                            "signalType",
+                            row.signalType
+                        )
+                        )
+                    {
+                        continue;
+                    }
+
+                    ExtractJsonStringValue(
+                        object,
+                        "status",
+                        row.status
+                    );
+
+                    ExtractJsonDoubleValue(
+                        object,
+                        "strength",
+                        row.strength
+                    );
+
+                    ExtractJsonStringValue(
+                        object,
+                        "firstDetectedAtUtc",
+                        row.firstDetectedAtUtc
+                    );
+
+                    ExtractJsonStringValue(
+                        object,
+                        "lastSeenAtUtc",
+                        row.lastSeenAtUtc
+                    );
+
+                    ExtractJsonStringValue(
+                        object,
+                        "resolvedAtUtc",
+                        row.resolvedAtUtc
+                    );
+
+                    ExtractJsonUInt64Value(
+                        object,
+                        "currentBuyUnitPrice",
+                        row.currentBuyUnitPrice
+                    );
+
+                    ExtractJsonUInt64Value(
+                        object,
+                        "currentSellUnitPrice",
+                        row.currentSellUnitPrice
+                    );
+
+                    ExtractJsonUInt64Value(
+                        object,
+                        "currentBuyQuantity",
+                        row.currentBuyQuantity
+                    );
+
+                    ExtractJsonUInt64Value(
+                        object,
+                        "currentSellQuantity",
+                        row.currentSellQuantity
+                    );
+
+                    ExtractJsonDoubleValue(
+                        object,
+                        "baselineBuyUnitPrice",
+                        row.baselineBuyUnitPrice
+                    );
+
+                    ExtractJsonDoubleValue(
+                        object,
+                        "baselineSellUnitPrice",
+                        row.baselineSellUnitPrice
+                    );
+
+                    ExtractJsonDoubleValue(
+                        object,
+                        "baselineBuyQuantity",
+                        row.baselineBuyQuantity
+                    );
+
+                    ExtractJsonDoubleValue(
+                        object,
+                        "baselineSellQuantity",
+                        row.baselineSellQuantity
+                    );
+
+                    ExtractJsonStringValue(
+                        object,
+                        "explanation",
+                        row.explanation
+                    );
+
+                    result.signals.push_back(
+                        std::move(
+                            row
+                        )
+                    );
+                }
+
+                return true;
+            };
+
+        auto FetchSignalSet =
+            [&](
+                const wchar_t* requestPath,
+                bool& limitReached,
+                const char* requestLabel
+                ) -> bool
+            {
+                HINTERNET request =
+                    WinHttpOpenRequest(
+                        connection,
+                        L"GET",
+                        requestPath,
+                        nullptr,
+                        WINHTTP_NO_REFERER,
+                        WINHTTP_DEFAULT_ACCEPT_TYPES,
+                        requestFlags
+                    );
+
+                if (request == nullptr)
+                {
+                    result.error =
+                        std::string(
+                            "Could not create the Market Prowl "
+                        ) +
+                        requestLabel +
+                        " request.";
+
+                    return false;
+                }
+
+                const BOOL sent =
+                    WinHttpSendRequest(
+                        request,
+                        WINHTTP_NO_ADDITIONAL_HEADERS,
+                        0,
+                        WINHTTP_NO_REQUEST_DATA,
+                        0,
+                        0,
+                        0
+                    );
+
+                if (
+                    !sent ||
+                    !WinHttpReceiveResponse(
+                        request,
+                        nullptr
+                    )
+                    )
+                {
+                    WinHttpCloseHandle(
+                        request
+                    );
+
+                    result.error =
+                        std::string(
+                            "Market Prowl did not receive a "
+                        ) +
+                        requestLabel +
+                        " response from the Collector.";
+
+                    return false;
+                }
+
+                DWORD statusCode = 0;
+                DWORD statusCodeSize =
+                    sizeof(statusCode);
+
+                const BOOL statusRead =
+                    WinHttpQueryHeaders(
+                        request,
+                        WINHTTP_QUERY_STATUS_CODE |
+                        WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX,
+                        &statusCode,
+                        &statusCodeSize,
+                        WINHTTP_NO_HEADER_INDEX
+                    );
+
+                if (
+                    !statusRead ||
+                    statusCode != 200
+                    )
+                {
+                    WinHttpCloseHandle(
+                        request
+                    );
+
+                    result.error =
+                        "Collector returned HTTP " +
+                        std::to_string(
+                            statusCode
+                        ) +
+                        " for Market Prowl " +
+                        requestLabel +
+                        ".";
+
+                    return false;
+                }
+
+                std::string response;
+
+                while (true)
+                {
+                    DWORD available = 0;
+
+                    if (
+                        !WinHttpQueryDataAvailable(
+                            request,
+                            &available
+                        )
+                        )
+                    {
+                        WinHttpCloseHandle(
+                            request
+                        );
+
+                        result.error =
+                            std::string(
+                                "Could not read the Market Prowl "
+                            ) +
+                            requestLabel +
+                            " response.";
+
+                        return false;
+                    }
+
+                    if (available == 0)
+                    {
+                        break;
+                    }
+
+                    std::vector<char> buffer(
+                        static_cast<size_t>(
+                            available
+                            ) +
+                        1,
+                        '\0'
+                    );
+
+                    DWORD bytesRead = 0;
+
+                    if (
+                        !WinHttpReadData(
+                            request,
+                            buffer.data(),
+                            available,
+                            &bytesRead
+                        )
+                        )
+                    {
+                        WinHttpCloseHandle(
+                            request
+                        );
+
+                        result.error =
+                            std::string(
+                                "Could not read the Market Prowl "
+                            ) +
+                            requestLabel +
+                            " response.";
+
+                        return false;
+                    }
+
+                    response.append(
+                        buffer.data(),
+                        bytesRead
+                    );
+                }
+
                 WinHttpCloseHandle(
                     request
                 );
 
-                WinHttpCloseHandle(
-                    connection
-                );
+                return
+                    AppendSignalRows(
+                        response,
+                        limitReached
+                    );
+            };
 
-                WinHttpCloseHandle(
-                    session
-                );
-
-                result.error =
-                    "Could not read the Market Prowl response.";
-
-                return result;
-            }
-
-            if (available == 0)
-            {
-                break;
-            }
-
-            std::vector<char> buffer(
-                static_cast<size_t>(
-                    available
-                    ) +
-                1,
-                '\0'
-            );
-
-            DWORD bytesRead = 0;
-
-            if (
-                !WinHttpReadData(
-                    request,
-                    buffer.data(),
-                    available,
-                    &bytesRead
-                )
-                )
-            {
-                WinHttpCloseHandle(
-                    request
-                );
-
-                WinHttpCloseHandle(
-                    connection
-                );
-
-                WinHttpCloseHandle(
-                    session
-                );
-
-                result.error =
-                    "Could not read the Market Prowl response.";
-
-                return result;
-            }
-
-            response.append(
-                buffer.data(),
-                bytesRead
-            );
-        }
-
-        WinHttpCloseHandle(
-            request
+        result.signals.reserve(
+            1000
         );
+
+        //
+        // Active and Resolved are requested separately. A single
+        // status=all&limit=500 response can be completely consumed by active
+        // signals, which previously made the Resolved 24h radar look empty.
+        //
+        const bool activeLoaded =
+            FetchSignalSet(
+                L"/signals?status=active&limit=500",
+                result.activeLimitReached,
+                "active-signals"
+            );
+
+        const bool resolvedLoaded =
+            activeLoaded &&
+            FetchSignalSet(
+                L"/signals?status=resolved&limit=500",
+                result.resolvedLimitReached,
+                "resolved-signals"
+            );
 
         WinHttpCloseHandle(
             connection
@@ -928,168 +1131,11 @@ namespace
         );
 
         if (
-            response.find(
-                "\"signals\""
-            ) == std::string::npos
+            !activeLoaded ||
+            !resolvedLoaded
             )
         {
-            result.error =
-                "Collector returned an invalid /signals payload.";
-
             return result;
-        }
-
-        const std::vector<std::string> objects =
-            ExtractMarketProwlSignalObjects(
-                response
-            );
-
-        result.signals.reserve(
-            objects.size()
-        );
-
-        for (
-            const std::string& object :
-            objects
-            )
-        {
-            MarketProwlSignalRow row;
-
-            uint64_t itemID = 0;
-
-            ExtractJsonUInt64Value(
-                object,
-                "id",
-                row.id
-            );
-
-            if (
-                !ExtractJsonUInt64Value(
-                    object,
-                    "itemId",
-                    itemID
-                ) ||
-                itemID == 0 ||
-                itemID > 0xFFFFFFFFULL
-                )
-            {
-                continue;
-            }
-
-            row.itemID =
-                static_cast<uint32_t>(
-                    itemID
-                    );
-
-            if (
-                !ExtractJsonStringValue(
-                    object,
-                    "name",
-                    row.name
-                )
-                )
-            {
-                row.name =
-                    "Item " +
-                    std::to_string(
-                        row.itemID
-                    );
-            }
-
-            if (
-                !ExtractJsonStringValue(
-                    object,
-                    "signalType",
-                    row.signalType
-                )
-                )
-            {
-                continue;
-            }
-
-            ExtractJsonStringValue(
-                object,
-                "status",
-                row.status
-            );
-
-            ExtractJsonDoubleValue(
-                object,
-                "strength",
-                row.strength
-            );
-
-            ExtractJsonStringValue(
-                object,
-                "firstDetectedAtUtc",
-                row.firstDetectedAtUtc
-            );
-
-            ExtractJsonStringValue(
-                object,
-                "lastSeenAtUtc",
-                row.lastSeenAtUtc
-            );
-
-            ExtractJsonUInt64Value(
-                object,
-                "currentBuyUnitPrice",
-                row.currentBuyUnitPrice
-            );
-
-            ExtractJsonUInt64Value(
-                object,
-                "currentSellUnitPrice",
-                row.currentSellUnitPrice
-            );
-
-            ExtractJsonUInt64Value(
-                object,
-                "currentBuyQuantity",
-                row.currentBuyQuantity
-            );
-
-            ExtractJsonUInt64Value(
-                object,
-                "currentSellQuantity",
-                row.currentSellQuantity
-            );
-
-            ExtractJsonDoubleValue(
-                object,
-                "baselineBuyUnitPrice",
-                row.baselineBuyUnitPrice
-            );
-
-            ExtractJsonDoubleValue(
-                object,
-                "baselineSellUnitPrice",
-                row.baselineSellUnitPrice
-            );
-
-            ExtractJsonDoubleValue(
-                object,
-                "baselineBuyQuantity",
-                row.baselineBuyQuantity
-            );
-
-            ExtractJsonDoubleValue(
-                object,
-                "baselineSellQuantity",
-                row.baselineSellQuantity
-            );
-
-            ExtractJsonStringValue(
-                object,
-                "explanation",
-                row.explanation
-            );
-
-            result.signals.push_back(
-                std::move(
-                    row
-                )
-            );
         }
 
         result.success =
@@ -9307,9 +9353,11 @@ void TradingPostUI::RenderTab(
     }
 
     //
-    // Market Prowl now runs quietly in the background instead of owning a
-    // separate workspace. The selected watched item gets a single glanceable
-    // Prowl status inside the existing Market Snapshot rail.
+    // Market Prowl feed.
+    //
+    // The same Collector signal cache powers the Prowl Radar workspace,
+    // Prowl Follow List, selected-item Market Snapshot state, historical
+    // chart markers, and Watchlist Heatmap state.
     //
     constexpr uint64_t MARKET_PROWL_REFRESH_INTERVAL_SECONDS =
         60ULL;
@@ -9332,6 +9380,12 @@ void TradingPostUI::RenderTab(
     static std::vector<MarketProwlSignalRow>
         marketProwlSignals;
 
+    static bool marketProwlActiveLimitReached =
+        false;
+
+    static bool marketProwlResolvedLimitReached =
+        false;
+
     static std::string marketProwlError;
 
     const uint64_t marketProwlNowUnixSeconds =
@@ -9343,6 +9397,304 @@ void TradingPostUI::RenderTab(
                 now().time_since_epoch()
             ).count()
             );
+
+    //
+    // Prowl Follow List.
+    //
+    // Follow state is intentionally lightweight and addon-side. The Collector
+    // remains the source of market signals; Copper&Claw only remembers which
+    // item IDs the user wants to keep an eye on and when that follow expires.
+    // An expiration of 0 means "until removed".
+    //
+    auto& marketProwlFollowExpirations =
+        g_Settings.tradingPostProwlFollowExpirations;
+
+    bool removedExpiredProwlFollow =
+        false;
+
+    for (
+        auto followIt =
+        marketProwlFollowExpirations.begin();
+        followIt !=
+        marketProwlFollowExpirations.end();
+        )
+    {
+        if (
+            followIt->second != 0 &&
+            followIt->second <=
+            marketProwlNowUnixSeconds
+            )
+        {
+            followIt =
+                marketProwlFollowExpirations.erase(
+                    followIt
+                );
+
+            removedExpiredProwlFollow =
+                true;
+        }
+        else
+        {
+            ++followIt;
+        }
+    }
+
+    if (removedExpiredProwlFollow)
+    {
+        Settings::Save(
+            moduleHandle
+        );
+    }
+
+    auto IsMarketProwlItemFollowed =
+        [&marketProwlFollowExpirations](
+            uint32_t itemID
+            ) -> bool
+        {
+            return
+                itemID != 0 &&
+                marketProwlFollowExpirations.find(
+                    itemID
+                ) !=
+                marketProwlFollowExpirations.end();
+        };
+
+    auto SetMarketProwlFollow =
+        [&](
+            uint32_t itemID,
+            uint64_t durationSeconds
+            )
+        {
+            if (itemID == 0)
+            {
+                return;
+            }
+
+            marketProwlFollowExpirations[
+                itemID
+            ] =
+                durationSeconds == 0
+                    ? 0
+                    : marketProwlNowUnixSeconds +
+                    durationSeconds;
+
+                Settings::Save(
+                    moduleHandle
+                );
+        };
+
+    auto StopMarketProwlFollow =
+        [&](
+            uint32_t itemID
+            )
+        {
+            if (
+                marketProwlFollowExpirations.erase(
+                    itemID
+                ) >
+                0
+                )
+            {
+                Settings::Save(
+                    moduleHandle
+                );
+            }
+        };
+
+    auto GetMarketProwlFollowStatusText =
+        [&](
+            uint32_t itemID
+            ) -> std::string
+        {
+            const auto followIt =
+                marketProwlFollowExpirations.find(
+                    itemID
+                );
+
+            if (
+                followIt ==
+                marketProwlFollowExpirations.end()
+                )
+            {
+                return {};
+            }
+
+            if (followIt->second == 0)
+            {
+                return
+                    "FOLLOWING - UNTIL REMOVED";
+            }
+
+            if (
+                followIt->second <=
+                marketProwlNowUnixSeconds
+                )
+            {
+                return {};
+            }
+
+            const uint64_t remainingSeconds =
+                followIt->second -
+                marketProwlNowUnixSeconds;
+
+            if (
+                remainingSeconds <
+                60ULL * 60ULL
+                )
+            {
+                const uint64_t minutes =
+                    std::max<uint64_t>(
+                        1ULL,
+                        remainingSeconds /
+                        60ULL
+                    );
+
+                return
+                    "FOLLOWING - " +
+                    std::to_string(
+                        minutes
+                    ) +
+                    "m LEFT";
+            }
+
+            if (
+                remainingSeconds <
+                24ULL * 60ULL * 60ULL
+                )
+            {
+                const uint64_t hours =
+                    std::max<uint64_t>(
+                        1ULL,
+                        remainingSeconds /
+                        (
+                            60ULL *
+                            60ULL
+                            )
+                    );
+
+                return
+                    "FOLLOWING - " +
+                    std::to_string(
+                        hours
+                    ) +
+                    "h LEFT";
+            }
+
+            const uint64_t days =
+                remainingSeconds /
+                (
+                    24ULL *
+                    60ULL *
+                    60ULL
+                    );
+
+            const uint64_t hours =
+                (
+                    remainingSeconds %
+                    (
+                        24ULL *
+                        60ULL *
+                        60ULL
+                        )
+                    ) /
+                (
+                    60ULL *
+                    60ULL
+                    );
+
+            std::string value =
+                "FOLLOWING - " +
+                std::to_string(
+                    days
+                ) +
+                "d";
+
+            if (hours > 0)
+            {
+                value +=
+                    " " +
+                    std::to_string(
+                        hours
+                    ) +
+                    "h";
+            }
+
+            value +=
+                " LEFT";
+
+            return value;
+        };
+
+    auto GetMarketProwlSignalEventUnixSeconds =
+        [](
+            const MarketProwlSignalRow& signal
+            ) -> uint64_t
+        {
+            uint64_t timestampUnixSeconds =
+                0;
+
+            if (
+                signal.status == "Resolved" &&
+                !signal.resolvedAtUtc.empty() &&
+                TryParseMarketProwlUtcUnixSeconds(
+                    signal.resolvedAtUtc,
+                    timestampUnixSeconds
+                )
+                )
+            {
+                return
+                    timestampUnixSeconds;
+            }
+
+            if (
+                !signal.lastSeenAtUtc.empty() &&
+                TryParseMarketProwlUtcUnixSeconds(
+                    signal.lastSeenAtUtc,
+                    timestampUnixSeconds
+                )
+                )
+            {
+                return
+                    timestampUnixSeconds;
+            }
+
+            if (
+                !signal.firstDetectedAtUtc.empty() &&
+                TryParseMarketProwlUtcUnixSeconds(
+                    signal.firstDetectedAtUtc,
+                    timestampUnixSeconds
+                )
+                )
+            {
+                return
+                    timestampUnixSeconds;
+            }
+
+            return 0;
+        };
+
+    auto GetMarketProwlFirstDetectedUnixSeconds =
+        [](
+            const MarketProwlSignalRow& signal
+            ) -> uint64_t
+        {
+            uint64_t timestampUnixSeconds =
+                0;
+
+            if (
+                !signal.firstDetectedAtUtc.empty() &&
+                TryParseMarketProwlUtcUnixSeconds(
+                    signal.firstDetectedAtUtc,
+                    timestampUnixSeconds
+                )
+                )
+            {
+                return
+                    timestampUnixSeconds;
+            }
+
+            return 0;
+        };
 
     if (
         marketProwlRequestInFlight &&
@@ -9381,6 +9733,12 @@ void TradingPostUI::RenderTab(
                 std::move(
                     completedResult.signals
                 );
+
+            marketProwlActiveLimitReached =
+                completedResult.activeLimitReached;
+
+            marketProwlResolvedLimitReached =
+                completedResult.resolvedLimitReached;
 
             marketProwlError.clear();
 
@@ -9720,7 +10078,7 @@ void TradingPostUI::RenderTab(
     );
 
     DrawPrimaryViewButton(
-        "MARKET PROWL##TradingPostPrimaryView",
+        "PROWL RADAR##TradingPostPrimaryView",
         1,
         138.0f
     );
@@ -9733,6 +10091,11 @@ void TradingPostUI::RenderTab(
         0;
 
     static int marketProwlSort =
+        0;
+
+    // 0 = Live, 1 = New in the last hour, 2 = Following,
+    // 3 = Resolved in the last 24 hours.
+    static int marketProwlScope =
         0;
 
     if (tradingPostPrimaryView == 1)
@@ -9794,7 +10157,7 @@ void TradingPostUI::RenderTab(
 
         ImGui::TextColored(
             primaryViewPalette.accent,
-            "MARKET PROWL"
+            "PROWL RADAR"
         );
 
         ImGui::SetWindowFontScale(
@@ -9831,7 +10194,7 @@ void TradingPostUI::RenderTab(
         }
 
         ImGui::TextDisabled(
-            "The strongest current price moves, simplified and ranked."
+            "Live scanner for unusual Trading Post movement, follow-ups, and recent resolutions."
         );
 
         ImGui::SameLine(
@@ -9882,6 +10245,243 @@ void TradingPostUI::RenderTab(
 
         ImGui::Spacing();
         ImGui::Separator();
+        ImGui::Spacing();
+
+        //
+        // Radar summary and scope.
+        //
+        std::unordered_map<uint32_t, bool>
+            marketProwlActiveItems;
+
+        std::unordered_map<uint32_t, bool>
+            marketProwlNewItems;
+
+        std::unordered_map<uint32_t, bool>
+            marketProwlResolvedItems;
+
+        for (
+            const MarketProwlSignalRow& signal :
+            marketProwlSignals
+            )
+        {
+            if (signal.status == "Active")
+            {
+                marketProwlActiveItems[
+                    signal.itemID
+                ] = true;
+
+                const uint64_t firstDetectedUnixSeconds =
+                    GetMarketProwlFirstDetectedUnixSeconds(
+                        signal
+                    );
+
+                if (
+                    firstDetectedUnixSeconds > 0 &&
+                    marketProwlNowUnixSeconds >=
+                    firstDetectedUnixSeconds &&
+                    marketProwlNowUnixSeconds -
+                    firstDetectedUnixSeconds <=
+                    60ULL * 60ULL
+                    )
+                {
+                    marketProwlNewItems[
+                        signal.itemID
+                    ] = true;
+                }
+            }
+            else if (signal.status == "Resolved")
+            {
+                const uint64_t resolvedUnixSeconds =
+                    GetMarketProwlSignalEventUnixSeconds(
+                        signal
+                    );
+
+                if (
+                    resolvedUnixSeconds > 0 &&
+                    marketProwlNowUnixSeconds >=
+                    resolvedUnixSeconds &&
+                    marketProwlNowUnixSeconds -
+                    resolvedUnixSeconds <=
+                    24ULL * 60ULL * 60ULL
+                    )
+                {
+                    marketProwlResolvedItems[
+                        signal.itemID
+                    ] = true;
+                }
+            }
+        }
+
+        ImGui::TextDisabled(
+            "Active %llu%s  |  New 1h %llu  |  Following %llu  |  Resolved 24h %llu%s",
+            static_cast<unsigned long long>(
+                marketProwlActiveItems.size()
+                ),
+            marketProwlActiveLimitReached
+            ? " (cap)"
+            : "",
+            static_cast<unsigned long long>(
+                marketProwlNewItems.size()
+                ),
+            static_cast<unsigned long long>(
+                marketProwlFollowExpirations.size()
+                ),
+            static_cast<unsigned long long>(
+                marketProwlResolvedItems.size()
+                ),
+            marketProwlResolvedLimitReached
+            ? " (cap)"
+            : ""
+        );
+
+        if (
+            marketProwlActiveLimitReached ||
+            marketProwlResolvedLimitReached
+            )
+        {
+            ImGui::SameLine(
+                0.0f,
+                8.0f
+            );
+
+            ImGui::TextColored(
+                attentionColor,
+                "FEED LIMIT"
+            );
+
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip(
+                    "The Collector returned the current 500-record cap for at least one Prowl state.\n"
+                    "Active and resolved signals are fetched separately so recent resolutions remain usable,\n"
+                    "but the displayed count may not represent every matching signal in the full market."
+                );
+            }
+        }
+
+        ImGui::Spacing();
+
+        ImGui::TextDisabled(
+            "RADAR"
+        );
+
+        const char* marketProwlScopeLabels[] =
+        {
+            "Live",
+            "New 1h",
+            "Following",
+            "Resolved 24h"
+        };
+
+        const char* marketProwlScopeHelp[] =
+        {
+            "All meaningful signals that are active right now.",
+            "Active signals first detected during the last hour.",
+            "Items you chose to follow, including a recently resolved signal when available.",
+            "Signals that resolved during the last 24 hours."
+        };
+
+        for (
+            int scopeIndex = 0;
+            scopeIndex < 4;
+            ++scopeIndex
+            )
+        {
+            ImGui::SameLine(
+                0.0f,
+                scopeIndex == 0
+                ? 10.0f
+                : 6.0f
+            );
+
+            const bool selectedScope =
+                marketProwlScope ==
+                scopeIndex;
+
+            ImGui::PushStyleColor(
+                ImGuiCol_Button,
+                selectedScope
+                ? ImVec4(
+                    primaryViewPalette.accent.x,
+                    primaryViewPalette.accent.y,
+                    primaryViewPalette.accent.z,
+                    0.24f
+                )
+                : primaryViewPalette.frameBg
+            );
+
+            ImGui::PushStyleColor(
+                ImGuiCol_ButtonHovered,
+                primaryViewPalette.frameHovered
+            );
+
+            ImGui::PushStyleColor(
+                ImGuiCol_ButtonActive,
+                primaryViewPalette.frameActive
+            );
+
+            ImGui::PushStyleColor(
+                ImGuiCol_Border,
+                ImVec4(
+                    primaryViewPalette.accent.x,
+                    primaryViewPalette.accent.y,
+                    primaryViewPalette.accent.z,
+                    selectedScope
+                    ? 0.80f
+                    : 0.24f
+                )
+            );
+
+            ImGui::PushStyleVar(
+                ImGuiStyleVar_FrameBorderSize,
+                1.0f
+            );
+
+            ImGui::PushStyleVar(
+                ImGuiStyleVar_FrameRounding,
+                3.0f
+            );
+
+            if (
+                ImGui::Button(
+                    marketProwlScopeLabels[
+                        scopeIndex
+                    ]
+                )
+                )
+            {
+                marketProwlScope =
+                    scopeIndex;
+            }
+
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+
+                ImGui::PushTextWrapPos(
+                    ImGui::GetCursorPosX() +
+                    360.0f
+                );
+
+                ImGui::TextUnformatted(
+                    marketProwlScopeHelp[
+                        scopeIndex
+                    ]
+                );
+
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+
+            ImGui::PopStyleVar(
+                2
+            );
+
+            ImGui::PopStyleColor(
+                4
+            );
+        }
+
         ImGui::Spacing();
 
         //
@@ -10380,8 +10980,74 @@ void TradingPostUI::RenderTab(
                 marketProwlSignals
                 )
             {
+                const bool signalIsActive =
+                    signal.status == "Active";
+
+                const bool signalIsResolved =
+                    signal.status == "Resolved";
+
+                const uint64_t signalFirstDetectedUnixSeconds =
+                    GetMarketProwlFirstDetectedUnixSeconds(
+                        signal
+                    );
+
+                const uint64_t signalEventUnixSeconds =
+                    GetMarketProwlSignalEventUnixSeconds(
+                        signal
+                    );
+
+                const bool signalIsNew =
+                    signalIsActive &&
+                    signalFirstDetectedUnixSeconds > 0 &&
+                    marketProwlNowUnixSeconds >=
+                    signalFirstDetectedUnixSeconds &&
+                    marketProwlNowUnixSeconds -
+                    signalFirstDetectedUnixSeconds <=
+                    60ULL * 60ULL;
+
+                const bool signalIsFollowed =
+                    IsMarketProwlItemFollowed(
+                        signal.itemID
+                    );
+
+                const bool signalRecentlyResolved =
+                    signalIsResolved &&
+                    signalEventUnixSeconds > 0 &&
+                    marketProwlNowUnixSeconds >=
+                    signalEventUnixSeconds &&
+                    marketProwlNowUnixSeconds -
+                    signalEventUnixSeconds <=
+                    24ULL * 60ULL * 60ULL;
+
+                bool scopeMatches =
+                    false;
+
+                switch (marketProwlScope)
+                {
+                case 1:
+                    scopeMatches =
+                        signalIsNew;
+                    break;
+
+                case 2:
+                    scopeMatches =
+                        signalIsFollowed;
+                    break;
+
+                case 3:
+                    scopeMatches =
+                        signalRecentlyResolved;
+                    break;
+
+                case 0:
+                default:
+                    scopeMatches =
+                        signalIsActive;
+                    break;
+                }
+
                 if (
-                    signal.status != "Active" ||
+                    !scopeMatches ||
                     (
                         marketProwlFilter != 0 &&
                         signal.signalType !=
@@ -10421,16 +11087,74 @@ void TradingPostUI::RenderTab(
                     const size_t existingIndex =
                         existing->second;
 
+                    const MarketProwlSignalRow&
+                        existingSignal =
+                        *rankedSignals[
+                            existingIndex
+                        ];
+
+                    bool replaceExisting =
+                        false;
+
                     if (
-                        GetProwlRankScore(
-                            signal
-                        ) >
-                        GetProwlRankScore(
-                            *rankedSignals[
-                                existingIndex
-                            ]
+                        marketProwlScope == 2
                         )
+                    {
+                        //
+                        // Following prefers the currently active event. If both
+                        // candidates share the same lifecycle state, keep the
+                        // most recent event instead of an older stronger one.
+                        //
+                        if (
+                            signal.status == "Active" &&
+                            existingSignal.status != "Active"
+                            )
+                        {
+                            replaceExisting =
+                                true;
+                        }
+                        else if (
+                            (
+                                signal.status == "Active"
+                                ) ==
+                            (
+                                existingSignal.status == "Active"
+                                )
+                            )
+                        {
+                            replaceExisting =
+                                GetMarketProwlSignalEventUnixSeconds(
+                                    signal
+                                ) >
+                                GetMarketProwlSignalEventUnixSeconds(
+                                    existingSignal
+                                );
+                        }
+                    }
+                    else if (
+                        marketProwlScope == 3
                         )
+                    {
+                        replaceExisting =
+                            GetMarketProwlSignalEventUnixSeconds(
+                                signal
+                            ) >
+                            GetMarketProwlSignalEventUnixSeconds(
+                                existingSignal
+                            );
+                    }
+                    else
+                    {
+                        replaceExisting =
+                            GetProwlRankScore(
+                                signal
+                            ) >
+                            GetProwlRankScore(
+                                existingSignal
+                            );
+                    }
+
+                    if (replaceExisting)
                     {
                         rankedSignals[
                             existingIndex
@@ -10479,14 +11203,24 @@ void TradingPostUI::RenderTab(
                     }
                     else if (marketProwlSort == 2)
                     {
+                        const uint64_t leftEventTime =
+                            GetMarketProwlSignalEventUnixSeconds(
+                                *left
+                            );
+
+                        const uint64_t rightEventTime =
+                            GetMarketProwlSignalEventUnixSeconds(
+                                *right
+                            );
+
                         if (
-                            left->firstDetectedAtUtc !=
-                            right->firstDetectedAtUtc
+                            leftEventTime !=
+                            rightEventTime
                             )
                         {
                             return
-                                left->firstDetectedAtUtc >
-                                right->firstDetectedAtUtc;
+                                leftEventTime >
+                                rightEventTime;
                         }
                     }
                     else if (marketProwlSort == 3)
@@ -10531,14 +11265,24 @@ void TradingPostUI::RenderTab(
                     // Stable, predictable tie-breaks keep cards from appearing
                     // to reshuffle randomly between refreshes.
                     //
+                    const uint64_t leftEventTime =
+                        GetMarketProwlSignalEventUnixSeconds(
+                            *left
+                        );
+
+                    const uint64_t rightEventTime =
+                        GetMarketProwlSignalEventUnixSeconds(
+                            *right
+                        );
+
                     if (
-                        left->firstDetectedAtUtc !=
-                        right->firstDetectedAtUtc
+                        leftEventTime !=
+                        rightEventTime
                         )
                     {
                         return
-                            left->firstDetectedAtUtc >
-                            right->firstDetectedAtUtc;
+                            leftEventTime >
+                            rightEventTime;
                     }
 
                     return
@@ -10552,7 +11296,7 @@ void TradingPostUI::RenderTab(
 
             const size_t displayedItemCount =
                 std::min<size_t>(
-                    10,
+                    12,
                     meaningfulItemCount
                 );
 
@@ -10560,28 +11304,43 @@ void TradingPostUI::RenderTab(
                 displayedItemCount > 0
                 )
             {
+                const char* marketProwlScopeResultLabel =
+                    marketProwlScope == 1
+                    ? "new"
+                    : (
+                        marketProwlScope == 2
+                        ? "followed"
+                        : (
+                            marketProwlScope == 3
+                            ? "recently resolved"
+                            : "active"
+                            )
+                        );
+
                 if (
                     meaningfulItemCount >
                     displayedItemCount
                     )
                 {
                     ImGui::TextDisabled(
-                        "Showing top %llu of %llu active items",
+                        "Showing top %llu of %llu %s items",
                         static_cast<unsigned long long>(
                             displayedItemCount
                             ),
                         static_cast<unsigned long long>(
                             meaningfulItemCount
-                            )
+                            ),
+                        marketProwlScopeResultLabel
                     );
                 }
                 else
                 {
                     ImGui::TextDisabled(
-                        "%llu active item%s",
+                        "%llu %s item%s",
                         static_cast<unsigned long long>(
                             meaningfulItemCount
                             ),
+                        marketProwlScopeResultLabel,
                         meaningfulItemCount == 1
                         ? ""
                         : "s"
@@ -10784,6 +11543,43 @@ void TradingPostUI::RenderTab(
                         ImGui::SetWindowFontScale(
                             1.00f
                         );
+
+                        const bool marketProwlItemFollowed =
+                            IsMarketProwlItemFollowed(
+                                signal.itemID
+                            );
+
+                        ImGui::TextColored(
+                            signal.status == "Active"
+                            ? goodColor
+                            : mutedColor,
+                            "%s",
+                            signal.status == "Active"
+                            ? "LIVE"
+                            : "RESOLVED"
+                        );
+
+                        if (marketProwlItemFollowed)
+                        {
+                            const std::string followStatusText =
+                                GetMarketProwlFollowStatusText(
+                                    signal.itemID
+                                );
+
+                            if (!followStatusText.empty())
+                            {
+                                ImGui::SameLine(
+                                    0.0f,
+                                    8.0f
+                                );
+
+                                ImGui::TextColored(
+                                    primaryViewPalette.accent,
+                                    "%s",
+                                    followStatusText.c_str()
+                                );
+                            }
+                        }
 
                         ImGui::EndGroup();
 
@@ -11321,6 +12117,116 @@ void TradingPostUI::RenderTab(
                                 }
                             }
 
+                            ImGui::Separator();
+
+                            if (marketProwlItemFollowed)
+                            {
+                                if (
+                                    ImGui::BeginMenu(
+                                        "Following..."
+                                    )
+                                    )
+                                {
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Follow 24 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            signal.itemID,
+                                            24ULL * 60ULL * 60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Follow 48 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            signal.itemID,
+                                            48ULL * 60ULL * 60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Follow until removed"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            signal.itemID,
+                                            0
+                                        );
+                                    }
+
+                                    ImGui::Separator();
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Stop following"
+                                        )
+                                        )
+                                    {
+                                        StopMarketProwlFollow(
+                                            signal.itemID
+                                        );
+                                    }
+
+                                    ImGui::EndMenu();
+                                }
+                            }
+                            else
+                            {
+                                if (
+                                    ImGui::BeginMenu(
+                                        "Follow..."
+                                    )
+                                    )
+                                {
+                                    if (
+                                        ImGui::MenuItem(
+                                            "24 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            signal.itemID,
+                                            24ULL * 60ULL * 60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "48 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            signal.itemID,
+                                            48ULL * 60ULL * 60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Until removed"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            signal.itemID,
+                                            0
+                                        );
+                                    }
+
+                                    ImGui::EndMenu();
+                                }
+                            }
+
                             if (
                                 ImGui::Selectable(
                                     "Refresh Price"
@@ -11567,12 +12473,31 @@ void TradingPostUI::RenderTab(
                             )
                         );
 
-                        ImGui::TextDisabled(
-                            "First seen %s",
-                            FormatMarketProwlTimestamp(
-                                signal.firstDetectedAtUtc
-                            ).c_str()
-                        );
+                        if (
+                            signal.status == "Resolved"
+                            )
+                        {
+                            const std::string resolvedTimestamp =
+                                !signal.resolvedAtUtc.empty()
+                                ? signal.resolvedAtUtc
+                                : signal.lastSeenAtUtc;
+
+                            ImGui::TextDisabled(
+                                "Resolved %s",
+                                FormatMarketProwlTimestamp(
+                                    resolvedTimestamp
+                                ).c_str()
+                            );
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "First seen %s",
+                                FormatMarketProwlTimestamp(
+                                    signal.firstDetectedAtUtc
+                                ).c_str()
+                            );
+                        }
 
                         ImGui::EndChild();
 
@@ -11601,16 +12526,39 @@ void TradingPostUI::RenderTab(
                     )
                 );
 
+                const char* emptyRadarTitle =
+                    marketProwlScope == 1
+                    ? "No new Prowl signals in the last hour"
+                    : (
+                        marketProwlScope == 2
+                        ? "No followed Prowl items in the current feed"
+                        : (
+                            marketProwlScope == 3
+                            ? "No recently resolved Prowl signals"
+                            : "No meaningful active moves right now"
+                            )
+                        );
+
                 ImGui::TextColored(
                     primaryViewPalette.text,
-                    "No meaningful active moves right now"
+                    "%s",
+                    emptyRadarTitle
                 );
 
                 ImGui::Spacing();
 
-                ImGui::TextDisabled(
-                    "Tiny low-value quote changes are filtered so they do not crowd the list."
-                );
+                if (marketProwlScope == 2)
+                {
+                    ImGui::TextDisabled(
+                        "Use an item's ... menu in Prowl Radar to follow it for 24h, 48h, or until removed."
+                    );
+                }
+                else
+                {
+                    ImGui::TextDisabled(
+                        "Tiny low-value quote changes are filtered so they do not crowd the list."
+                    );
+                }
             }
         }
 
@@ -12342,6 +13290,30 @@ void TradingPostUI::RenderTab(
     if (ImGui::RadioButton("Favorites", showFavoritesOnly))
     {
         showFavoritesOnly = true;
+    }
+
+    ImGui::SameLine(0.0f, 14.0f);
+    ImGui::TextDisabled("View:");
+    ImGui::SameLine();
+
+    const char* watchDisplayModeLabels[] =
+    {
+        "List",
+        "Heatmap"
+    };
+
+    if (DrawThemedCombo(
+        "##WatchDisplayMode",
+        &g_Settings.tradingPostWatchDisplayMode,
+        watchDisplayModeLabels,
+        static_cast<int>(
+            sizeof(watchDisplayModeLabels) /
+            sizeof(watchDisplayModeLabels[0])
+            ),
+        92.0f
+    ))
+    {
+        Settings::Save(moduleHandle);
     }
 
     ImGui::SameLine(0.0f, 14.0f);
@@ -16868,1536 +17840,2860 @@ void TradingPostUI::RenderTab(
             )
             )
         {
-            int visibleWatchGroupCounts[WATCH_GROUP_COUNT] = {};
-
-            for (
-                const TradingPostWatchItem& countItem :
-                watchedItems
+            if (
+                g_Settings.tradingPostWatchDisplayMode ==
+                1
                 )
             {
-                if (
-                    showFavoritesOnly &&
-                    !countItem.isFavorite
-                    )
-                {
-                    continue;
-                }
-
-                const int countGroupIndex =
-                    std::clamp(
-                        GetWatchGroupIndex(
-                            countItem.itemID
-                        ),
-                        0,
-                        WATCH_GROUP_COUNT - 1
-                    );
-
-                ++visibleWatchGroupCounts[
-                    countGroupIndex
-                ];
-            }
-
-            int renderedWatchGroupIndex = -1;
-
-            for (
-                const TradingPostWatchItem& item :
-                watchedItems
-                )
-            {
-                if (
-                    showFavoritesOnly &&
-                    !item.isFavorite
-                    )
-                {
-                    continue;
-                }
-
-                const int itemWatchGroupIndex =
-                    std::clamp(
-                        GetWatchGroupIndex(
-                            item.itemID
-                        ),
-                        0,
-                        WATCH_GROUP_COUNT - 1
-                    );
-
-                if (
-                    itemWatchGroupIndex !=
-                    renderedWatchGroupIndex
-                    )
-                {
-                    renderedWatchGroupIndex =
-                        itemWatchGroupIndex;
-
-                    char watchGroupHeader[96] = {};
-
-                    std::snprintf(
-                        watchGroupHeader,
-                        sizeof(watchGroupHeader),
-                        "%s %s  (%d)##WatchGroupHeader%d",
-                        watchGroupCollapsed[itemWatchGroupIndex]
-                        ? "+"
-                        : "-",
-                        watchGroupLabels[itemWatchGroupIndex],
-                        visibleWatchGroupCounts[itemWatchGroupIndex],
-                        itemWatchGroupIndex
-                    );
-
-                    ImGui::PushStyleColor(
-                        ImGuiCol_Header,
-                        ImVec4(
-                            themePrimary.x,
-                            themePrimary.y,
-                            themePrimary.z,
-                            0.10f
-                        )
-                    );
-
-                    ImGui::PushStyleColor(
-                        ImGuiCol_HeaderHovered,
-                        ImVec4(
-                            themePrimary.x,
-                            themePrimary.y,
-                            themePrimary.z,
-                            0.20f
-                        )
-                    );
-
-                    ImGui::PushStyleColor(
-                        ImGuiCol_HeaderActive,
-                        ImVec4(
-                            themePrimary.x,
-                            themePrimary.y,
-                            themePrimary.z,
-                            0.28f
-                        )
-                    );
-
-                    ImGui::PushStyleColor(
-                        ImGuiCol_Text,
-                        ImVec4(
-                            themePrimary.x +
-                            (1.0f - themePrimary.x) * 0.30f,
-                            themePrimary.y +
-                            (1.0f - themePrimary.y) * 0.30f,
-                            themePrimary.z +
-                            (1.0f - themePrimary.z) * 0.30f,
-                            1.00f
-                        )
-                    );
-
-                    if (
-                        ImGui::Selectable(
-                            watchGroupHeader,
-                            false,
+                ImGui::TextDisabled(
+                    "HEATMAP  |  %s",
+                    trendWindowLabels[
+                        std::clamp(
+                            g_Settings.tradingPostTrendWindowIndex,
                             0,
-                            ImVec2(
-                                ImGui::GetContentRegionAvail().x,
-                                0.0f
-                            )
+                            10
                         )
-                        )
-                    {
-                        watchGroupCollapsed[
-                            itemWatchGroupIndex
-                        ] =
-                            !watchGroupCollapsed[
-                                itemWatchGroupIndex
-                            ];
-                    }
-
-                    ImGui::PopStyleColor(4);
-
-                    const ImVec2 groupRuleStart =
-                        ImGui::GetCursorScreenPos();
-
-                    ImGui::GetWindowDrawList()->AddLine(
-                        ImVec2(
-                            groupRuleStart.x,
-                            groupRuleStart.y - 1.0f
-                        ),
-                        ImVec2(
-                            groupRuleStart.x +
-                            ImGui::GetContentRegionAvail().x -
-                            4.0f,
-                            groupRuleStart.y - 1.0f
-                        ),
-                        ImGui::GetColorU32(
-                            ImVec4(
-                                themePrimary.x,
-                                themePrimary.y,
-                                themePrimary.z,
-                                0.22f
-                            )
-                        ),
-                        1.0f
-                    );
-
-                    ImGui::Dummy(
-                        ImVec2(
-                            0.0f,
-                            3.0f
-                        )
-                    );
-                }
-
-                if (
-                    watchGroupCollapsed[
-                        itemWatchGroupIndex
                     ]
-                    )
-                {
-                    continue;
-                }
-
-                ImGui::PushID(
-                    static_cast<int>(
-                        item.itemID
-                        )
                 );
 
-                TradingPostPrice compactPrice;
-
-                const bool compactHasPrice =
-                    TradingPostPriceManager::
-                    TryGetPrice(
-                        item.itemID,
-                        compactPrice
-                    );
-
-                if (!compactHasPrice)
-                {
-                    TradingPostPriceManager::
-                        RequestPrice(
-                            item.itemID
-                        );
-                }
-
-                const bool compactSelected =
-                    selectedDetailsItemID ==
-                    item.itemID;
-
-                const bool compactSellTargetReached =
-                    item.targetSellCopper > 0 &&
-                    compactHasPrice &&
-                    compactPrice.available &&
-                    compactPrice.sellUnitPrice > 0 &&
-                    static_cast<uint64_t>(
-                        compactPrice.sellUnitPrice
-                        ) <=
-                    item.targetSellCopper;
-
-                const bool compactBuyTargetReached =
-                    item.targetBuyCopper > 0 &&
-                    compactHasPrice &&
-                    compactPrice.available &&
-                    compactPrice.buyUnitPrice > 0 &&
-                    static_cast<uint64_t>(
-                        compactPrice.buyUnitPrice
-                        ) >=
-                    item.targetBuyCopper;
-
-                bool openCompactTargetsPopup =
-                    false;
-
-                const ImVec2 cardStart =
-                    ImGui::GetCursorScreenPos();
-
-                const float cardWidth =
-                    ImGui::GetContentRegionAvail().x -
-                    4.0f;
-
-                const float cardHeight =
-                    116.0f;
-
-                ImGui::InvisibleButton(
-                    "##CompactWatchCard",
-                    ImVec2(
-                        std::max(
-                            1.0f,
-                            cardWidth - 42.0f
-                        ),
-                        cardHeight
-                    )
+                ImGui::SameLine(
+                    0.0f,
+                    8.0f
                 );
 
-                const bool cardHovered =
-                    ImGui::IsItemHovered();
-
-                if (ImGui::IsItemClicked())
-                {
-                    if (
-                        selectedDetailsItemID !=
-                        item.itemID
-                        )
-                    {
-                        selectedDetailsItemID =
-                            item.itemID;
-
-                        RequestHistoricalGapFillIfNeeded(
-                            item.itemID,
-                            trendWindowSeconds
-                        );
-
-                        lastDetailsPaneItemID =
-                            0;
-
-                        detailsAnalysisCache.clear();
-                    }
-                }
-
-                ImDrawList* cardDrawList =
-                    ImGui::GetWindowDrawList();
-
-                const ImVec2 cardEnd(
-                    cardStart.x +
-                    cardWidth,
-                    cardStart.y +
-                    cardHeight
+                ImGui::TextDisabled(
+                    "| click a tile for Item Analysis"
                 );
 
-                ImVec4 cardColor =
-                    themePanelRaised;
+                ImGui::Spacing();
 
-                ImVec4 cardBorder(
-                    0.10f,
-                    0.18f,
-                    0.28f,
-                    0.82f
-                );
+                const float heatmapAvailableWidth =
+                    ImGui::GetContentRegionAvail().x;
 
-                if (cardHovered)
-                {
-                    cardColor =
-                        ImVec4(
-                            0.058f,
-                            0.070f,
-                            0.088f,
-                            0.98f
+                const int heatmapColumnCount =
+                    heatmapAvailableWidth >= 540.0f
+                    ? 3
+                    : (
+                        heatmapAvailableWidth >= 250.0f
+                        ? 2
+                        : 1
                         );
-
-                    cardBorder =
-                        ImVec4(
-                            themeTelemetry.x,
-                            themeTelemetry.y,
-                            themeTelemetry.z,
-                            0.52f
-                        );
-                }
-
-                if (compactSelected)
-                {
-                    cardColor =
-                        ImVec4(
-                            0.060f,
-                            0.082f,
-                            0.108f,
-                            0.98f
-                        );
-
-                    cardBorder =
-                        ImVec4(
-                            themePrimary.x,
-                            themePrimary.y,
-                            themePrimary.z,
-                            0.96f
-                        );
-                }
-
-                DrawChamferedPanel(
-                    cardDrawList,
-                    cardStart,
-                    cardEnd,
-                    ImGui::GetColorU32(
-                        cardColor
-                    ),
-                    ImGui::GetColorU32(
-                        cardBorder
-                    ),
-                    9.0f,
-                    compactSelected
-                    ? 1.8f
-                    : 1.0f
-                );
-
-                cardDrawList->AddRectFilled(
-                    ImVec2(
-                        cardStart.x,
-                        cardStart.y + 16.0f
-                    ),
-                    ImVec2(
-                        cardStart.x + 3.0f,
-                        cardEnd.y - 10.0f
-                    ),
-                    ImGui::GetColorU32(
-                        compactSelected
-                        ? themePrimary
-                        : ImVec4(
-                            themeTelemetry.x,
-                            themeTelemetry.y,
-                            themeTelemetry.z,
-                            cardHovered
-                            ? 0.62f
-                            : 0.22f
-                        )
-                    )
-                );
-
-                // Compact-card icon layout:
-                // Give the item icon its own row above the name. This preserves
-                // the full horizontal width of the item name instead of forcing
-                // the icon and text to compete for the same narrow line.
-                const float compactNameTextX =
-                    cardStart.x + 12.0f;
-
-                const float compactBodyTextX =
-                    cardStart.x + 12.0f;
-
-                Texture_t* compactItemIcon =
-                    GetTradingPostItemIcon(
-                        item.itemID
-                    );
 
                 if (
-                    compactItemIcon != nullptr &&
-                    compactItemIcon->Resource != nullptr
+                    ImGui::BeginTable(
+                        "##WatchlistHeatmapGrid",
+                        heatmapColumnCount,
+                        ImGuiTableFlags_SizingStretchSame |
+                        ImGuiTableFlags_NoSavedSettings
+                    )
                     )
                 {
-                    const float compactIconSize =
-                        28.0f;
+                    size_t visibleHeatmapIndex = 0;
 
-                    const ImVec2 compactIconMin(
-                        cardStart.x + 12.0f,
-                        cardStart.y + 7.0f
-                    );
-
-                    const ImVec2 compactIconMax(
-                        compactIconMin.x + compactIconSize,
-                        compactIconMin.y + compactIconSize
-                    );
-
-                    cardDrawList->AddRect(
-                        ImVec2(
-                            compactIconMin.x - 1.0f,
-                            compactIconMin.y - 1.0f
-                        ),
-                        ImVec2(
-                            compactIconMax.x + 1.0f,
-                            compactIconMax.y + 1.0f
-                        ),
-                        ImGui::GetColorU32(
-                            ImVec4(
-                                themeTelemetry.x,
-                                themeTelemetry.y,
-                                themeTelemetry.z,
-                                compactSelected
-                                ? 0.58f
-                                : 0.24f
-                            )
-                        ),
-                        0.0f,
-                        0,
-                        1.0f
-                    );
-
-                    //
-                    // Give the texture a small internal inset. A few GW2 icons use
-                    // artwork right up to the texture edge; rendering them flush to
-                    // the frame can make one side look clipped even when the texture
-                    // itself loaded correctly.
-                    //
-                    const float compactIconInset =
-                        item.itemID == 41569U
-                        ? 4.0f
-                        : 1.5f;
-
-                    const ImVec2 compactImageMin(
-                        compactIconMin.x +
-                        compactIconInset,
-                        compactIconMin.y +
-                        compactIconInset
-                    );
-
-                    const ImVec2 compactImageMax(
-                        compactIconMax.x -
-                        compactIconInset,
-                        compactIconMax.y -
-                        compactIconInset
-                    );
-
-                    cardDrawList->AddImage(
-                        (ImTextureID)
-                        compactItemIcon->Resource,
-                        compactImageMin,
-                        compactImageMax
-                    );
-
-                    if (
-                        ImGui::IsMouseHoveringRect(
-                            compactIconMin,
-                            compactIconMax,
-                            true
-                        )
+                    for (
+                        const TradingPostWatchItem& item :
+                        watchedItems
                         )
                     {
-                        TradingPostIndexedItem tooltipItem;
+                        if (
+                            showFavoritesOnly &&
+                            !item.isFavorite
+                            )
+                        {
+                            continue;
+                        }
 
                         if (
-                            TradingPostItemIndexManager::
-                            TryGetItem(
+                            visibleHeatmapIndex %
+                            static_cast<size_t>(
+                                heatmapColumnCount
+                                ) ==
+                            0
+                            )
+                        {
+                            ImGui::TableNextRow();
+                        }
+
+                        ImGui::TableSetColumnIndex(
+                            static_cast<int>(
+                                visibleHeatmapIndex %
+                                static_cast<size_t>(
+                                    heatmapColumnCount
+                                    )
+                                )
+                        );
+
+                        ++visibleHeatmapIndex;
+
+                        ImGui::PushID(
+                            static_cast<int>(
+                                item.itemID
+                                )
+                        );
+
+                        TradingPostPrice heatmapPrice;
+
+                        const bool heatmapHasPrice =
+                            TradingPostPriceManager::
+                            TryGetPrice(
                                 item.itemID,
-                                tooltipItem
+                                heatmapPrice
+                            );
+
+                        //
+                        // Watched items are already refreshed by the Watch Manager.
+                        // Do not enqueue another request every frame just because a
+                        // heatmap tile is waiting on its first price.
+                        //
+                        const std::vector<
+                            TradingPostHistoryPoint
+                        > heatmapHistory =
+                            TradingPostHistoryManager::
+                            GetHistory(
+                                item.itemID
+                            );
+
+                        const std::vector<
+                            TradingPostHistoryPoint
+                        > heatmapAnalysisHistory =
+                            useHybridAnalysisHistory
+                            ? BuildHybridAnalysisHistory(
+                                heatmapHistory,
+                                collectorCompletedSnapshotTimestamps
+                            )
+                            : (
+                                useCollectorAnalysisHistory
+                                ? BuildCollectorSampledHistory(
+                                    heatmapHistory,
+                                    collectorCompletedSnapshotTimestamps
+                                )
+                                : heatmapHistory
+                                );
+
+                        const TrendInfo heatmapTrend =
+                            CalculateTrend(
+                                heatmapAnalysisHistory,
+                                true,
+                                trendWindowSeconds
+                            );
+
+                        const WindowCoverageInfo heatmapCoverage =
+                            (
+                                useHybridAnalysisHistory
+                                ? CalculateHybridCoverage(
+                                    heatmapAnalysisHistory,
+                                    collectorCompletedSnapshotTimestamps,
+                                    trendWindowSeconds
+                                )
+                                : (
+                                    useCollectorAnalysisHistory
+                                    ? CalculateCollectorSnapshotCoverage(
+                                        heatmapAnalysisHistory,
+                                        trendWindowSeconds
+                                    )
+                                    : CalculateGapAwareCoverage(
+                                        heatmapAnalysisHistory,
+                                        trendWindowSeconds
+                                    )
+                                    )
+                                );
+
+                        size_t heatmapMinimumAnalysisSamples =
+                            15;
+
+                        if (useCollectorAnalysisHistory)
+                        {
+                            constexpr uint64_t
+                                HEATMAP_COLLECTOR_SCAN_INTERVAL_SECONDS =
+                                5ULL * 60ULL;
+
+                            const size_t expectedWindowSamples =
+                                static_cast<size_t>(
+                                    trendWindowSeconds /
+                                    HEATMAP_COLLECTOR_SCAN_INTERVAL_SECONDS
+                                    ) +
+                                1;
+
+                            const size_t seventyFivePercentSamples =
+                                (
+                                    expectedWindowSamples *
+                                    3 +
+                                    3
+                                    ) /
+                                4;
+
+                            heatmapMinimumAnalysisSamples =
+                                std::min<size_t>(
+                                    15,
+                                    std::max<size_t>(
+                                        3,
+                                        seventyFivePercentSamples
+                                    )
+                                );
+                        }
+
+                        const bool heatmapVolatilityReady =
+                            heatmapCoverage.sampleCount >=
+                            heatmapMinimumAnalysisSamples &&
+                            heatmapCoverage.coverage >=
+                            0.75;
+
+                        const VolatilityInfo heatmapVolatility =
+                            CalculateVolatility(
+                                heatmapAnalysisHistory,
+                                trendWindowSeconds,
+                                heatmapVolatilityReady
+                            );
+
+                        const MarketProwlSignalRow*
+                            heatmapProwlSignal =
+                            FindMarketProwlSignalForItem(
+                                item.itemID
+                            );
+
+                        //
+                        // Keep the same economically meaningful cheap-item guard
+                        // used by the Prowl presentation path. Old tiny-copper
+                        // events should not light an otherwise calm heatmap tile.
+                        //
+                        if (heatmapProwlSignal != nullptr)
+                        {
+                            const double heatmapReferencePrice =
+                                std::max(
+                                    heatmapProwlSignal->
+                                    baselineSellUnitPrice,
+                                    heatmapProwlSignal->
+                                    baselineBuyUnitPrice
+                                );
+
+                            double heatmapMinimumProwlMove =
+                                heatmapReferencePrice *
+                                0.01;
+
+                            heatmapMinimumProwlMove =
+                                std::max(
+                                    5.0,
+                                    heatmapMinimumProwlMove
+                                );
+
+                            heatmapMinimumProwlMove =
+                                std::min(
+                                    100.0,
+                                    heatmapMinimumProwlMove
+                                );
+
+                            const double heatmapSellProwlMove =
+                                heatmapProwlSignal->
+                                currentSellUnitPrice > 0 &&
+                                heatmapProwlSignal->
+                                baselineSellUnitPrice > 0.0
+                                ? std::fabs(
+                                    static_cast<double>(
+                                        heatmapProwlSignal->
+                                        currentSellUnitPrice
+                                        ) -
+                                    heatmapProwlSignal->
+                                    baselineSellUnitPrice
+                                )
+                                : 0.0;
+
+                            const double heatmapBuyProwlMove =
+                                heatmapProwlSignal->
+                                currentBuyUnitPrice > 0 &&
+                                heatmapProwlSignal->
+                                baselineBuyUnitPrice > 0.0
+                                ? std::fabs(
+                                    static_cast<double>(
+                                        heatmapProwlSignal->
+                                        currentBuyUnitPrice
+                                        ) -
+                                    heatmapProwlSignal->
+                                    baselineBuyUnitPrice
+                                )
+                                : 0.0;
+
+                            if (
+                                std::max(
+                                    heatmapSellProwlMove,
+                                    heatmapBuyProwlMove
+                                ) <
+                                heatmapMinimumProwlMove
+                                )
+                            {
+                                heatmapProwlSignal =
+                                    nullptr;
+                            }
+                        }
+
+                        const bool heatmapFollowed =
+                            IsMarketProwlItemFollowed(
+                                item.itemID
+                            );
+
+                        ImVec4 heatmapStateColor =
+                            themePrimary;
+
+                        const char* heatmapProwlLabel =
+                            nullptr;
+
+                        if (heatmapProwlSignal != nullptr)
+                        {
+                            if (
+                                heatmapProwlSignal->signalType ==
+                                "Breakout"
+                                )
+                            {
+                                heatmapStateColor =
+                                    trendDownColor;
+
+                                heatmapProwlLabel =
+                                    "PRICIER";
+                            }
+                            else if (
+                                heatmapProwlSignal->signalType ==
+                                "Breakdown"
+                                )
+                            {
+                                heatmapStateColor =
+                                    goodColor;
+
+                                heatmapProwlLabel =
+                                    "CHEAPER";
+                            }
+                            else if (
+                                heatmapProwlSignal->signalType ==
+                                "SupplySqueeze"
+                                )
+                            {
+                                heatmapStateColor =
+                                    attentionColor;
+
+                                heatmapProwlLabel =
+                                    "THINNING";
+                            }
+                            else
+                            {
+                                heatmapStateColor =
+                                    primaryViewPalette.accent;
+
+                                heatmapProwlLabel =
+                                    "UNUSUAL";
+                            }
+                        }
+                        else if (heatmapTrend.available)
+                        {
+                            if (
+                                heatmapTrend.percentChange >
+                                0.05
+                                )
+                            {
+                                heatmapStateColor =
+                                    trendDownColor;
+                            }
+                            else if (
+                                heatmapTrend.percentChange <
+                                -0.05
+                                )
+                            {
+                                heatmapStateColor =
+                                    goodColor;
+                            }
+                        }
+
+                        const char* heatmapVolatilityLabel =
+                            "--";
+
+                        if (heatmapVolatility.available)
+                        {
+                            if (
+                                heatmapVolatility.movementRmsPercent <
+                                0.25
+                                )
+                            {
+                                heatmapVolatilityLabel =
+                                    "CALM";
+                            }
+                            else if (
+                                heatmapVolatility.movementRmsPercent <
+                                0.75
+                                )
+                            {
+                                heatmapVolatilityLabel =
+                                    "NORMAL";
+                            }
+                            else if (
+                                heatmapVolatility.movementRmsPercent <
+                                2.0
+                                )
+                            {
+                                heatmapVolatilityLabel =
+                                    "ACTIVE";
+                            }
+                            else
+                            {
+                                heatmapVolatilityLabel =
+                                    "WILD";
+                            }
+                        }
+
+                        const ImVec2 tileMin =
+                            ImGui::GetCursorScreenPos();
+
+                        const float tileWidth =
+                            std::max(
+                                116.0f,
+                                ImGui::GetContentRegionAvail().x
+                            );
+
+                        const float tileHeight =
+                            102.0f;
+
+                        ImGui::InvisibleButton(
+                            "##WatchHeatmapTile",
+                            ImVec2(
+                                tileWidth,
+                                tileHeight
+                            )
+                        );
+
+                        const bool heatmapTileHovered =
+                            ImGui::IsItemHovered();
+
+                        const bool heatmapTileSelected =
+                            selectedDetailsItemID ==
+                            item.itemID;
+
+                        if (ImGui::IsItemClicked())
+                        {
+                            selectedDetailsItemID =
+                                item.itemID;
+
+                            lastDetailsPaneItemID =
+                                0;
+
+                            detailsAnalysisCache.clear();
+                        }
+
+                        if (
+                            heatmapTileHovered &&
+                            ImGui::IsMouseClicked(
+                                ImGuiMouseButton_Right
                             )
                             )
                         {
+                            ImGui::OpenPopup(
+                                "##WatchHeatmapActions"
+                            );
+                        }
+
+                        const ImVec2 tileMax(
+                            tileMin.x +
+                            tileWidth,
+                            tileMin.y +
+                            tileHeight
+                        );
+
+                        ImDrawList* heatmapDrawList =
+                            ImGui::GetWindowDrawList();
+
+                        double heatmapMovementMagnitude =
+                            heatmapTrend.available
+                            ? std::fabs(
+                                heatmapTrend.percentChange
+                            )
+                            : 0.0;
+
+                        heatmapMovementMagnitude =
+                            std::min(
+                                25.0,
+                                heatmapMovementMagnitude
+                            );
+
+                        float stateBlend =
+                            0.055f +
+                            static_cast<float>(
+                                heatmapMovementMagnitude /
+                                25.0
+                                ) *
+                            0.105f;
+
+                        if (heatmapProwlSignal != nullptr)
+                        {
+                            stateBlend =
+                                std::max(
+                                    stateBlend,
+                                    0.20f
+                                );
+                        }
+
+                        if (
+                            heatmapVolatility.available &&
+                            heatmapVolatility.movementRmsPercent >=
+                            2.0
+                            )
+                        {
+                            stateBlend =
+                                std::max(
+                                    stateBlend,
+                                    0.15f
+                                );
+                        }
+
+                        const ImVec4 heatmapFill(
+                            themePanelRaised.x *
+                            (
+                                1.0f -
+                                stateBlend
+                                ) +
+                            heatmapStateColor.x *
+                            stateBlend,
+                            themePanelRaised.y *
+                            (
+                                1.0f -
+                                stateBlend
+                                ) +
+                            heatmapStateColor.y *
+                            stateBlend,
+                            themePanelRaised.z *
+                            (
+                                1.0f -
+                                stateBlend
+                                ) +
+                            heatmapStateColor.z *
+                            stateBlend,
+                            0.985f
+                        );
+
+                        heatmapDrawList->AddRectFilled(
+                            tileMin,
+                            tileMax,
+                            ImGui::GetColorU32(
+                                heatmapFill
+                            ),
+                            5.0f
+                        );
+
+                        const float prowlPulse =
+                            heatmapProwlSignal != nullptr
+                            ? (
+                                0.5f +
+                                0.5f *
+                                std::sin(
+                                    static_cast<float>(
+                                        ImGui::GetTime()
+                                        ) *
+                                    3.2f
+                                )
+                                )
+                            : 0.0f;
+
+                        const float heatmapBorderAlpha =
+                            heatmapTileSelected
+                            ? 0.98f
+                            : (
+                                heatmapProwlSignal != nullptr
+                                ? 0.58f +
+                                prowlPulse *
+                                0.30f
+                                : (
+                                    heatmapTileHovered
+                                    ? 0.70f
+                                    : 0.34f
+                                    )
+                                );
+
+                        heatmapDrawList->AddRect(
+                            tileMin,
+                            tileMax,
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    heatmapStateColor.x,
+                                    heatmapStateColor.y,
+                                    heatmapStateColor.z,
+                                    heatmapBorderAlpha
+                                )
+                            ),
+                            5.0f,
+                            0,
+                            heatmapTileSelected
+                            ? 2.0f
+                            : 1.0f
+                        );
+
+                        //
+                        // A narrow state ribbon makes the grid readable as an
+                        // actual heatmap even when the text is ignored.
+                        //
+                        heatmapDrawList->AddRectFilled(
+                            ImVec2(
+                                tileMin.x,
+                                tileMin.y
+                            ),
+                            ImVec2(
+                                tileMin.x + 3.0f,
+                                tileMax.y
+                            ),
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    heatmapStateColor.x,
+                                    heatmapStateColor.y,
+                                    heatmapStateColor.z,
+                                    heatmapProwlSignal != nullptr
+                                    ? 1.0f
+                                    : 0.66f
+                                )
+                            )
+                        );
+
+                        heatmapDrawList->PushClipRect(
+                            ImVec2(
+                                tileMin.x + 5.0f,
+                                tileMin.y + 4.0f
+                            ),
+                            ImVec2(
+                                tileMax.x - 5.0f,
+                                tileMax.y - 4.0f
+                            ),
+                            true
+                        );
+
+                        const ImU32 heatmapNameColor =
+                            ImGui::GetColorU32(
+                                itemNameColor
+                            );
+
+                        const ImU32 heatmapMutedColor =
+                            ImGui::GetColorU32(
+                                mutedColor
+                            );
+
+                        float heatmapTextX =
+                            tileMin.x +
+                            9.0f;
+
+                        Texture_t* heatmapIcon =
+                            GetTradingPostItemIcon(
+                                item.itemID
+                            );
+
+                        if (
+                            heatmapIcon != nullptr &&
+                            heatmapIcon->Resource != nullptr
+                            )
+                        {
+                            const ImVec2 iconMin(
+                                tileMin.x + 8.0f,
+                                tileMin.y + 8.0f
+                            );
+
+                            const ImVec2 iconMax(
+                                iconMin.x + 28.0f,
+                                iconMin.y + 28.0f
+                            );
+
+                            const float iconInset =
+                                item.itemID == 41569U
+                                ? 3.0f
+                                : 1.0f;
+
+                            heatmapDrawList->AddImage(
+                                (ImTextureID)
+                                heatmapIcon->Resource,
+                                ImVec2(
+                                    iconMin.x + iconInset,
+                                    iconMin.y + iconInset
+                                ),
+                                ImVec2(
+                                    iconMax.x - iconInset,
+                                    iconMax.y - iconInset
+                                )
+                            );
+
+                            heatmapDrawList->AddRect(
+                                iconMin,
+                                iconMax,
+                                ImGui::GetColorU32(
+                                    ImVec4(
+                                        heatmapStateColor.x,
+                                        heatmapStateColor.y,
+                                        heatmapStateColor.z,
+                                        0.42f
+                                    )
+                                ),
+                                3.0f
+                            );
+
+                            heatmapTextX =
+                                iconMax.x +
+                                7.0f;
+                        }
+
+                        heatmapDrawList->AddText(
+                            ImVec2(
+                                heatmapTextX,
+                                tileMin.y + 7.0f
+                            ),
+                            heatmapNameColor,
+                            item.name.c_str()
+                        );
+
+                        std::string heatmapSellText =
+                            "Sell --";
+
+                        if (
+                            heatmapHasPrice &&
+                            heatmapPrice.available &&
+                            heatmapPrice.sellUnitPrice > 0
+                            )
+                        {
+                            heatmapSellText =
+                                "Sell " +
+                                FormatCoinValue(
+                                    heatmapPrice.sellUnitPrice
+                                );
+                        }
+
+                        heatmapDrawList->AddText(
+                            ImVec2(
+                                heatmapTextX,
+                                tileMin.y + 27.0f
+                            ),
+                            ImGui::GetColorU32(
+                                sellColor
+                            ),
+                            heatmapSellText.c_str()
+                        );
+
+                        char heatmapTrendText[48] = {};
+
+                        if (heatmapTrend.available)
+                        {
+                            std::snprintf(
+                                heatmapTrendText,
+                                sizeof(
+                                    heatmapTrendText
+                                    ),
+                                "%+.1f%%",
+                                heatmapTrend.percentChange
+                            );
+                        }
+                        else
+                        {
+                            std::snprintf(
+                                heatmapTrendText,
+                                sizeof(
+                                    heatmapTrendText
+                                    ),
+                                "--"
+                            );
+                        }
+
+                        heatmapDrawList->AddText(
+                            ImVec2(
+                                tileMin.x + 9.0f,
+                                tileMin.y + 49.0f
+                            ),
+                            heatmapTrend.available
+                            ? ImGui::GetColorU32(
+                                heatmapStateColor
+                            )
+                            : heatmapMutedColor,
+                            heatmapTrendText
+                        );
+
+                        //
+                        // Fixed heatmap text rows:
+                        //   49px = trend on the left, volatility on the right
+                        //   66px = Prowl state, when present
+                        //   83px = FOLLOW / FAV flags
+                        //
+                        // Keeping these on separate rows prevents large trend
+                        // percentages and long Prowl labels from drawing over
+                        // one another on narrow two-column heatmap tiles.
+                        //
+                        const std::string heatmapVolatilityText =
+                            "VOL " +
+                            std::string(
+                                heatmapVolatilityLabel
+                            );
+
+                        const float heatmapVolatilityWidth =
+                            ImGui::CalcTextSize(
+                                heatmapVolatilityText.c_str()
+                            ).x;
+
+                        heatmapDrawList->AddText(
+                            ImVec2(
+                                std::max(
+                                    tileMin.x + 58.0f,
+                                    tileMax.x -
+                                    9.0f -
+                                    heatmapVolatilityWidth
+                                ),
+                                tileMin.y + 49.0f
+                            ),
+                            heatmapMutedColor,
+                            heatmapVolatilityText.c_str()
+                        );
+
+                        if (
+                            heatmapProwlSignal != nullptr &&
+                            heatmapProwlLabel != nullptr
+                            )
+                        {
+                            const std::string heatmapProwlText =
+                                "PROWL " +
+                                std::string(
+                                    heatmapProwlLabel
+                                );
+
+                            heatmapDrawList->AddText(
+                                ImVec2(
+                                    tileMin.x + 9.0f,
+                                    tileMin.y + 66.0f
+                                ),
+                                ImGui::GetColorU32(
+                                    heatmapStateColor
+                                ),
+                                heatmapProwlText.c_str()
+                            );
+                        }
+
+                        std::string heatmapFlags;
+
+                        if (heatmapFollowed)
+                        {
+                            heatmapFlags =
+                                "FOLLOW";
+                        }
+
+                        if (item.isFavorite)
+                        {
+                            if (!heatmapFlags.empty())
+                            {
+                                heatmapFlags +=
+                                    "  |  ";
+                            }
+
+                            heatmapFlags +=
+                                "FAV";
+                        }
+
+                        if (!heatmapFlags.empty())
+                        {
+                            heatmapDrawList->AddText(
+                                ImVec2(
+                                    tileMin.x + 9.0f,
+                                    tileMin.y + 83.0f
+                                ),
+                                ImGui::GetColorU32(
+                                    primaryViewPalette.accent
+                                ),
+                                heatmapFlags.c_str()
+                            );
+                        }
+
+                        heatmapDrawList->PopClipRect();
+
+                        if (heatmapTileHovered)
+                        {
                             ImGui::BeginTooltip();
-
-                            ImGui::PushTextWrapPos(
-                                ImGui::GetFontSize() *
-                                31.0f
-                            );
-
-                            ImGui::SetWindowFontScale(
-                                1.08f
-                            );
 
                             ImGui::TextColored(
                                 itemNameColor,
                                 "%s",
-                                tooltipItem.name.c_str()
+                                item.name.c_str()
                             );
-
-                            ImGui::SetWindowFontScale(
-                                1.00f
-                            );
-
-                            std::string metadataLine;
-
-                            if (!tooltipItem.rarity.empty())
-                            {
-                                metadataLine +=
-                                    tooltipItem.rarity;
-                            }
-
-                            const std::string& typeLabel =
-                                !tooltipItem.itemSubtype.empty()
-                                ? tooltipItem.itemSubtype
-                                : tooltipItem.itemType;
-
-                            if (!typeLabel.empty())
-                            {
-                                if (!metadataLine.empty())
-                                {
-                                    metadataLine +=
-                                        "  |  ";
-                                }
-
-                                metadataLine +=
-                                    typeLabel;
-                            }
-
-                            if (tooltipItem.level > 0)
-                            {
-                                if (!metadataLine.empty())
-                                {
-                                    metadataLine +=
-                                        "  |  ";
-                                }
-
-                                metadataLine +=
-                                    "Level " +
-                                    std::to_string(
-                                        tooltipItem.level
-                                    );
-                            }
-
-                            if (!metadataLine.empty())
-                            {
-                                ImGui::TextDisabled(
-                                    "%s",
-                                    metadataLine.c_str()
-                                );
-                            }
 
                             if (
-                                !tooltipItem.tooltipText.empty()
+                                heatmapHasPrice &&
+                                heatmapPrice.available
                                 )
                             {
-                                ImGui::Spacing();
-                                ImGui::Separator();
-                                ImGui::Spacing();
+                                if (
+                                    heatmapPrice.sellUnitPrice > 0
+                                    )
+                                {
+                                    ImGui::Text(
+                                        "Sell: %s",
+                                        FormatCoinValue(
+                                            heatmapPrice.sellUnitPrice
+                                        ).c_str()
+                                    );
+                                }
 
-                                ImGui::TextUnformatted(
-                                    tooltipItem.tooltipText.c_str()
+                                if (
+                                    heatmapPrice.buyUnitPrice > 0
+                                    )
+                                {
+                                    ImGui::Text(
+                                        "Buy: %s",
+                                        FormatCoinValue(
+                                            heatmapPrice.buyUnitPrice
+                                        ).c_str()
+                                    );
+                                }
+                            }
+
+                            if (heatmapTrend.available)
+                            {
+                                ImGui::Text(
+                                    "%s: %+.2f%%",
+                                    trendWindowLabels[
+                                        std::clamp(
+                                            g_Settings
+                                            .tradingPostTrendWindowIndex,
+                                            0,
+                                            10
+                                        )
+                                    ],
+                                    heatmapTrend.percentChange
                                 );
                             }
                             else
                             {
-                                ImGui::Spacing();
+                                ImGui::TextDisabled(
+                                    "%s trend is still developing.",
+                                    trendWindowLabels[
+                                        std::clamp(
+                                            g_Settings
+                                            .tradingPostTrendWindowIndex,
+                                            0,
+                                            10
+                                        )
+                                    ]
+                                );
+                            }
 
-                                if (
-                                    TradingPostItemIndexManager::
-                                    IsBuilding()
-                                    )
-                                {
-                                    ImGui::TextDisabled(
-                                        "Item details are refreshing..."
+                            ImGui::Text(
+                                "Volatility: %s",
+                                heatmapVolatilityLabel
+                            );
+
+                            ImGui::Text(
+                                "Market Prowl: %s",
+                                heatmapProwlSignal != nullptr
+                                ? GetMarketProwlShortLabel(
+                                    heatmapProwlSignal->
+                                    signalType
+                                )
+                                : "CALM"
+                            );
+
+                            if (heatmapFollowed)
+                            {
+                                const std::string followStatusText =
+                                    GetMarketProwlFollowStatusText(
+                                        item.itemID
                                     );
 
-                                    ImGui::TextDisabled(
-                                        "Hover again as the item index updates."
-                                    );
-                                }
-                                else
+                                if (!followStatusText.empty())
                                 {
-                                    ImGui::TextDisabled(
-                                        "No additional effect details available."
+                                    ImGui::TextColored(
+                                        primaryViewPalette.accent,
+                                        "%s",
+                                        followStatusText.c_str()
                                     );
                                 }
                             }
 
-                            ImGui::PopTextWrapPos();
+                            ImGui::Separator();
+
+                            ImGui::TextDisabled(
+                                "Left-click: Item Analysis"
+                            );
+
+                            ImGui::TextDisabled(
+                                "Right-click: item actions"
+                            );
+
                             ImGui::EndTooltip();
                         }
-                    }
-                }
 
-                // Nothing drawn for this card is allowed to bleed across the
-                // watch-list boundary into the Item Analysis pane.
-                cardDrawList->PushClipRect(
-                    ImVec2(
-                        cardStart.x + 5.0f,
-                        cardStart.y + 4.0f
-                    ),
-                    ImVec2(
-                        cardEnd.x - 6.0f,
-                        cardEnd.y - 4.0f
-                    ),
-                    true
-                );
+                        //
+                        // Heatmap keeps the same practical actions as List view so
+                        // switching display modes does not cost functionality.
+                        //
+                        ImGui::PushStyleVar(
+                            ImGuiStyleVar_PopupRounding,
+                            3.0f
+                        );
 
-                // The icon has its own row, so the item name gets the full card
-                // width again. Clip only at the card boundary, not around the icon.
-                cardDrawList->PushClipRect(
-                    ImVec2(
-                        compactNameTextX,
-                        cardStart.y + 37.0f
-                    ),
-                    ImVec2(
-                        cardEnd.x - 46.0f,
-                        cardStart.y + 57.0f
-                    ),
-                    true
-                );
+                        ImGui::PushStyleColor(
+                            ImGuiCol_PopupBg,
+                            primaryViewPalette.popupBg
+                        );
 
-                ImGui::SetCursorScreenPos(
-                    ImVec2(
-                        compactNameTextX,
-                        cardStart.y +
-                        39.0f
-                    )
-                );
+                        ImGui::PushStyleColor(
+                            ImGuiCol_Header,
+                            primaryViewPalette.selectedBg
+                        );
 
-                ImGui::TextColored(
-                    compactSelected
-                    ? themePrimary
-                    : itemNameColor,
-                    "%s",
-                    item.name.c_str()
-                );
-
-                cardDrawList->PopClipRect();
-
-                ImGui::SetCursorScreenPos(
-                    ImVec2(
-                        compactBodyTextX,
-                        cardStart.y +
-                        61.0f
-                    )
-                );
-
-                if (
-                    compactHasPrice &&
-                    compactPrice.available
-                    )
-                {
-                    DrawCoinValueColored(
-                        compactPrice.sellUnitPrice,
-                        "SELL",
-                        themeSellPrice
-                    );
-
-                    //
-                    // Stack BUY directly under SELL. This is easier to scan in the
-                    // narrow Watchlist and avoids splitting the user's eye across
-                    // both halves of the card.
-                    //
-                    ImGui::SetCursorScreenPos(
-                        ImVec2(
-                            compactBodyTextX,
-                            cardStart.y +
-                            77.0f
-                        )
-                    );
-
-                    DrawCoinValueColored(
-                        compactPrice.buyUnitPrice,
-                        "BUY",
-                        themeBuyPrice
-                    );
-                }
-                else
-                {
-                    ImGui::TextDisabled(
-                        "Price loading..."
-                    );
-                }
-
-                ImGui::SetCursorScreenPos(
-                    ImVec2(
-                        compactBodyTextX,
-                        cardStart.y +
-                        96.0f
-                    )
-                );
-
-                if (
-                    compactSellTargetReached ||
-                    compactBuyTargetReached
-                    )
-                {
-                    ImGui::TextColored(
-                        themePrimary,
-                        "%s",
-                        compactSellTargetReached &&
-                        compactBuyTargetReached
-                        ? "2 TARGETS HIT"
-                        : (
-                            compactSellTargetReached
-                            ? "SELL TARGET HIT"
-                            : "BUY TARGET HIT"
+                        ImGui::PushStyleColor(
+                            ImGuiCol_HeaderHovered,
+                            ImVec4(
+                                primaryViewPalette.accent.x,
+                                primaryViewPalette.accent.y,
+                                primaryViewPalette.accent.z,
+                                0.34f
                             )
-                    );
-                }
-                else if (
-                    item.targetSellCopper > 0 &&
-                    item.targetBuyCopper > 0
-                    )
-                {
-                    ImGui::TextColored(
-                        ImVec4(
-                            themeTelemetry.x,
-                            themeTelemetry.y,
-                            themeTelemetry.z,
-                            0.62f
-                        ),
-                        "2 TARGETS // ARMED"
-                    );
-                }
-                else if (item.targetSellCopper > 0)
-                {
-                    DrawCoinValueColored(
-                        item.targetSellCopper,
-                        "SELL TARGET",
-                        themeSellPrice
-                    );
-                }
-                else if (item.targetBuyCopper > 0)
-                {
-                    DrawCoinValueColored(
-                        item.targetBuyCopper,
-                        "BUY TARGET",
-                        themeBuyPrice
-                    );
-                }
-                else
-                {
-                    ImGui::TextDisabled(
-                        "NO PRICE ALERT"
-                    );
-                }
-
-                cardDrawList->PopClipRect();
-
-
-                uint64_t targetCopper =
-                    item.targetSellCopper;
-
-                int targetGold =
-                    static_cast<int>(
-                        targetCopper /
-                        10000ULL
                         );
 
-                int targetSilver =
-                    static_cast<int>(
-                        (
-                            targetCopper %
-                            10000ULL
-                            ) /
-                        100ULL
+                        ImGui::PushStyleColor(
+                            ImGuiCol_HeaderActive,
+                            ImVec4(
+                                primaryViewPalette.accent.x,
+                                primaryViewPalette.accent.y,
+                                primaryViewPalette.accent.z,
+                                0.46f
+                            )
                         );
 
-                int targetCopperOnly =
-                    static_cast<int>(
-                        targetCopper %
-                        100ULL
-                        );
-
-                bool targetChanged =
-                    false;
-
-                uint64_t buyTargetCopper =
-                    item.targetBuyCopper;
-
-                int buyTargetGold =
-                    static_cast<int>(
-                        buyTargetCopper /
-                        10000ULL
-                        );
-
-                int buyTargetSilver =
-                    static_cast<int>(
-                        (
-                            buyTargetCopper %
-                            10000ULL
-                            ) /
-                        100ULL
-                        );
-
-                int buyTargetCopperOnly =
-                    static_cast<int>(
-                        buyTargetCopper %
-                        100ULL
-                        );
-
-                bool buyTargetChanged =
-                    false;
-
-                // Per-item actions live directly on the visible watch card.
-                // The button is intentionally small and always present: item
-                // management belongs with the item, while the right pane remains
-                // analysis-only.
-                const ControlThemePalette compactActionPalette =
-                    GetControlThemePalette(
-                        g_Settings.tradingPostThemeIndex
-                    );
-
-                ImGui::SetCursorScreenPos(
-                    ImVec2(
-                        cardEnd.x - 38.0f,
-                        cardStart.y + 7.0f
-                    )
-                );
-
-                ImGui::PushStyleVar(
-                    ImGuiStyleVar_FrameRounding,
-                    2.0f
-                );
-                ImGui::PushStyleVar(
-                    ImGuiStyleVar_FrameBorderSize,
-                    1.0f
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_Button,
-                    compactActionPalette.frameBg
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_ButtonHovered,
-                    compactActionPalette.frameHovered
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_ButtonActive,
-                    compactActionPalette.frameActive
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_Border,
-                    ImVec4(
-                        compactActionPalette.accent.x,
-                        compactActionPalette.accent.y,
-                        compactActionPalette.accent.z,
-                        compactSelected
-                        ? 0.95f
-                        : 0.58f
-                    )
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_Text,
-                    compactActionPalette.accent
-                );
-
-                if (
-                    ImGui::Button(
-                        "...##CompactCardActions",
-                        ImVec2(
-                            28.0f,
-                            20.0f
-                        )
-                    )
-                    )
-                {
-                    ImGui::OpenPopup(
-                        "##CompactCardActionsPopup"
-                    );
-                }
-
-                if (ImGui::IsItemHovered())
-                {
-                    ImGui::SetTooltip(
-                        "Item actions"
-                    );
-                }
-
-                ImGui::PopStyleColor(5);
-                ImGui::PopStyleVar(2);
-
-                ImGui::PushStyleVar(
-                    ImGuiStyleVar_PopupRounding,
-                    3.0f
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_PopupBg,
-                    compactActionPalette.popupBg
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_Header,
-                    compactActionPalette.selectedBg
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_HeaderHovered,
-                    ImVec4(
-                        compactActionPalette.accent.x,
-                        compactActionPalette.accent.y,
-                        compactActionPalette.accent.z,
-                        0.34f
-                    )
-                );
-                ImGui::PushStyleColor(
-                    ImGuiCol_HeaderActive,
-                    ImVec4(
-                        compactActionPalette.accent.x,
-                        compactActionPalette.accent.y,
-                        compactActionPalette.accent.z,
-                        0.46f
-                    )
-                );
-
-                if (
-                    ImGui::BeginPopup(
-                        "##CompactCardActionsPopup"
-                    )
-                    )
-                {
-                    ImGui::TextColored(
-                        compactActionPalette.text,
-                        "%s",
-                        item.name.c_str()
-                    );
-                    ImGui::Separator();
-
-                    if (
-                        ImGui::Selectable(
-                            "Edit Targets"
-                        )
-                        )
-                    {
-                        openCompactTargetsPopup =
-                            true;
-                    }
-
-                    if (
-                        ImGui::Selectable(
-                            "Refresh Price"
-                        )
-                        )
-                    {
-                        TradingPostWatchManager::
-                            RefreshItem(
-                                item.itemID
-                            );
-                    }
-
-                    if (
-                        ImGui::BeginMenu(
-                            "Move to Group"
-                        )
-                        )
-                    {
-                        const int currentWatchGroupIndex =
-                            GetWatchGroupIndex(
-                                item.itemID
-                            );
-
-                        for (
-                            int groupIndex = 0;
-                            groupIndex < WATCH_GROUP_COUNT;
-                            ++groupIndex
+                        if (
+                            ImGui::BeginPopup(
+                                "##WatchHeatmapActions"
+                            )
                             )
                         {
-                            const bool groupSelected =
-                                currentWatchGroupIndex ==
-                                groupIndex;
+                            ImGui::TextColored(
+                                primaryViewPalette.text,
+                                "%s",
+                                item.name.c_str()
+                            );
+
+                            ImGui::TextDisabled(
+                                "Item %u",
+                                item.itemID
+                            );
+
+                            ImGui::Separator();
 
                             if (
-                                ImGui::MenuItem(
-                                    watchGroupLabels[groupIndex],
-                                    nullptr,
-                                    groupSelected
+                                ImGui::Selectable(
+                                    "Open Item Analysis"
                                 )
                                 )
                             {
-                                if (groupIndex == 0)
+                                selectedDetailsItemID =
+                                    item.itemID;
+
+                                lastDetailsPaneItemID =
+                                    0;
+
+                                detailsAnalysisCache.clear();
+                            }
+
+                            if (
+                                ImGui::MenuItem(
+                                    "Favorite",
+                                    nullptr,
+                                    item.isFavorite
+                                )
+                                )
+                            {
+                                TradingPostWatchManager::
+                                    SetFavorite(
+                                        item.itemID,
+                                        !item.isFavorite
+                                    );
+                            }
+
+                            if (heatmapFollowed)
+                            {
+                                if (
+                                    ImGui::BeginMenu(
+                                        "Following..."
+                                    )
+                                    )
                                 {
-                                    watchGroupAssignments.erase(
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Follow 24 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            item.itemID,
+                                            24ULL *
+                                            60ULL *
+                                            60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Follow 48 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            item.itemID,
+                                            48ULL *
+                                            60ULL *
+                                            60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Follow until removed"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            item.itemID,
+                                            0
+                                        );
+                                    }
+
+                                    ImGui::Separator();
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Stop following"
+                                        )
+                                        )
+                                    {
+                                        StopMarketProwlFollow(
+                                            item.itemID
+                                        );
+                                    }
+
+                                    ImGui::EndMenu();
+                                }
+                            }
+                            else
+                            {
+                                if (
+                                    ImGui::BeginMenu(
+                                        "Follow..."
+                                    )
+                                    )
+                                {
+                                    if (
+                                        ImGui::MenuItem(
+                                            "24 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            item.itemID,
+                                            24ULL *
+                                            60ULL *
+                                            60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "48 hours"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            item.itemID,
+                                            48ULL *
+                                            60ULL *
+                                            60ULL
+                                        );
+                                    }
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            "Until removed"
+                                        )
+                                        )
+                                    {
+                                        SetMarketProwlFollow(
+                                            item.itemID,
+                                            0
+                                        );
+                                    }
+
+                                    ImGui::EndMenu();
+                                }
+                            }
+
+                            if (
+                                ImGui::BeginMenu(
+                                    "Move to Group"
+                                )
+                                )
+                            {
+                                const int currentWatchGroupIndex =
+                                    GetWatchGroupIndex(
                                         item.itemID
                                     );
-                                }
-                                else
+
+                                for (
+                                    int groupIndex = 0;
+                                    groupIndex <
+                                    WATCH_GROUP_COUNT;
+                                    ++groupIndex
+                                    )
                                 {
-                                    watchGroupAssignments[
-                                        item.itemID
-                                    ] = groupIndex;
+                                    const bool groupSelected =
+                                        currentWatchGroupIndex ==
+                                        groupIndex;
+
+                                    if (
+                                        ImGui::MenuItem(
+                                            watchGroupLabels[
+                                                groupIndex
+                                            ],
+                                            nullptr,
+                                            groupSelected
+                                        )
+                                        )
+                                    {
+                                        if (groupIndex == 0)
+                                        {
+                                            watchGroupAssignments.erase(
+                                                item.itemID
+                                            );
+                                        }
+                                        else
+                                        {
+                                            watchGroupAssignments[
+                                                item.itemID
+                                            ] =
+                                                groupIndex;
+                                        }
+
+                                        Settings::Save(
+                                            moduleHandle
+                                        );
+                                    }
                                 }
 
-                                Settings::Save(
-                                    moduleHandle
-                                );
+                                ImGui::EndMenu();
                             }
+
+                            if (
+                                ImGui::Selectable(
+                                    "Refresh Price"
+                                )
+                                )
+                            {
+                                TradingPostWatchManager::
+                                    RefreshItem(
+                                        item.itemID
+                                    );
+                            }
+
+                            if (!item.isDefault)
+                            {
+                                ImGui::Separator();
+
+                                ImGui::PushStyleColor(
+                                    ImGuiCol_Text,
+                                    trendDownColor
+                                );
+
+                                if (
+                                    ImGui::Selectable(
+                                        "Remove from Watch List"
+                                    )
+                                    )
+                                {
+                                    TradingPostWatchManager::
+                                        RemoveItem(
+                                            item.itemID
+                                        );
+
+                                    if (
+                                        watchGroupAssignments.erase(
+                                            item.itemID
+                                        ) >
+                                        0
+                                        )
+                                    {
+                                        Settings::Save(
+                                            moduleHandle
+                                        );
+                                    }
+
+                                    if (
+                                        selectedDetailsItemID ==
+                                        item.itemID
+                                        )
+                                    {
+                                        selectedDetailsItemID =
+                                            0;
+
+                                        lastDetailsPaneItemID =
+                                            0;
+
+                                        detailsAnalysisCache.clear();
+                                    }
+                                }
+
+                                ImGui::PopStyleColor();
+                            }
+
+                            ImGui::EndPopup();
                         }
 
-                        ImGui::EndMenu();
+                        ImGui::PopStyleColor(
+                            4
+                        );
+
+                        ImGui::PopStyleVar();
+
+                        ImGui::PopID();
                     }
 
-                    if (!item.isDefault)
+                    if (visibleHeatmapIndex == 0)
                     {
-                        ImGui::Separator();
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(
+                            0
+                        );
+
+                        ImGui::TextDisabled(
+                            showFavoritesOnly
+                            ? "No favorite items to show."
+                            : "No watched items to show."
+                        );
+                    }
+
+                    ImGui::EndTable();
+                }
+            }
+            else
+            {
+                int visibleWatchGroupCounts[WATCH_GROUP_COUNT] = {};
+
+                for (
+                    const TradingPostWatchItem& countItem :
+                    watchedItems
+                    )
+                {
+                    if (
+                        showFavoritesOnly &&
+                        !countItem.isFavorite
+                        )
+                    {
+                        continue;
+                    }
+
+                    const int countGroupIndex =
+                        std::clamp(
+                            GetWatchGroupIndex(
+                                countItem.itemID
+                            ),
+                            0,
+                            WATCH_GROUP_COUNT - 1
+                        );
+
+                    ++visibleWatchGroupCounts[
+                        countGroupIndex
+                    ];
+                }
+
+                int renderedWatchGroupIndex = -1;
+
+                for (
+                    const TradingPostWatchItem& item :
+                    watchedItems
+                    )
+                {
+                    if (
+                        showFavoritesOnly &&
+                        !item.isFavorite
+                        )
+                    {
+                        continue;
+                    }
+
+                    const int itemWatchGroupIndex =
+                        std::clamp(
+                            GetWatchGroupIndex(
+                                item.itemID
+                            ),
+                            0,
+                            WATCH_GROUP_COUNT - 1
+                        );
+
+                    if (
+                        itemWatchGroupIndex !=
+                        renderedWatchGroupIndex
+                        )
+                    {
+                        renderedWatchGroupIndex =
+                            itemWatchGroupIndex;
+
+                        char watchGroupHeader[96] = {};
+
+                        std::snprintf(
+                            watchGroupHeader,
+                            sizeof(watchGroupHeader),
+                            "%s %s  (%d)##WatchGroupHeader%d",
+                            watchGroupCollapsed[itemWatchGroupIndex]
+                            ? "+"
+                            : "-",
+                            watchGroupLabels[itemWatchGroupIndex],
+                            visibleWatchGroupCounts[itemWatchGroupIndex],
+                            itemWatchGroupIndex
+                        );
+
+                        ImGui::PushStyleColor(
+                            ImGuiCol_Header,
+                            ImVec4(
+                                themePrimary.x,
+                                themePrimary.y,
+                                themePrimary.z,
+                                0.10f
+                            )
+                        );
+
+                        ImGui::PushStyleColor(
+                            ImGuiCol_HeaderHovered,
+                            ImVec4(
+                                themePrimary.x,
+                                themePrimary.y,
+                                themePrimary.z,
+                                0.20f
+                            )
+                        );
+
+                        ImGui::PushStyleColor(
+                            ImGuiCol_HeaderActive,
+                            ImVec4(
+                                themePrimary.x,
+                                themePrimary.y,
+                                themePrimary.z,
+                                0.28f
+                            )
+                        );
+
                         ImGui::PushStyleColor(
                             ImGuiCol_Text,
-                            trendDownColor
+                            ImVec4(
+                                themePrimary.x +
+                                (1.0f - themePrimary.x) * 0.30f,
+                                themePrimary.y +
+                                (1.0f - themePrimary.y) * 0.30f,
+                                themePrimary.z +
+                                (1.0f - themePrimary.z) * 0.30f,
+                                1.00f
+                            )
                         );
 
                         if (
                             ImGui::Selectable(
-                                "Remove from Watch List"
+                                watchGroupHeader,
+                                false,
+                                0,
+                                ImVec2(
+                                    ImGui::GetContentRegionAvail().x,
+                                    0.0f
+                                )
                             )
                             )
                         {
-                            TradingPostWatchManager::
-                                RemoveItem(
-                                    item.itemID
-                                );
-
-                            //
-                            // Do not leave stale group assignments behind after an
-                            // item is removed from the watch list.
-                            //
-                            if (
-                                watchGroupAssignments.erase(
-                                    item.itemID
-                                ) >
-                                0
-                                )
-                            {
-                                Settings::Save(
-                                    moduleHandle
-                                );
-                            }
-
-                            if (
-                                selectedDetailsItemID ==
-                                item.itemID
-                                )
-                            {
-                                selectedDetailsItemID = 0;
-                                lastDetailsPaneItemID = 0;
-                                detailsAnalysisCache.clear();
-                            }
+                            watchGroupCollapsed[
+                                itemWatchGroupIndex
+                            ] =
+                                !watchGroupCollapsed[
+                                    itemWatchGroupIndex
+                                ];
                         }
 
-                        ImGui::PopStyleColor();
+                        ImGui::PopStyleColor(4);
+
+                        const ImVec2 groupRuleStart =
+                            ImGui::GetCursorScreenPos();
+
+                        ImGui::GetWindowDrawList()->AddLine(
+                            ImVec2(
+                                groupRuleStart.x,
+                                groupRuleStart.y - 1.0f
+                            ),
+                            ImVec2(
+                                groupRuleStart.x +
+                                ImGui::GetContentRegionAvail().x -
+                                4.0f,
+                                groupRuleStart.y - 1.0f
+                            ),
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    themePrimary.x,
+                                    themePrimary.y,
+                                    themePrimary.z,
+                                    0.22f
+                                )
+                            ),
+                            1.0f
+                        );
+
+                        ImGui::Dummy(
+                            ImVec2(
+                                0.0f,
+                                3.0f
+                            )
+                        );
                     }
 
-                    ImGui::EndPopup();
-                }
+                    if (
+                        watchGroupCollapsed[
+                            itemWatchGroupIndex
+                        ]
+                        )
+                    {
+                        continue;
+                    }
 
-                ImGui::PopStyleColor(4);
-                ImGui::PopStyleVar();
-
-                if (openCompactTargetsPopup)
-                {
-                    ImGui::OpenPopup(
-                        "##CompactCardTargetsPopup"
-                    );
-                }
-
-                //
-                // Targets stay compact during normal viewing. The numeric g/s/c
-                // controls only appear while this item is being edited.
-                //
-                ImGui::SetNextWindowSize(
-                    ImVec2(
-                        430.0f,
-                        0.0f
-                    ),
-                    ImGuiCond_Appearing
-                );
-
-                if (
-                    ImGui::BeginPopup(
-                        "##CompactCardTargetsPopup"
-                    )
-                    )
-                {
-                    ImGui::PushStyleVar(
-                        ImGuiStyleVar_FrameRounding,
-                        4.0f
+                    ImGui::PushID(
+                        static_cast<int>(
+                            item.itemID
+                            )
                     );
 
-                    ImGui::SetWindowFontScale(
-                        1.10f
+                    TradingPostPrice compactPrice;
+
+                    const bool compactHasPrice =
+                        TradingPostPriceManager::
+                        TryGetPrice(
+                            item.itemID,
+                            compactPrice
+                        );
+
+                    if (!compactHasPrice)
+                    {
+                        TradingPostPriceManager::
+                            RequestPrice(
+                                item.itemID
+                            );
+                    }
+
+                    const bool compactSelected =
+                        selectedDetailsItemID ==
+                        item.itemID;
+
+                    const bool compactSellTargetReached =
+                        item.targetSellCopper > 0 &&
+                        compactHasPrice &&
+                        compactPrice.available &&
+                        compactPrice.sellUnitPrice > 0 &&
+                        static_cast<uint64_t>(
+                            compactPrice.sellUnitPrice
+                            ) <=
+                        item.targetSellCopper;
+
+                    const bool compactBuyTargetReached =
+                        item.targetBuyCopper > 0 &&
+                        compactHasPrice &&
+                        compactPrice.available &&
+                        compactPrice.buyUnitPrice > 0 &&
+                        static_cast<uint64_t>(
+                            compactPrice.buyUnitPrice
+                            ) >=
+                        item.targetBuyCopper;
+
+                    bool openCompactTargetsPopup =
+                        false;
+
+                    const ImVec2 cardStart =
+                        ImGui::GetCursorScreenPos();
+
+                    const float cardWidth =
+                        ImGui::GetContentRegionAvail().x -
+                        4.0f;
+
+                    const float cardHeight =
+                        116.0f;
+
+                    ImGui::InvisibleButton(
+                        "##CompactWatchCard",
+                        ImVec2(
+                            std::max(
+                                1.0f,
+                                cardWidth - 42.0f
+                            ),
+                            cardHeight
+                        )
+                    );
+
+                    const bool cardHovered =
+                        ImGui::IsItemHovered();
+
+                    if (ImGui::IsItemClicked())
+                    {
+                        if (
+                            selectedDetailsItemID !=
+                            item.itemID
+                            )
+                        {
+                            selectedDetailsItemID =
+                                item.itemID;
+
+                            RequestHistoricalGapFillIfNeeded(
+                                item.itemID,
+                                trendWindowSeconds
+                            );
+
+                            lastDetailsPaneItemID =
+                                0;
+
+                            detailsAnalysisCache.clear();
+                        }
+                    }
+
+                    ImDrawList* cardDrawList =
+                        ImGui::GetWindowDrawList();
+
+                    const ImVec2 cardEnd(
+                        cardStart.x +
+                        cardWidth,
+                        cardStart.y +
+                        cardHeight
+                    );
+
+                    ImVec4 cardColor =
+                        themePanelRaised;
+
+                    ImVec4 cardBorder(
+                        0.10f,
+                        0.18f,
+                        0.28f,
+                        0.82f
+                    );
+
+                    if (cardHovered)
+                    {
+                        cardColor =
+                            ImVec4(
+                                0.058f,
+                                0.070f,
+                                0.088f,
+                                0.98f
+                            );
+
+                        cardBorder =
+                            ImVec4(
+                                themeTelemetry.x,
+                                themeTelemetry.y,
+                                themeTelemetry.z,
+                                0.52f
+                            );
+                    }
+
+                    if (compactSelected)
+                    {
+                        cardColor =
+                            ImVec4(
+                                0.060f,
+                                0.082f,
+                                0.108f,
+                                0.98f
+                            );
+
+                        cardBorder =
+                            ImVec4(
+                                themePrimary.x,
+                                themePrimary.y,
+                                themePrimary.z,
+                                0.96f
+                            );
+                    }
+
+                    DrawChamferedPanel(
+                        cardDrawList,
+                        cardStart,
+                        cardEnd,
+                        ImGui::GetColorU32(
+                            cardColor
+                        ),
+                        ImGui::GetColorU32(
+                            cardBorder
+                        ),
+                        9.0f,
+                        compactSelected
+                        ? 1.8f
+                        : 1.0f
+                    );
+
+                    cardDrawList->AddRectFilled(
+                        ImVec2(
+                            cardStart.x,
+                            cardStart.y + 16.0f
+                        ),
+                        ImVec2(
+                            cardStart.x + 3.0f,
+                            cardEnd.y - 10.0f
+                        ),
+                        ImGui::GetColorU32(
+                            compactSelected
+                            ? themePrimary
+                            : ImVec4(
+                                themeTelemetry.x,
+                                themeTelemetry.y,
+                                themeTelemetry.z,
+                                cardHovered
+                                ? 0.62f
+                                : 0.22f
+                            )
+                        )
+                    );
+
+                    // Compact-card icon layout:
+                    // Give the item icon its own row above the name. This preserves
+                    // the full horizontal width of the item name instead of forcing
+                    // the icon and text to compete for the same narrow line.
+                    const float compactNameTextX =
+                        cardStart.x + 12.0f;
+
+                    const float compactBodyTextX =
+                        cardStart.x + 12.0f;
+
+                    Texture_t* compactItemIcon =
+                        GetTradingPostItemIcon(
+                            item.itemID
+                        );
+
+                    if (
+                        compactItemIcon != nullptr &&
+                        compactItemIcon->Resource != nullptr
+                        )
+                    {
+                        const float compactIconSize =
+                            28.0f;
+
+                        const ImVec2 compactIconMin(
+                            cardStart.x + 12.0f,
+                            cardStart.y + 7.0f
+                        );
+
+                        const ImVec2 compactIconMax(
+                            compactIconMin.x + compactIconSize,
+                            compactIconMin.y + compactIconSize
+                        );
+
+                        cardDrawList->AddRect(
+                            ImVec2(
+                                compactIconMin.x - 1.0f,
+                                compactIconMin.y - 1.0f
+                            ),
+                            ImVec2(
+                                compactIconMax.x + 1.0f,
+                                compactIconMax.y + 1.0f
+                            ),
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    themeTelemetry.x,
+                                    themeTelemetry.y,
+                                    themeTelemetry.z,
+                                    compactSelected
+                                    ? 0.58f
+                                    : 0.24f
+                                )
+                            ),
+                            0.0f,
+                            0,
+                            1.0f
+                        );
+
+                        //
+                        // Give the texture a small internal inset. A few GW2 icons use
+                        // artwork right up to the texture edge; rendering them flush to
+                        // the frame can make one side look clipped even when the texture
+                        // itself loaded correctly.
+                        //
+                        const float compactIconInset =
+                            item.itemID == 41569U
+                            ? 4.0f
+                            : 1.5f;
+
+                        const ImVec2 compactImageMin(
+                            compactIconMin.x +
+                            compactIconInset,
+                            compactIconMin.y +
+                            compactIconInset
+                        );
+
+                        const ImVec2 compactImageMax(
+                            compactIconMax.x -
+                            compactIconInset,
+                            compactIconMax.y -
+                            compactIconInset
+                        );
+
+                        cardDrawList->AddImage(
+                            (ImTextureID)
+                            compactItemIcon->Resource,
+                            compactImageMin,
+                            compactImageMax
+                        );
+
+                        if (
+                            ImGui::IsMouseHoveringRect(
+                                compactIconMin,
+                                compactIconMax,
+                                true
+                            )
+                            )
+                        {
+                            TradingPostIndexedItem tooltipItem;
+
+                            if (
+                                TradingPostItemIndexManager::
+                                TryGetItem(
+                                    item.itemID,
+                                    tooltipItem
+                                )
+                                )
+                            {
+                                ImGui::BeginTooltip();
+
+                                ImGui::PushTextWrapPos(
+                                    ImGui::GetFontSize() *
+                                    31.0f
+                                );
+
+                                ImGui::SetWindowFontScale(
+                                    1.08f
+                                );
+
+                                ImGui::TextColored(
+                                    itemNameColor,
+                                    "%s",
+                                    tooltipItem.name.c_str()
+                                );
+
+                                ImGui::SetWindowFontScale(
+                                    1.00f
+                                );
+
+                                std::string metadataLine;
+
+                                if (!tooltipItem.rarity.empty())
+                                {
+                                    metadataLine +=
+                                        tooltipItem.rarity;
+                                }
+
+                                const std::string& typeLabel =
+                                    !tooltipItem.itemSubtype.empty()
+                                    ? tooltipItem.itemSubtype
+                                    : tooltipItem.itemType;
+
+                                if (!typeLabel.empty())
+                                {
+                                    if (!metadataLine.empty())
+                                    {
+                                        metadataLine +=
+                                            "  |  ";
+                                    }
+
+                                    metadataLine +=
+                                        typeLabel;
+                                }
+
+                                if (tooltipItem.level > 0)
+                                {
+                                    if (!metadataLine.empty())
+                                    {
+                                        metadataLine +=
+                                            "  |  ";
+                                    }
+
+                                    metadataLine +=
+                                        "Level " +
+                                        std::to_string(
+                                            tooltipItem.level
+                                        );
+                                }
+
+                                if (!metadataLine.empty())
+                                {
+                                    ImGui::TextDisabled(
+                                        "%s",
+                                        metadataLine.c_str()
+                                    );
+                                }
+
+                                if (
+                                    !tooltipItem.tooltipText.empty()
+                                    )
+                                {
+                                    ImGui::Spacing();
+                                    ImGui::Separator();
+                                    ImGui::Spacing();
+
+                                    ImGui::TextUnformatted(
+                                        tooltipItem.tooltipText.c_str()
+                                    );
+                                }
+                                else
+                                {
+                                    ImGui::Spacing();
+
+                                    if (
+                                        TradingPostItemIndexManager::
+                                        IsBuilding()
+                                        )
+                                    {
+                                        ImGui::TextDisabled(
+                                            "Item details are refreshing..."
+                                        );
+
+                                        ImGui::TextDisabled(
+                                            "Hover again as the item index updates."
+                                        );
+                                    }
+                                    else
+                                    {
+                                        ImGui::TextDisabled(
+                                            "No additional effect details available."
+                                        );
+                                    }
+                                }
+
+                                ImGui::PopTextWrapPos();
+                                ImGui::EndTooltip();
+                            }
+                        }
+                    }
+
+                    // Nothing drawn for this card is allowed to bleed across the
+                    // watch-list boundary into the Item Analysis pane.
+                    cardDrawList->PushClipRect(
+                        ImVec2(
+                            cardStart.x + 5.0f,
+                            cardStart.y + 4.0f
+                        ),
+                        ImVec2(
+                            cardEnd.x - 6.0f,
+                            cardEnd.y - 4.0f
+                        ),
+                        true
+                    );
+
+                    // The icon has its own row, so the item name gets the full card
+                    // width again. Clip only at the card boundary, not around the icon.
+                    cardDrawList->PushClipRect(
+                        ImVec2(
+                            compactNameTextX,
+                            cardStart.y + 37.0f
+                        ),
+                        ImVec2(
+                            cardEnd.x - 46.0f,
+                            cardStart.y + 57.0f
+                        ),
+                        true
+                    );
+
+                    ImGui::SetCursorScreenPos(
+                        ImVec2(
+                            compactNameTextX,
+                            cardStart.y +
+                            39.0f
+                        )
                     );
 
                     ImGui::TextColored(
-                        compactActionPalette.text,
+                        compactSelected
+                        ? themePrimary
+                        : itemNameColor,
                         "%s",
                         item.name.c_str()
                     );
 
-                    ImGui::SetWindowFontScale(
-                        1.00f
-                    );
+                    cardDrawList->PopClipRect();
 
-                    ImGui::TextDisabled(
-                        "Set alert prices for this watched item."
+                    ImGui::SetCursorScreenPos(
+                        ImVec2(
+                            compactBodyTextX,
+                            cardStart.y +
+                            61.0f
+                        )
                     );
-
-                    ImGui::Spacing();
-                    ImGui::Separator();
-                    ImGui::Spacing();
 
                     if (
-                        ImGui::BeginTable(
-                            "##TargetEditorTable",
-                            5,
-                            ImGuiTableFlags_SizingFixedFit |
-                            ImGuiTableFlags_NoSavedSettings
-                        )
+                        compactHasPrice &&
+                        compactPrice.available
                         )
                     {
-                        ImGui::TableSetupColumn(
-                            "Target",
-                            ImGuiTableColumnFlags_WidthFixed,
-                            82.0f
-                        );
-
-                        ImGui::TableSetupColumn(
-                            "Gold",
-                            ImGuiTableColumnFlags_WidthFixed,
-                            92.0f
-                        );
-
-                        ImGui::TableSetupColumn(
-                            "Silver",
-                            ImGuiTableColumnFlags_WidthFixed,
-                            72.0f
-                        );
-
-                        ImGui::TableSetupColumn(
-                            "Copper",
-                            ImGuiTableColumnFlags_WidthFixed,
-                            72.0f
-                        );
-
-                        ImGui::TableSetupColumn(
-                            "Clear",
-                            ImGuiTableColumnFlags_WidthFixed,
-                            58.0f
+                        DrawCoinValueColored(
+                            compactPrice.sellUnitPrice,
+                            "SELL",
+                            themeSellPrice
                         );
 
                         //
-                        // Sell Target
+                        // Stack BUY directly under SELL. This is easier to scan in the
+                        // narrow Watchlist and avoids splitting the user's eye across
+                        // both halves of the card.
                         //
-                        ImGui::TableNextRow();
-
-                        ImGui::TableSetColumnIndex(
-                            0
+                        ImGui::SetCursorScreenPos(
+                            ImVec2(
+                                compactBodyTextX,
+                                cardStart.y +
+                                77.0f
+                            )
                         );
 
+                        DrawCoinValueColored(
+                            compactPrice.buyUnitPrice,
+                            "BUY",
+                            themeBuyPrice
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled(
+                            "Price loading..."
+                        );
+                    }
+
+                    ImGui::SetCursorScreenPos(
+                        ImVec2(
+                            compactBodyTextX,
+                            cardStart.y +
+                            96.0f
+                        )
+                    );
+
+                    if (
+                        compactSellTargetReached ||
+                        compactBuyTargetReached
+                        )
+                    {
                         ImGui::TextColored(
-                            sellColor,
-                            "Sell Target"
+                            themePrimary,
+                            "%s",
+                            compactSellTargetReached &&
+                            compactBuyTargetReached
+                            ? "2 TARGETS HIT"
+                            : (
+                                compactSellTargetReached
+                                ? "SELL TARGET HIT"
+                                : "BUY TARGET HIT"
+                                )
                         );
-
-                        ImGui::TableSetColumnIndex(
-                            1
-                        );
-
-                        ImGui::SetNextItemWidth(
-                            62.0f
-                        );
-
-                        if (
-                            ImGui::InputInt(
-                                "##EditSellTargetGold",
-                                &targetGold,
-                                0,
-                                0
-                            )
-                            )
-                        {
-                            targetChanged =
-                                true;
-                        }
-
-                        ImGui::SameLine(
-                            0.0f,
-                            3.0f
-                        );
-
-                        ImGui::TextDisabled(
-                            "g"
-                        );
-
-                        ImGui::TableSetColumnIndex(
-                            2
-                        );
-
-                        ImGui::SetNextItemWidth(
-                            43.0f
-                        );
-
-                        if (
-                            ImGui::InputInt(
-                                "##EditSellTargetSilver",
-                                &targetSilver,
-                                0,
-                                0
-                            )
-                            )
-                        {
-                            targetChanged =
-                                true;
-                        }
-
-                        ImGui::SameLine(
-                            0.0f,
-                            3.0f
-                        );
-
-                        ImGui::TextDisabled(
-                            "s"
-                        );
-
-                        ImGui::TableSetColumnIndex(
-                            3
-                        );
-
-                        ImGui::SetNextItemWidth(
-                            43.0f
-                        );
-
-                        if (
-                            ImGui::InputInt(
-                                "##EditSellTargetCopper",
-                                &targetCopperOnly,
-                                0,
-                                0
-                            )
-                            )
-                        {
-                            targetChanged =
-                                true;
-                        }
-
-                        ImGui::SameLine(
-                            0.0f,
-                            3.0f
-                        );
-
-                        ImGui::TextDisabled(
-                            "c"
-                        );
-
-                        ImGui::TableSetColumnIndex(
-                            4
-                        );
-
-                        if (
-                            ImGui::SmallButton(
-                                "Clear##SellTarget"
-                            )
-                            )
-                        {
-                            targetGold = 0;
-                            targetSilver = 0;
-                            targetCopperOnly = 0;
-
-                            targetChanged =
-                                true;
-                        }
-
-                        //
-                        // Buy Target
-                        //
-                        ImGui::TableNextRow();
-
-                        ImGui::TableSetColumnIndex(
-                            0
-                        );
-
+                    }
+                    else if (
+                        item.targetSellCopper > 0 &&
+                        item.targetBuyCopper > 0
+                        )
+                    {
                         ImGui::TextColored(
-                            buyColor,
-                            "Buy Target"
+                            ImVec4(
+                                themeTelemetry.x,
+                                themeTelemetry.y,
+                                themeTelemetry.z,
+                                0.62f
+                            ),
+                            "2 TARGETS // ARMED"
                         );
-
-                        ImGui::TableSetColumnIndex(
-                            1
+                    }
+                    else if (item.targetSellCopper > 0)
+                    {
+                        DrawCoinValueColored(
+                            item.targetSellCopper,
+                            "SELL TARGET",
+                            themeSellPrice
                         );
-
-                        ImGui::SetNextItemWidth(
-                            62.0f
+                    }
+                    else if (item.targetBuyCopper > 0)
+                    {
+                        DrawCoinValueColored(
+                            item.targetBuyCopper,
+                            "BUY TARGET",
+                            themeBuyPrice
                         );
-
-                        if (
-                            ImGui::InputInt(
-                                "##EditBuyTargetGold",
-                                &buyTargetGold,
-                                0,
-                                0
-                            )
-                            )
-                        {
-                            buyTargetChanged =
-                                true;
-                        }
-
-                        ImGui::SameLine(
-                            0.0f,
-                            3.0f
-                        );
-
+                    }
+                    else
+                    {
                         ImGui::TextDisabled(
-                            "g"
+                            "NO PRICE ALERT"
                         );
-
-                        ImGui::TableSetColumnIndex(
-                            2
-                        );
-
-                        ImGui::SetNextItemWidth(
-                            43.0f
-                        );
-
-                        if (
-                            ImGui::InputInt(
-                                "##EditBuyTargetSilver",
-                                &buyTargetSilver,
-                                0,
-                                0
-                            )
-                            )
-                        {
-                            buyTargetChanged =
-                                true;
-                        }
-
-                        ImGui::SameLine(
-                            0.0f,
-                            3.0f
-                        );
-
-                        ImGui::TextDisabled(
-                            "s"
-                        );
-
-                        ImGui::TableSetColumnIndex(
-                            3
-                        );
-
-                        ImGui::SetNextItemWidth(
-                            43.0f
-                        );
-
-                        if (
-                            ImGui::InputInt(
-                                "##EditBuyTargetCopper",
-                                &buyTargetCopperOnly,
-                                0,
-                                0
-                            )
-                            )
-                        {
-                            buyTargetChanged =
-                                true;
-                        }
-
-                        ImGui::SameLine(
-                            0.0f,
-                            3.0f
-                        );
-
-                        ImGui::TextDisabled(
-                            "c"
-                        );
-
-                        ImGui::TableSetColumnIndex(
-                            4
-                        );
-
-                        if (
-                            ImGui::SmallButton(
-                                "Clear##BuyTarget"
-                            )
-                            )
-                        {
-                            buyTargetGold = 0;
-                            buyTargetSilver = 0;
-                            buyTargetCopperOnly = 0;
-
-                            buyTargetChanged =
-                                true;
-                        }
-
-                        ImGui::EndTable();
                     }
 
-                    if (targetGold < 0)
-                    {
-                        targetGold = 0;
-                    }
+                    cardDrawList->PopClipRect();
 
-                    if (targetSilver < 0)
-                    {
-                        targetSilver = 0;
-                    }
 
-                    if (targetSilver > 99)
-                    {
-                        targetSilver = 99;
-                    }
+                    uint64_t targetCopper =
+                        item.targetSellCopper;
 
-                    if (targetCopperOnly < 0)
-                    {
-                        targetCopperOnly = 0;
-                    }
-
-                    if (targetCopperOnly > 99)
-                    {
-                        targetCopperOnly = 99;
-                    }
-
-                    if (buyTargetGold < 0)
-                    {
-                        buyTargetGold = 0;
-                    }
-
-                    if (buyTargetSilver < 0)
-                    {
-                        buyTargetSilver = 0;
-                    }
-
-                    if (buyTargetSilver > 99)
-                    {
-                        buyTargetSilver = 99;
-                    }
-
-                    if (buyTargetCopperOnly < 0)
-                    {
-                        buyTargetCopperOnly = 0;
-                    }
-
-                    if (buyTargetCopperOnly > 99)
-                    {
-                        buyTargetCopperOnly = 99;
-                    }
-
-                    if (targetChanged)
-                    {
-                        const uint64_t newTargetCopper =
-                            static_cast<uint64_t>(
-                                targetGold
-                                ) *
-                            10000ULL +
-                            static_cast<uint64_t>(
-                                targetSilver
-                                ) *
-                            100ULL +
-                            static_cast<uint64_t>(
-                                targetCopperOnly
-                                );
-
-                        TradingPostWatchManager::
-                            SetTargetSellPrice(
-                                item.itemID,
-                                newTargetCopper
+                    int targetGold =
+                        static_cast<int>(
+                            targetCopper /
+                            10000ULL
                             );
-                    }
 
-                    if (buyTargetChanged)
-                    {
-                        const uint64_t newBuyTargetCopper =
-                            static_cast<uint64_t>(
-                                buyTargetGold
-                                ) *
-                            10000ULL +
-                            static_cast<uint64_t>(
-                                buyTargetSilver
-                                ) *
-                            100ULL +
-                            static_cast<uint64_t>(
-                                buyTargetCopperOnly
-                                );
-
-                        TradingPostWatchManager::
-                            SetTargetBuyPrice(
-                                item.itemID,
-                                newBuyTargetCopper
+                    int targetSilver =
+                        static_cast<int>(
+                            (
+                                targetCopper %
+                                10000ULL
+                                ) /
+                            100ULL
                             );
-                    }
 
-                    ImGui::Spacing();
-                    ImGui::Separator();
-                    ImGui::Spacing();
+                    int targetCopperOnly =
+                        static_cast<int>(
+                            targetCopper %
+                            100ULL
+                            );
 
-                    const float doneButtonWidth =
-                        96.0f;
+                    bool targetChanged =
+                        false;
 
-                    ImGui::SetCursorPosX(
-                        (
-                            ImGui::GetWindowSize().x -
-                            doneButtonWidth
-                            ) *
-                        0.5f
+                    uint64_t buyTargetCopper =
+                        item.targetBuyCopper;
+
+                    int buyTargetGold =
+                        static_cast<int>(
+                            buyTargetCopper /
+                            10000ULL
+                            );
+
+                    int buyTargetSilver =
+                        static_cast<int>(
+                            (
+                                buyTargetCopper %
+                                10000ULL
+                                ) /
+                            100ULL
+                            );
+
+                    int buyTargetCopperOnly =
+                        static_cast<int>(
+                            buyTargetCopper %
+                            100ULL
+                            );
+
+                    bool buyTargetChanged =
+                        false;
+
+                    // Per-item actions live directly on the visible watch card.
+                    // The button is intentionally small and always present: item
+                    // management belongs with the item, while the right pane remains
+                    // analysis-only.
+                    const ControlThemePalette compactActionPalette =
+                        GetControlThemePalette(
+                            g_Settings.tradingPostThemeIndex
+                        );
+
+                    ImGui::SetCursorScreenPos(
+                        ImVec2(
+                            cardEnd.x - 38.0f,
+                            cardStart.y + 7.0f
+                        )
+                    );
+
+                    ImGui::PushStyleVar(
+                        ImGuiStyleVar_FrameRounding,
+                        2.0f
+                    );
+                    ImGui::PushStyleVar(
+                        ImGuiStyleVar_FrameBorderSize,
+                        1.0f
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Button,
+                        compactActionPalette.frameBg
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_ButtonHovered,
+                        compactActionPalette.frameHovered
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_ButtonActive,
+                        compactActionPalette.frameActive
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Border,
+                        ImVec4(
+                            compactActionPalette.accent.x,
+                            compactActionPalette.accent.y,
+                            compactActionPalette.accent.z,
+                            compactSelected
+                            ? 0.95f
+                            : 0.58f
+                        )
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Text,
+                        compactActionPalette.accent
                     );
 
                     if (
                         ImGui::Button(
-                            "Done",
+                            "...##CompactCardActions",
                             ImVec2(
-                                doneButtonWidth,
-                                26.0f
+                                28.0f,
+                                20.0f
                             )
                         )
                         )
                     {
-                        ImGui::CloseCurrentPopup();
+                        ImGui::OpenPopup(
+                            "##CompactCardActionsPopup"
+                        );
                     }
 
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip(
+                            "Item actions"
+                        );
+                    }
+
+                    ImGui::PopStyleColor(5);
+                    ImGui::PopStyleVar(2);
+
+                    ImGui::PushStyleVar(
+                        ImGuiStyleVar_PopupRounding,
+                        3.0f
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_PopupBg,
+                        compactActionPalette.popupBg
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Header,
+                        compactActionPalette.selectedBg
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_HeaderHovered,
+                        ImVec4(
+                            compactActionPalette.accent.x,
+                            compactActionPalette.accent.y,
+                            compactActionPalette.accent.z,
+                            0.34f
+                        )
+                    );
+                    ImGui::PushStyleColor(
+                        ImGuiCol_HeaderActive,
+                        ImVec4(
+                            compactActionPalette.accent.x,
+                            compactActionPalette.accent.y,
+                            compactActionPalette.accent.z,
+                            0.46f
+                        )
+                    );
+
+                    if (
+                        ImGui::BeginPopup(
+                            "##CompactCardActionsPopup"
+                        )
+                        )
+                    {
+                        ImGui::TextColored(
+                            compactActionPalette.text,
+                            "%s",
+                            item.name.c_str()
+                        );
+                        ImGui::Separator();
+
+                        if (
+                            ImGui::Selectable(
+                                "Edit Targets"
+                            )
+                            )
+                        {
+                            openCompactTargetsPopup =
+                                true;
+                        }
+
+                        if (
+                            ImGui::Selectable(
+                                "Refresh Price"
+                            )
+                            )
+                        {
+                            TradingPostWatchManager::
+                                RefreshItem(
+                                    item.itemID
+                                );
+                        }
+
+                        if (
+                            ImGui::BeginMenu(
+                                "Move to Group"
+                            )
+                            )
+                        {
+                            const int currentWatchGroupIndex =
+                                GetWatchGroupIndex(
+                                    item.itemID
+                                );
+
+                            for (
+                                int groupIndex = 0;
+                                groupIndex < WATCH_GROUP_COUNT;
+                                ++groupIndex
+                                )
+                            {
+                                const bool groupSelected =
+                                    currentWatchGroupIndex ==
+                                    groupIndex;
+
+                                if (
+                                    ImGui::MenuItem(
+                                        watchGroupLabels[groupIndex],
+                                        nullptr,
+                                        groupSelected
+                                    )
+                                    )
+                                {
+                                    if (groupIndex == 0)
+                                    {
+                                        watchGroupAssignments.erase(
+                                            item.itemID
+                                        );
+                                    }
+                                    else
+                                    {
+                                        watchGroupAssignments[
+                                            item.itemID
+                                        ] = groupIndex;
+                                    }
+
+                                    Settings::Save(
+                                        moduleHandle
+                                    );
+                                }
+                            }
+
+                            ImGui::EndMenu();
+                        }
+
+                        if (!item.isDefault)
+                        {
+                            ImGui::Separator();
+                            ImGui::PushStyleColor(
+                                ImGuiCol_Text,
+                                trendDownColor
+                            );
+
+                            if (
+                                ImGui::Selectable(
+                                    "Remove from Watch List"
+                                )
+                                )
+                            {
+                                TradingPostWatchManager::
+                                    RemoveItem(
+                                        item.itemID
+                                    );
+
+                                //
+                                // Do not leave stale group assignments behind after an
+                                // item is removed from the watch list.
+                                //
+                                if (
+                                    watchGroupAssignments.erase(
+                                        item.itemID
+                                    ) >
+                                    0
+                                    )
+                                {
+                                    Settings::Save(
+                                        moduleHandle
+                                    );
+                                }
+
+                                if (
+                                    selectedDetailsItemID ==
+                                    item.itemID
+                                    )
+                                {
+                                    selectedDetailsItemID = 0;
+                                    lastDetailsPaneItemID = 0;
+                                    detailsAnalysisCache.clear();
+                                }
+                            }
+
+                            ImGui::PopStyleColor();
+                        }
+
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::PopStyleColor(4);
                     ImGui::PopStyleVar();
 
-                    ImGui::EndPopup();
+                    if (openCompactTargetsPopup)
+                    {
+                        ImGui::OpenPopup(
+                            "##CompactCardTargetsPopup"
+                        );
+                    }
+
+                    //
+                    // Targets stay compact during normal viewing. The numeric g/s/c
+                    // controls only appear while this item is being edited.
+                    //
+                    ImGui::SetNextWindowSize(
+                        ImVec2(
+                            430.0f,
+                            0.0f
+                        ),
+                        ImGuiCond_Appearing
+                    );
+
+                    if (
+                        ImGui::BeginPopup(
+                            "##CompactCardTargetsPopup"
+                        )
+                        )
+                    {
+                        ImGui::PushStyleVar(
+                            ImGuiStyleVar_FrameRounding,
+                            4.0f
+                        );
+
+                        ImGui::SetWindowFontScale(
+                            1.10f
+                        );
+
+                        ImGui::TextColored(
+                            compactActionPalette.text,
+                            "%s",
+                            item.name.c_str()
+                        );
+
+                        ImGui::SetWindowFontScale(
+                            1.00f
+                        );
+
+                        ImGui::TextDisabled(
+                            "Set alert prices for this watched item."
+                        );
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        if (
+                            ImGui::BeginTable(
+                                "##TargetEditorTable",
+                                5,
+                                ImGuiTableFlags_SizingFixedFit |
+                                ImGuiTableFlags_NoSavedSettings
+                            )
+                            )
+                        {
+                            ImGui::TableSetupColumn(
+                                "Target",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                82.0f
+                            );
+
+                            ImGui::TableSetupColumn(
+                                "Gold",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                92.0f
+                            );
+
+                            ImGui::TableSetupColumn(
+                                "Silver",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                72.0f
+                            );
+
+                            ImGui::TableSetupColumn(
+                                "Copper",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                72.0f
+                            );
+
+                            ImGui::TableSetupColumn(
+                                "Clear",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                58.0f
+                            );
+
+                            //
+                            // Sell Target
+                            //
+                            ImGui::TableNextRow();
+
+                            ImGui::TableSetColumnIndex(
+                                0
+                            );
+
+                            ImGui::TextColored(
+                                sellColor,
+                                "Sell Target"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                1
+                            );
+
+                            ImGui::SetNextItemWidth(
+                                62.0f
+                            );
+
+                            if (
+                                ImGui::InputInt(
+                                    "##EditSellTargetGold",
+                                    &targetGold,
+                                    0,
+                                    0
+                                )
+                                )
+                            {
+                                targetChanged =
+                                    true;
+                            }
+
+                            ImGui::SameLine(
+                                0.0f,
+                                3.0f
+                            );
+
+                            ImGui::TextDisabled(
+                                "g"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                2
+                            );
+
+                            ImGui::SetNextItemWidth(
+                                43.0f
+                            );
+
+                            if (
+                                ImGui::InputInt(
+                                    "##EditSellTargetSilver",
+                                    &targetSilver,
+                                    0,
+                                    0
+                                )
+                                )
+                            {
+                                targetChanged =
+                                    true;
+                            }
+
+                            ImGui::SameLine(
+                                0.0f,
+                                3.0f
+                            );
+
+                            ImGui::TextDisabled(
+                                "s"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                3
+                            );
+
+                            ImGui::SetNextItemWidth(
+                                43.0f
+                            );
+
+                            if (
+                                ImGui::InputInt(
+                                    "##EditSellTargetCopper",
+                                    &targetCopperOnly,
+                                    0,
+                                    0
+                                )
+                                )
+                            {
+                                targetChanged =
+                                    true;
+                            }
+
+                            ImGui::SameLine(
+                                0.0f,
+                                3.0f
+                            );
+
+                            ImGui::TextDisabled(
+                                "c"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                4
+                            );
+
+                            if (
+                                ImGui::SmallButton(
+                                    "Clear##SellTarget"
+                                )
+                                )
+                            {
+                                targetGold = 0;
+                                targetSilver = 0;
+                                targetCopperOnly = 0;
+
+                                targetChanged =
+                                    true;
+                            }
+
+                            //
+                            // Buy Target
+                            //
+                            ImGui::TableNextRow();
+
+                            ImGui::TableSetColumnIndex(
+                                0
+                            );
+
+                            ImGui::TextColored(
+                                buyColor,
+                                "Buy Target"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                1
+                            );
+
+                            ImGui::SetNextItemWidth(
+                                62.0f
+                            );
+
+                            if (
+                                ImGui::InputInt(
+                                    "##EditBuyTargetGold",
+                                    &buyTargetGold,
+                                    0,
+                                    0
+                                )
+                                )
+                            {
+                                buyTargetChanged =
+                                    true;
+                            }
+
+                            ImGui::SameLine(
+                                0.0f,
+                                3.0f
+                            );
+
+                            ImGui::TextDisabled(
+                                "g"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                2
+                            );
+
+                            ImGui::SetNextItemWidth(
+                                43.0f
+                            );
+
+                            if (
+                                ImGui::InputInt(
+                                    "##EditBuyTargetSilver",
+                                    &buyTargetSilver,
+                                    0,
+                                    0
+                                )
+                                )
+                            {
+                                buyTargetChanged =
+                                    true;
+                            }
+
+                            ImGui::SameLine(
+                                0.0f,
+                                3.0f
+                            );
+
+                            ImGui::TextDisabled(
+                                "s"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                3
+                            );
+
+                            ImGui::SetNextItemWidth(
+                                43.0f
+                            );
+
+                            if (
+                                ImGui::InputInt(
+                                    "##EditBuyTargetCopper",
+                                    &buyTargetCopperOnly,
+                                    0,
+                                    0
+                                )
+                                )
+                            {
+                                buyTargetChanged =
+                                    true;
+                            }
+
+                            ImGui::SameLine(
+                                0.0f,
+                                3.0f
+                            );
+
+                            ImGui::TextDisabled(
+                                "c"
+                            );
+
+                            ImGui::TableSetColumnIndex(
+                                4
+                            );
+
+                            if (
+                                ImGui::SmallButton(
+                                    "Clear##BuyTarget"
+                                )
+                                )
+                            {
+                                buyTargetGold = 0;
+                                buyTargetSilver = 0;
+                                buyTargetCopperOnly = 0;
+
+                                buyTargetChanged =
+                                    true;
+                            }
+
+                            ImGui::EndTable();
+                        }
+
+                        if (targetGold < 0)
+                        {
+                            targetGold = 0;
+                        }
+
+                        if (targetSilver < 0)
+                        {
+                            targetSilver = 0;
+                        }
+
+                        if (targetSilver > 99)
+                        {
+                            targetSilver = 99;
+                        }
+
+                        if (targetCopperOnly < 0)
+                        {
+                            targetCopperOnly = 0;
+                        }
+
+                        if (targetCopperOnly > 99)
+                        {
+                            targetCopperOnly = 99;
+                        }
+
+                        if (buyTargetGold < 0)
+                        {
+                            buyTargetGold = 0;
+                        }
+
+                        if (buyTargetSilver < 0)
+                        {
+                            buyTargetSilver = 0;
+                        }
+
+                        if (buyTargetSilver > 99)
+                        {
+                            buyTargetSilver = 99;
+                        }
+
+                        if (buyTargetCopperOnly < 0)
+                        {
+                            buyTargetCopperOnly = 0;
+                        }
+
+                        if (buyTargetCopperOnly > 99)
+                        {
+                            buyTargetCopperOnly = 99;
+                        }
+
+                        if (targetChanged)
+                        {
+                            const uint64_t newTargetCopper =
+                                static_cast<uint64_t>(
+                                    targetGold
+                                    ) *
+                                10000ULL +
+                                static_cast<uint64_t>(
+                                    targetSilver
+                                    ) *
+                                100ULL +
+                                static_cast<uint64_t>(
+                                    targetCopperOnly
+                                    );
+
+                            TradingPostWatchManager::
+                                SetTargetSellPrice(
+                                    item.itemID,
+                                    newTargetCopper
+                                );
+                        }
+
+                        if (buyTargetChanged)
+                        {
+                            const uint64_t newBuyTargetCopper =
+                                static_cast<uint64_t>(
+                                    buyTargetGold
+                                    ) *
+                                10000ULL +
+                                static_cast<uint64_t>(
+                                    buyTargetSilver
+                                    ) *
+                                100ULL +
+                                static_cast<uint64_t>(
+                                    buyTargetCopperOnly
+                                    );
+
+                            TradingPostWatchManager::
+                                SetTargetBuyPrice(
+                                    item.itemID,
+                                    newBuyTargetCopper
+                                );
+                        }
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        const float doneButtonWidth =
+                            96.0f;
+
+                        ImGui::SetCursorPosX(
+                            (
+                                ImGui::GetWindowSize().x -
+                                doneButtonWidth
+                                ) *
+                            0.5f
+                        );
+
+                        if (
+                            ImGui::Button(
+                                "Done",
+                                ImVec2(
+                                    doneButtonWidth,
+                                    26.0f
+                                )
+                            )
+                            )
+                        {
+                            ImGui::CloseCurrentPopup();
+                        }
+
+                        ImGui::PopStyleVar();
+
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::SetCursorScreenPos(
+                        ImVec2(
+                            cardStart.x,
+                            cardEnd.y +
+                            7.0f
+                        )
+                    );
+
+                    ImGui::PopID();
                 }
-
-                ImGui::SetCursorScreenPos(
-                    ImVec2(
-                        cardStart.x,
-                        cardEnd.y +
-                        7.0f
-                    )
-                );
-
-                ImGui::PopID();
             }
+
         }
 
         ImGui::EndChild();
