@@ -139,8 +139,6 @@ namespace
     struct MarketProwlFetchResult
     {
         bool success = false;
-        bool activeLimitReached = false;
-        bool resolvedLimitReached = false;
         std::string error;
         std::vector<MarketProwlSignalRow> signals;
     };
@@ -487,6 +485,55 @@ namespace
         return true;
     }
 
+    bool ExtractJsonBoolValue(
+        const std::string& json,
+        const std::string& key,
+        bool& outValue
+    )
+    {
+        outValue = false;
+
+        const size_t position =
+            FindJsonValueStart(
+                json,
+                key
+            );
+
+        if (
+            position == std::string::npos ||
+            position >= json.size()
+            )
+        {
+            return false;
+        }
+
+        if (
+            json.compare(
+                position,
+                4,
+                "true"
+            ) == 0
+            )
+        {
+            outValue = true;
+            return true;
+        }
+
+        if (
+            json.compare(
+                position,
+                5,
+                "false"
+            ) == 0
+            )
+        {
+            outValue = false;
+            return true;
+        }
+
+        return false;
+    }
+
     bool ExtractJsonDoubleValue(
         const std::string& json,
         const std::string& key,
@@ -736,7 +783,8 @@ namespace
         auto AppendSignalRows =
             [&](
                 const std::string& response,
-                bool& limitReached
+                bool& hasMore,
+                uint64_t& nextOffset
                 ) -> bool
             {
                 if (
@@ -751,18 +799,42 @@ namespace
                     return false;
                 }
 
+                if (
+                    !ExtractJsonBoolValue(
+                        response,
+                        "hasMore",
+                        hasMore
+                    )
+                    )
+                {
+                    result.error =
+                        "Collector /signals pagination metadata is missing. "
+                        "Update the Collector to the paginated Market Prowl API.";
+
+                    return false;
+                }
+
+                nextOffset = 0;
+
+                if (
+                    hasMore &&
+                    !ExtractJsonUInt64Value(
+                        response,
+                        "nextOffset",
+                        nextOffset
+                    )
+                    )
+                {
+                    result.error =
+                        "Collector returned invalid /signals pagination metadata.";
+
+                    return false;
+                }
+
                 const std::vector<std::string> objects =
                     ExtractMarketProwlSignalObjects(
                         response
                     );
-
-                //
-                // The Collector currently caps a single /signals response at
-                // 500 records. Keep the cap visible to the UI rather than
-                // pretending a full-market count is exact when we hit it.
-                //
-                limitReached =
-                    objects.size() >= 500;
 
                 for (
                     const std::string& object :
@@ -919,113 +991,63 @@ namespace
 
         auto FetchSignalSet =
             [&](
-                const wchar_t* requestPath,
-                bool& limitReached,
+                const wchar_t* statusValue,
                 const char* requestLabel
                 ) -> bool
             {
-                HINTERNET request =
-                    WinHttpOpenRequest(
-                        connection,
-                        L"GET",
-                        requestPath,
-                        nullptr,
-                        WINHTTP_NO_REFERER,
-                        WINHTTP_DEFAULT_ACCEPT_TYPES,
-                        requestFlags
-                    );
-
-                if (request == nullptr)
-                {
-                    result.error =
-                        std::string(
-                            "Could not create the Market Prowl "
-                        ) +
-                        requestLabel +
-                        " request.";
-
-                    return false;
-                }
-
-                const BOOL sent =
-                    WinHttpSendRequest(
-                        request,
-                        WINHTTP_NO_ADDITIONAL_HEADERS,
-                        0,
-                        WINHTTP_NO_REQUEST_DATA,
-                        0,
-                        0,
-                        0
-                    );
-
-                if (
-                    !sent ||
-                    !WinHttpReceiveResponse(
-                        request,
-                        nullptr
-                    )
-                    )
-                {
-                    WinHttpCloseHandle(
-                        request
-                    );
-
-                    result.error =
-                        std::string(
-                            "Market Prowl did not receive a "
-                        ) +
-                        requestLabel +
-                        " response from the Collector.";
-
-                    return false;
-                }
-
-                DWORD statusCode = 0;
-                DWORD statusCodeSize =
-                    sizeof(statusCode);
-
-                const BOOL statusRead =
-                    WinHttpQueryHeaders(
-                        request,
-                        WINHTTP_QUERY_STATUS_CODE |
-                        WINHTTP_QUERY_FLAG_NUMBER,
-                        WINHTTP_HEADER_NAME_BY_INDEX,
-                        &statusCode,
-                        &statusCodeSize,
-                        WINHTTP_NO_HEADER_INDEX
-                    );
-
-                if (
-                    !statusRead ||
-                    statusCode != 200
-                    )
-                {
-                    WinHttpCloseHandle(
-                        request
-                    );
-
-                    result.error =
-                        "Collector returned HTTP " +
-                        std::to_string(
-                            statusCode
-                        ) +
-                        " for Market Prowl " +
-                        requestLabel +
-                        ".";
-
-                    return false;
-                }
-
-                std::string response;
+                uint64_t offset = 0;
 
                 while (true)
                 {
-                    DWORD available = 0;
+                    const std::wstring requestPath =
+                        L"/signals?status=" +
+                        std::wstring(
+                            statusValue
+                        ) +
+                        L"&limit=500&offset=" +
+                        std::to_wstring(
+                            offset
+                        );
+
+                    HINTERNET request =
+                        WinHttpOpenRequest(
+                            connection,
+                            L"GET",
+                            requestPath.c_str(),
+                            nullptr,
+                            WINHTTP_NO_REFERER,
+                            WINHTTP_DEFAULT_ACCEPT_TYPES,
+                            requestFlags
+                        );
+
+                    if (request == nullptr)
+                    {
+                        result.error =
+                            std::string(
+                                "Could not create the Market Prowl "
+                            ) +
+                            requestLabel +
+                            " request.";
+
+                        return false;
+                    }
+
+                    const BOOL sent =
+                        WinHttpSendRequest(
+                            request,
+                            WINHTTP_NO_ADDITIONAL_HEADERS,
+                            0,
+                            WINHTTP_NO_REQUEST_DATA,
+                            0,
+                            0,
+                            0
+                        );
 
                     if (
-                        !WinHttpQueryDataAvailable(
+                        !sent ||
+                        !WinHttpReceiveResponse(
                             request,
-                            &available
+                            nullptr
                         )
                         )
                     {
@@ -1035,90 +1057,183 @@ namespace
 
                         result.error =
                             std::string(
-                                "Could not read the Market Prowl "
+                                "Market Prowl did not receive a "
                             ) +
                             requestLabel +
-                            " response.";
+                            " response from the Collector.";
 
                         return false;
                     }
 
-                    if (available == 0)
-                    {
-                        break;
-                    }
+                    DWORD statusCode = 0;
+                    DWORD statusCodeSize =
+                        sizeof(statusCode);
 
-                    std::vector<char> buffer(
-                        static_cast<size_t>(
-                            available
-                            ) +
-                        1,
-                        '\0'
-                    );
-
-                    DWORD bytesRead = 0;
+                    const BOOL statusRead =
+                        WinHttpQueryHeaders(
+                            request,
+                            WINHTTP_QUERY_STATUS_CODE |
+                            WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX,
+                            &statusCode,
+                            &statusCodeSize,
+                            WINHTTP_NO_HEADER_INDEX
+                        );
 
                     if (
-                        !WinHttpReadData(
-                            request,
+                        !statusRead ||
+                        statusCode != 200
+                        )
+                    {
+                        WinHttpCloseHandle(
+                            request
+                        );
+
+                        result.error =
+                            "Collector returned HTTP " +
+                            std::to_string(
+                                statusCode
+                            ) +
+                            " for Market Prowl " +
+                            requestLabel +
+                            ".";
+
+                        return false;
+                    }
+
+                    std::string response;
+
+                    while (true)
+                    {
+                        DWORD available = 0;
+
+                        if (
+                            !WinHttpQueryDataAvailable(
+                                request,
+                                &available
+                            )
+                            )
+                        {
+                            WinHttpCloseHandle(
+                                request
+                            );
+
+                            result.error =
+                                std::string(
+                                    "Could not read the Market Prowl "
+                                ) +
+                                requestLabel +
+                                " response.";
+
+                            return false;
+                        }
+
+                        if (available == 0)
+                        {
+                            break;
+                        }
+
+                        std::vector<char> buffer(
+                            static_cast<size_t>(
+                                available
+                                ) +
+                            1,
+                            '\0'
+                        );
+
+                        DWORD bytesRead = 0;
+
+                        if (
+                            !WinHttpReadData(
+                                request,
+                                buffer.data(),
+                                available,
+                                &bytesRead
+                            )
+                            )
+                        {
+                            WinHttpCloseHandle(
+                                request
+                            );
+
+                            result.error =
+                                std::string(
+                                    "Could not read the Market Prowl "
+                                ) +
+                                requestLabel +
+                                " response.";
+
+                            return false;
+                        }
+
+                        response.append(
                             buffer.data(),
-                            available,
-                            &bytesRead
+                            bytesRead
+                        );
+                    }
+
+                    WinHttpCloseHandle(
+                        request
+                    );
+
+                    bool hasMore =
+                        false;
+
+                    uint64_t nextOffset =
+                        0;
+
+                    if (
+                        !AppendSignalRows(
+                            response,
+                            hasMore,
+                            nextOffset
                         )
                         )
                     {
-                        WinHttpCloseHandle(
-                            request
-                        );
+                        return false;
+                    }
 
+                    if (!hasMore)
+                    {
+                        return true;
+                    }
+
+                    if (
+                        nextOffset <=
+                        offset
+                        )
+                    {
                         result.error =
-                            std::string(
-                                "Could not read the Market Prowl "
-                            ) +
-                            requestLabel +
-                            " response.";
+                            "Collector returned a non-advancing /signals pagination offset.";
 
                         return false;
                     }
 
-                    response.append(
-                        buffer.data(),
-                        bytesRead
-                    );
+                    offset =
+                        nextOffset;
                 }
-
-                WinHttpCloseHandle(
-                    request
-                );
-
-                return
-                    AppendSignalRows(
-                        response,
-                        limitReached
-                    );
             };
 
         result.signals.reserve(
-            1000
+            1500
         );
 
         //
-        // Active and Resolved are requested separately. A single
-        // status=all&limit=500 response can be completely consumed by active
-        // signals, which previously made the Resolved 24h radar look empty.
+        // Active and Resolved are paged independently so neither state can
+        // crowd the other out. Each request stays within the Collector's
+        // 500-record safety limit; Copper&Claw follows nextOffset until the
+        // Collector reports hasMore=false.
         //
         const bool activeLoaded =
             FetchSignalSet(
-                L"/signals?status=active&limit=500",
-                result.activeLimitReached,
+                L"active",
                 "active-signals"
             );
 
         const bool resolvedLoaded =
             activeLoaded &&
             FetchSignalSet(
-                L"/signals?status=resolved&limit=500",
-                result.resolvedLimitReached,
+                L"resolved",
                 "resolved-signals"
             );
 
@@ -9380,12 +9495,6 @@ void TradingPostUI::RenderTab(
     static std::vector<MarketProwlSignalRow>
         marketProwlSignals;
 
-    static bool marketProwlActiveLimitReached =
-        false;
-
-    static bool marketProwlResolvedLimitReached =
-        false;
-
     static std::string marketProwlError;
 
     const uint64_t marketProwlNowUnixSeconds =
@@ -9733,12 +9842,6 @@ void TradingPostUI::RenderTab(
                 std::move(
                     completedResult.signals
                 );
-
-            marketProwlActiveLimitReached =
-                completedResult.activeLimitReached;
-
-            marketProwlResolvedLimitReached =
-                completedResult.resolvedLimitReached;
 
             marketProwlError.clear();
 
@@ -10313,13 +10416,10 @@ void TradingPostUI::RenderTab(
         }
 
         ImGui::TextDisabled(
-            "Active %llu%s  |  New 1h %llu  |  Following %llu  |  Resolved 24h %llu%s",
+            "Active %llu  |  New 1h %llu  |  Following %llu  |  Resolved 24h %llu",
             static_cast<unsigned long long>(
                 marketProwlActiveItems.size()
                 ),
-            marketProwlActiveLimitReached
-            ? " (cap)"
-            : "",
             static_cast<unsigned long long>(
                 marketProwlNewItems.size()
                 ),
@@ -10328,36 +10428,8 @@ void TradingPostUI::RenderTab(
                 ),
             static_cast<unsigned long long>(
                 marketProwlResolvedItems.size()
-                ),
-            marketProwlResolvedLimitReached
-            ? " (cap)"
-            : ""
+                )
         );
-
-        if (
-            marketProwlActiveLimitReached ||
-            marketProwlResolvedLimitReached
-            )
-        {
-            ImGui::SameLine(
-                0.0f,
-                8.0f
-            );
-
-            ImGui::TextColored(
-                attentionColor,
-                "FEED LIMIT"
-            );
-
-            if (ImGui::IsItemHovered())
-            {
-                ImGui::SetTooltip(
-                    "The Collector returned the current 500-record cap for at least one Prowl state.\n"
-                    "Active and resolved signals are fetched separately so recent resolutions remain usable,\n"
-                    "but the displayed count may not represent every matching signal in the full market."
-                );
-            }
-        }
 
         ImGui::Spacing();
 
@@ -11828,8 +11900,12 @@ void TradingPostUI::RenderTab(
                                 "SELL LISTINGS"
                             );
 
+                            //
+                            // Keep the value column clear of the longer
+                            // SELL LISTINGS label at all normal UI scales.
+                            //
                             ImGui::SameLine(
-                                98.0f
+                                118.0f
                             );
 
                             ImGui::Text(
@@ -11868,7 +11944,7 @@ void TradingPostUI::RenderTab(
                             );
 
                             ImGui::SameLine(
-                                98.0f
+                                118.0f
                             );
 
                             ImGui::Text(
@@ -18054,7 +18130,7 @@ void TradingPostUI::RenderTab(
                         //
                         // Keep the same economically meaningful cheap-item guard
                         // used by the Prowl presentation path. Old tiny-copper
-                        // events should not light an otherwise calm heatmap tile.
+                        // events should not light an otherwise inactive heatmap tile.
                         //
                         if (heatmapProwlSignal != nullptr)
                         {
@@ -18777,7 +18853,7 @@ void TradingPostUI::RenderTab(
                                     heatmapProwlSignal->
                                     signalType
                                 )
-                                : "CALM"
+                                : "NO SIGNAL"
                             );
 
                             if (heatmapFollowed)
@@ -22520,8 +22596,10 @@ void TradingPostUI::RenderTab(
                         );
                     }
 
+                    ImGui::BeginGroup();
+
                     ImGui::TextDisabled(
-                        "BUY SIGNAL"
+                        "BUYER VIEW"
                     );
 
                     ImGui::SameLine(
@@ -22531,6 +22609,35 @@ void TradingPostUI::RenderTab(
                     ImGui::TextDisabled(
                         "Developing"
                     );
+
+                    ImGui::EndGroup();
+
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::BeginTooltip();
+
+                        ImGui::PushTextWrapPos(
+                            ImGui::GetCursorPos().x +
+                            360.0f
+                        );
+
+                        ImGui::Text(
+                            "BUYER VIEW"
+                        );
+
+                        ImGui::TextWrapped(
+                            "A quick summary of the current lowest sell listing "
+                            "relative to the selected Trend Window average."
+                        );
+
+                        ImGui::TextWrapped(
+                            "More history is needed before this view is available."
+                        );
+
+                        ImGui::PopTextWrapPos();
+
+                        ImGui::EndTooltip();
+                    }
                 }
                 else
                 {
@@ -22647,8 +22754,10 @@ void TradingPostUI::RenderTab(
                         sellVsAverage
                     );
 
+                    ImGui::BeginGroup();
+
                     ImGui::TextDisabled(
-                        "BUY SIGNAL"
+                        "BUYER VIEW"
                     );
 
                     ImGui::SameLine(
@@ -22659,6 +22768,76 @@ void TradingPostUI::RenderTab(
                         buyerSignal,
                         buyerSignalColor
                     );
+
+                    ImGui::EndGroup();
+
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::BeginTooltip();
+
+                        ImGui::PushTextWrapPos(
+                            ImGui::GetCursorPos().x +
+                            360.0f
+                        );
+
+                        ImGui::Text(
+                            "BUYER VIEW"
+                        );
+
+                        ImGui::TextWrapped(
+                            "Summarizes the current lowest sell listing relative "
+                            "to the selected Trend Window average."
+                        );
+
+                        ImGui::Spacing();
+
+                        ImGui::Text(
+                            "Favorable"
+                        );
+
+                        ImGui::SameLine(
+                            92.0f
+                        );
+
+                        ImGui::TextDisabled(
+                            "At least 1%% below average"
+                        );
+
+                        ImGui::Text(
+                            "Typical"
+                        );
+
+                        ImGui::SameLine(
+                            92.0f
+                        );
+
+                        ImGui::TextDisabled(
+                            "Within 1%% of average"
+                        );
+
+                        ImGui::Text(
+                            "Caution"
+                        );
+
+                        ImGui::SameLine(
+                            92.0f
+                        );
+
+                        ImGui::TextDisabled(
+                            "At least 1%% above average"
+                        );
+
+                        ImGui::Spacing();
+
+                        ImGui::TextWrapped(
+                            "This is descriptive context, not a prediction of "
+                            "where the price will move next."
+                        );
+
+                        ImGui::PopTextWrapPos();
+
+                        ImGui::EndTooltip();
+                    }
 
                 }
 
@@ -22791,6 +22970,432 @@ void TradingPostUI::RenderTab(
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
+
+                //
+                // Suggested Bid is intentionally independent of the selected
+                // Trend Window. Build a dedicated hybrid history here so the
+                // estimate does not change merely because the user clicked a
+                // different chart window.
+                //
+                // The model is adaptive:
+                //   < 7d usable history  -> Developing
+                //   7d-29d              -> recent 7d model
+                //   30d-89d             -> 30d model
+                //   90d+                -> 70% 30d + 30% 3mo model
+                //
+                // Importantly, this code only uses history that is already
+                // available. It does NOT trigger the 365-day/GW2TP gap-fill.
+                //
+                constexpr uint64_t SUGGESTED_BID_7D_SECONDS =
+                    7ULL * 24ULL * 60ULL * 60ULL;
+
+                constexpr uint64_t SUGGESTED_BID_30D_SECONDS =
+                    30ULL * 24ULL * 60ULL * 60ULL;
+
+                constexpr uint64_t SUGGESTED_BID_3MO_SECONDS =
+                    90ULL * 24ULL * 60ULL * 60ULL;
+
+                const std::vector<
+                    TradingPostHistoryPoint
+                > suggestedBidHistory =
+                    collectorSnapshotsAvailable
+                    ? BuildHybridAnalysisHistory(
+                        history,
+                        collectorCompletedSnapshotTimestamps
+                    )
+                    : history;
+
+                const DealWindowStats suggestedBid7dStats =
+                    CalculateBuyWindowStats(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_7D_SECONDS
+                    );
+
+                const DealWindowStats suggestedBid30dStats =
+                    CalculateBuyWindowStats(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_30D_SECONDS
+                    );
+
+                const DealWindowStats suggestedBid3moStats =
+                    CalculateBuyWindowStats(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_3MO_SECONDS
+                    );
+
+                const WindowCoverageInfo suggestedBid7dCoverage =
+                    collectorSnapshotsAvailable
+                    ? CalculateHybridCoverage(
+                        suggestedBidHistory,
+                        collectorCompletedSnapshotTimestamps,
+                        SUGGESTED_BID_7D_SECONDS
+                    )
+                    : CalculateGapAwareCoverage(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_7D_SECONDS
+                    );
+
+                const WindowCoverageInfo suggestedBid30dCoverage =
+                    collectorSnapshotsAvailable
+                    ? CalculateHybridCoverage(
+                        suggestedBidHistory,
+                        collectorCompletedSnapshotTimestamps,
+                        SUGGESTED_BID_30D_SECONDS
+                    )
+                    : CalculateGapAwareCoverage(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_30D_SECONDS
+                    );
+
+                const WindowCoverageInfo suggestedBid3moCoverage =
+                    collectorSnapshotsAvailable
+                    ? CalculateHybridCoverage(
+                        suggestedBidHistory,
+                        collectorCompletedSnapshotTimestamps,
+                        SUGGESTED_BID_3MO_SECONDS
+                    )
+                    : CalculateGapAwareCoverage(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_3MO_SECONDS
+                    );
+
+                constexpr double
+                    SUGGESTED_BID_MIN_COVERAGE =
+                    0.75;
+
+                const bool suggestedBid7dReady =
+                    suggestedBid7dStats.available &&
+                    suggestedBid7dStats.averageSell > 0 &&
+                    suggestedBid7dCoverage.sampleCount >= 3 &&
+                    suggestedBid7dCoverage.coverage >=
+                    SUGGESTED_BID_MIN_COVERAGE;
+
+                const bool suggestedBid30dReady =
+                    suggestedBid30dStats.available &&
+                    suggestedBid30dStats.averageSell > 0 &&
+                    suggestedBid30dCoverage.sampleCount >= 3 &&
+                    suggestedBid30dCoverage.coverage >=
+                    SUGGESTED_BID_MIN_COVERAGE;
+
+                const bool suggestedBid3moReady =
+                    suggestedBid3moStats.available &&
+                    suggestedBid3moStats.averageSell > 0 &&
+                    suggestedBid3moCoverage.sampleCount >= 3 &&
+                    suggestedBid3moCoverage.coverage >=
+                    SUGGESTED_BID_MIN_COVERAGE;
+
+                const TrendInfo suggestedBid7dTrend =
+                    CalculateTrend(
+                        suggestedBidHistory,
+                        false,
+                        SUGGESTED_BID_7D_SECONDS
+                    );
+
+                const VolatilityInfo suggestedBid7dVolatility =
+                    CalculateVolatility(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_7D_SECONDS,
+                        suggestedBid7dReady
+                    );
+
+                const VolatilityInfo suggestedBid30dVolatility =
+                    CalculateVolatility(
+                        suggestedBidHistory,
+                        SUGGESTED_BID_30D_SECONDS,
+                        suggestedBid30dReady
+                    );
+
+                bool suggestedBidAvailable =
+                    suggestedBid7dReady;
+
+                uint64_t suggestedBidCopper =
+                    0;
+
+                uint64_t suggestedBidModelCopper =
+                    0;
+
+                bool suggestedBidCappedToTop =
+                    false;
+
+                double suggestedBidBaseCopper =
+                    0.0;
+
+                const char* suggestedBidModelLabel =
+                    "DEVELOPING";
+
+                const char* suggestedBidAnchorLabel =
+                    "7d avg buy";
+
+                uint64_t suggestedBidAnchorAverage =
+                    0;
+
+                double suggestedBidModelCoverage =
+                    suggestedBid7dCoverage.coverage;
+
+                uint64_t suggestedBidModelWindowSeconds =
+                    SUGGESTED_BID_7D_SECONDS;
+
+                bool suggestedBidUsed3mo =
+                    false;
+
+                if (suggestedBid3moReady)
+                {
+                    //
+                    // Full model: recent fair value carries most of the weight,
+                    // while the 3mo average stabilizes temporary monthly moves.
+                    //
+                    suggestedBidBaseCopper =
+                        static_cast<double>(
+                            suggestedBid30dStats.averageSell
+                            ) *
+                        0.70 +
+                        static_cast<double>(
+                            suggestedBid3moStats.averageSell
+                            ) *
+                        0.30;
+
+                    suggestedBidModelLabel =
+                        "FULL 30D + 3MO";
+
+                    suggestedBidAnchorLabel =
+                        "30d avg buy";
+
+                    suggestedBidAnchorAverage =
+                        suggestedBid30dStats.averageSell;
+
+                    suggestedBidModelCoverage =
+                        suggestedBid3moCoverage.coverage;
+
+                    suggestedBidModelWindowSeconds =
+                        SUGGESTED_BID_3MO_SECONDS;
+
+                    suggestedBidUsed3mo =
+                        true;
+                }
+                else if (suggestedBid30dReady)
+                {
+                    suggestedBidBaseCopper =
+                        static_cast<double>(
+                            suggestedBid30dStats.averageSell
+                            );
+
+                    suggestedBidModelLabel =
+                        "30D";
+
+                    suggestedBidAnchorLabel =
+                        "30d avg buy";
+
+                    suggestedBidAnchorAverage =
+                        suggestedBid30dStats.averageSell;
+
+                    suggestedBidModelCoverage =
+                        suggestedBid30dCoverage.coverage;
+
+                    suggestedBidModelWindowSeconds =
+                        SUGGESTED_BID_30D_SECONDS;
+                }
+                else if (suggestedBid7dReady)
+                {
+                    //
+                    // Early Collector installations still get a useful
+                    // reference after one week, but it is explicitly a recent
+                    // 7d model rather than pretending 30d/3mo history exists.
+                    //
+                    suggestedBidBaseCopper =
+                        static_cast<double>(
+                            suggestedBid7dStats.averageSell
+                            );
+
+                    suggestedBidModelLabel =
+                        "RECENT 7D";
+
+                    suggestedBidAnchorLabel =
+                        "7d avg buy";
+
+                    suggestedBidAnchorAverage =
+                        suggestedBid7dStats.averageSell;
+
+                    suggestedBidModelCoverage =
+                        suggestedBid7dCoverage.coverage;
+
+                    suggestedBidModelWindowSeconds =
+                        SUGGESTED_BID_7D_SECONDS;
+                }
+
+                double suggestedBidMomentumAdjustmentPercent =
+                    0.0;
+
+                if (
+                    suggestedBidAvailable &&
+                    suggestedBid7dTrend.available
+                    )
+                {
+                    //
+                    // Only a fraction of short-term momentum is carried into
+                    // the reference price, and the adjustment is capped so a
+                    // brief spike cannot dominate the fair-value anchor.
+                    //
+                    suggestedBidMomentumAdjustmentPercent =
+                        std::clamp(
+                            suggestedBid7dTrend.percentChange *
+                            0.20,
+                            -2.0,
+                            2.0
+                        );
+
+                    suggestedBidBaseCopper *=
+                        1.0 +
+                        suggestedBidMomentumAdjustmentPercent /
+                        100.0;
+                }
+
+                const VolatilityInfo*
+                    suggestedBidVolatility =
+                    suggestedBid30dReady
+                    ? &suggestedBid30dVolatility
+                    : &suggestedBid7dVolatility;
+
+                const char* suggestedBidVolatilityWindowLabel =
+                    suggestedBid30dReady
+                    ? "30d"
+                    : "7d";
+
+                double suggestedBidVolatilityAdjustmentPercent =
+                    0.0;
+
+                if (
+                    suggestedBidAvailable &&
+                    suggestedBidVolatility != nullptr &&
+                    suggestedBidVolatility->available
+                    )
+                {
+                    if (
+                        suggestedBidVolatility->level ==
+                        VolatilityLevel::Active
+                        )
+                    {
+                        suggestedBidVolatilityAdjustmentPercent =
+                            -0.50;
+                    }
+                    else if (
+                        suggestedBidVolatility->level ==
+                        VolatilityLevel::Wild
+                        )
+                    {
+                        suggestedBidVolatilityAdjustmentPercent =
+                            -1.00;
+                    }
+
+                    suggestedBidBaseCopper *=
+                        1.0 +
+                        suggestedBidVolatilityAdjustmentPercent /
+                        100.0;
+                }
+
+                if (
+                    suggestedBidAvailable &&
+                    suggestedBidBaseCopper > 0.0
+                    )
+                {
+                    suggestedBidModelCopper =
+                        static_cast<uint64_t>(
+                            suggestedBidBaseCopper +
+                            0.5
+                            );
+
+                    suggestedBidCopper =
+                        suggestedBidModelCopper;
+
+                    //
+                    // Suggested Bid should not ask the player to pay more than
+                    // is needed to become the current highest visible bidder.
+                    // If the model's fair-value reference is above the market,
+                    // cap the displayed suggestion at current top bid + 1c.
+                    //
+                    if (price.buyUnitPrice > 0)
+                    {
+                        const uint64_t competitiveBidCeiling =
+                            static_cast<uint64_t>(
+                                price.buyUnitPrice
+                                ) +
+                            1ULL;
+
+                        if (
+                            suggestedBidCopper >
+                            competitiveBidCeiling
+                            )
+                        {
+                            suggestedBidCopper =
+                                competitiveBidCeiling;
+
+                            suggestedBidCappedToTop =
+                                true;
+                        }
+                    }
+
+                    //
+                    // A bid reference should never cross the current lowest
+                    // sell listing. Preserve at least a one-copper gap.
+                    //
+                    if (
+                        price.sellUnitPrice > 1 &&
+                        suggestedBidCopper >=
+                        price.sellUnitPrice
+                        )
+                    {
+                        suggestedBidCopper =
+                            static_cast<uint64_t>(
+                                price.sellUnitPrice -
+                                1
+                                );
+                    }
+
+                    suggestedBidAvailable =
+                        suggestedBidCopper > 0;
+                }
+
+                const char* suggestedBidVolatilityLabel =
+                    "DEVELOPING";
+
+                if (
+                    suggestedBidVolatility != nullptr &&
+                    suggestedBidVolatility->available
+                    )
+                {
+                    switch (
+                        suggestedBidVolatility->level
+                        )
+                    {
+                    case VolatilityLevel::Calm:
+                        suggestedBidVolatilityLabel =
+                            "CALM";
+                        break;
+
+                    case VolatilityLevel::Normal:
+                        suggestedBidVolatilityLabel =
+                            "NORMAL";
+                        break;
+
+                    case VolatilityLevel::Active:
+                        suggestedBidVolatilityLabel =
+                            "ACTIVE";
+                        break;
+
+                    case VolatilityLevel::Wild:
+                        suggestedBidVolatilityLabel =
+                            "WILD";
+                        break;
+
+                    default:
+                        break;
+                    }
+                }
+
+                const MarketProwlSignalRow*
+                    suggestedBidProwlSignal =
+                    FindMarketProwlSignalForItem(
+                        item.itemID
+                    );
 
                 const float buySectionTopY =
                     ImGui::GetCursorPosY();
@@ -22927,18 +23532,6 @@ void TradingPostUI::RenderTab(
                         );
                     }
 
-                    ImGui::TextDisabled(
-                        "SELL SIGNAL"
-                    );
-
-                    ImGui::SameLine(
-                        125.0f
-                    );
-
-                    ImGui::TextDisabled(
-                        "Developing"
-                    );
-
                 }
                 else
                 {
@@ -22995,33 +23588,6 @@ void TradingPostUI::RenderTab(
                             trendDownColor;
                     }
 
-                    //
-                    // Keep the seller-facing signal consistent with the
-                    // displayed buy-order position.
-                    //
-                    const char* sellerSignal =
-                        "Typical";
-
-                    ImVec4 sellerSignalColor =
-                        attentionColor;
-
-                    if (buyVsAverage >= 1.0)
-                    {
-                        sellerSignal =
-                            "Favorable";
-
-                        sellerSignalColor =
-                            goodColor;
-                    }
-                    else if (buyVsAverage <= -1.0)
-                    {
-                        sellerSignal =
-                            "Weak";
-
-                        sellerSignalColor =
-                            trendDownColor;
-                    }
-
                     ImGui::TextDisabled(
                         "Avg"
                     );
@@ -23053,19 +23619,449 @@ void TradingPostUI::RenderTab(
                         buyVsAverage
                     );
 
+                }
+
+                //
+                // Suggested Bid replaces the older seller-facing signal row.
+                // It is a data-derived reference point, not a fill guarantee.
+                //
+                ImGui::BeginGroup();
+
+                ImGui::TextDisabled(
+                    "SUGGESTED BID"
+                );
+
+                ImGui::SameLine(
+                    125.0f
+                );
+
+                if (suggestedBidAvailable)
+                {
+                    DrawCoinValueColored(
+                        suggestedBidCopper,
+                        nullptr,
+                        ImGui::GetStyleColorVec4(
+                            ImGuiCol_Text
+                        )
+                    );
+                }
+                else
+                {
                     ImGui::TextDisabled(
-                        "SELL SIGNAL"
+                        "Developing"
+                    );
+                }
+
+                ImGui::EndGroup();
+
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::BeginTooltip();
+
+                    ImGui::PushTextWrapPos(
+                        ImGui::GetCursorPos().x +
+                        430.0f
                     );
 
-                    ImGui::SameLine(
-                        125.0f
+                    ImGui::TextColored(
+                        primaryViewPalette.accent,
+                        "SUGGESTED BID"
                     );
 
-                    DrawStatusBadge(
-                        sellerSignal,
-                        sellerSignalColor
+                    ImGui::TextWrapped(
+                        "A data-derived reference price for placing a buy order. "
+                        "It is not a prediction or a guaranteed fill price."
                     );
 
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
+
+                    if (suggestedBidAvailable)
+                    {
+                        ImGui::TextDisabled(
+                            "REFERENCE"
+                        );
+
+                        DrawCoinValueColored(
+                            suggestedBidCopper,
+                            nullptr,
+                            ImGui::GetStyleColorVec4(
+                                ImGuiCol_Text
+                            )
+                        );
+
+                        if (
+                            suggestedBidCappedToTop &&
+                            suggestedBidModelCopper > 0
+                            )
+                        {
+                            ImGui::Text(
+                                "Model value"
+                            );
+
+                            ImGui::SameLine(
+                                125.0f
+                            );
+
+                            DrawCoinValueColored(
+                                suggestedBidModelCopper,
+                                nullptr,
+                                ImGui::GetStyleColorVec4(
+                                    ImGuiCol_Text
+                                )
+                            );
+
+                            ImGui::TextDisabled(
+                                "Capped at current top bid + 1c"
+                            );
+                        }
+
+                        ImGui::Spacing();
+
+                        ImGui::TextDisabled(
+                            "MODEL"
+                        );
+
+                        ImGui::Text(
+                            "Basis"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::Text(
+                            "%s",
+                            suggestedBidModelLabel
+                        );
+
+                        ImGui::Text(
+                            "Coverage"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        ImGui::Text(
+                            "%.0f%% of %s",
+                            suggestedBidModelCoverage *
+                            100.0,
+                            FormatHistorySpan(
+                                suggestedBidModelWindowSeconds
+                            ).c_str()
+                        );
+
+                        ImGui::Spacing();
+
+                        ImGui::TextDisabled(
+                            "INPUTS"
+                        );
+
+                        ImGui::Text(
+                            "%s",
+                            suggestedBidAnchorLabel
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        DrawCoinValueColored(
+                            suggestedBidAnchorAverage,
+                            nullptr,
+                            ImGui::GetStyleColorVec4(
+                                ImGuiCol_Text
+                            )
+                        );
+
+                        if (suggestedBidUsed3mo)
+                        {
+                            ImGui::Text(
+                                "3mo avg buy"
+                            );
+
+                            ImGui::SameLine(
+                                125.0f
+                            );
+
+                            DrawCoinValueColored(
+                                suggestedBid3moStats.averageSell,
+                                nullptr,
+                                ImGui::GetStyleColorVec4(
+                                    ImGuiCol_Text
+                                )
+                            );
+                        }
+
+                        ImGui::Text(
+                            "7d trend"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        if (
+                            suggestedBid7dTrend.available
+                            )
+                        {
+                            ImGui::Text(
+                                "%+.2f%%  ->  %+.2f%% adjustment",
+                                suggestedBid7dTrend.percentChange,
+                                suggestedBidMomentumAdjustmentPercent
+                            );
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "Developing"
+                            );
+                        }
+
+                        ImGui::Text(
+                            "%s volatility",
+                            suggestedBidVolatilityWindowLabel
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        if (
+                            suggestedBidVolatility != nullptr &&
+                            suggestedBidVolatility->available
+                            )
+                        {
+                            if (
+                                suggestedBidVolatilityAdjustmentPercent !=
+                                0.0
+                                )
+                            {
+                                ImGui::Text(
+                                    "%s  (%+.2f%% adjustment)",
+                                    suggestedBidVolatilityLabel,
+                                    suggestedBidVolatilityAdjustmentPercent
+                                );
+                            }
+                            else
+                            {
+                                ImGui::Text(
+                                    "%s  (no adjustment)",
+                                    suggestedBidVolatilityLabel
+                                );
+                            }
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "Developing"
+                            );
+                        }
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        ImGui::TextDisabled(
+                            "CURRENT MARKET"
+                        );
+
+                        ImGui::Text(
+                            "Highest buy"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        DrawCoinValueColored(
+                            price.buyUnitPrice,
+                            nullptr,
+                            buyColor
+                        );
+
+                        if (
+                            price.buyUnitPrice > 0 &&
+                            suggestedBidCopper > 0
+                            )
+                        {
+                            const int64_t
+                                suggestedBidCurrentDifference =
+                                static_cast<int64_t>(
+                                    price.buyUnitPrice
+                                    ) -
+                                static_cast<int64_t>(
+                                    suggestedBidCopper
+                                    );
+
+                            const double
+                                suggestedBidCurrentDifferencePercent =
+                                (
+                                    static_cast<double>(
+                                        suggestedBidCurrentDifference
+                                        ) /
+                                    static_cast<double>(
+                                        suggestedBidCopper
+                                        )
+                                    ) *
+                                100.0;
+
+                            ImGui::Text(
+                                "Top vs suggested"
+                            );
+
+                            ImGui::SameLine(
+                                125.0f
+                            );
+
+                            DrawSignedCoinDeltaColored(
+                                suggestedBidCurrentDifference,
+                                ImGui::GetStyleColorVec4(
+                                    ImGuiCol_Text
+                                )
+                            );
+
+                            ImGui::SameLine(
+                                0.0f,
+                                6.0f
+                            );
+
+                            ImGui::Text(
+                                "(%+.2f%%)",
+                                suggestedBidCurrentDifferencePercent
+                            );
+                        }
+
+                        ImGui::Text(
+                            "Lowest sell"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        DrawCoinValueColored(
+                            price.sellUnitPrice,
+                            nullptr,
+                            sellColor
+                        );
+
+                        if (
+                            price.sellUnitPrice >
+                            price.buyUnitPrice &&
+                            price.sellUnitPrice > 0
+                            )
+                        {
+                            const double suggestedBidSpreadPercent =
+                                (
+                                    static_cast<double>(
+                                        price.sellUnitPrice -
+                                        price.buyUnitPrice
+                                        ) /
+                                    static_cast<double>(
+                                        price.sellUnitPrice
+                                        )
+                                    ) *
+                                100.0;
+
+                            ImGui::Text(
+                                "Spread"
+                            );
+
+                            ImGui::SameLine(
+                                125.0f
+                            );
+
+                            ImGui::Text(
+                                "%.2f%%",
+                                suggestedBidSpreadPercent
+                            );
+                        }
+
+                        ImGui::Text(
+                            "Prowl"
+                        );
+
+                        ImGui::SameLine(
+                            125.0f
+                        );
+
+                        if (
+                            suggestedBidProwlSignal !=
+                            nullptr
+                            )
+                        {
+                            ImGui::Text(
+                                "%s",
+                                GetMarketProwlShortLabel(
+                                    suggestedBidProwlSignal->
+                                    signalType
+                                )
+                            );
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled(
+                                "NO SIGNAL"
+                            );
+                        }
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        ImGui::TextDisabled(
+                            "METHOD"
+                        );
+
+                        ImGui::TextWrapped(
+                            "Copper&Claw adapts to the history already available for this item: "
+                            "7d uses a recent-data model, 30d uses the 30d average, and 90d+ "
+                            "uses 70%% of the 30d average plus 30%% of the 3mo average."
+                        );
+
+                        ImGui::TextWrapped(
+                            "20%% of the 7d price trend is applied as recent momentum, capped at +/-2%%."
+                        );
+
+                        ImGui::TextWrapped(
+                            "ACTIVE volatility trims 0.5%% and WILD trims 1.0%%. "
+                            "Prowl and spread are shown as context and do not change the calculation."
+                        );
+
+                        ImGui::TextWrapped(
+                            "Suggested Bid uses cached/Collector history already available and does not "
+                            "trigger the 1-year GW2TP history request."
+                        );
+
+                        ImGui::TextWrapped(
+                            "If the model value is above the current market, Suggested Bid is capped "
+                            "at the current highest buy order + 1 copper so it does not suggest paying "
+                            "more than is needed to take the top visible bid."
+                        );
+
+                        ImGui::TextWrapped(
+                            "The suggested bid is also kept below the current lowest sell listing."
+                        );
+                    }
+                    else
+                    {
+                        ImGui::TextWrapped(
+                            "Suggested Bid starts after at least 7 days of usable buy-order history. "
+                            "It will automatically upgrade to the 30d and full 30d + 3mo models as "
+                            "more history becomes available."
+                        );
+
+                        ImGui::TextWrapped(
+                            "This does not trigger the 1-year GW2TP history request."
+                        );
+                    }
+
+                    ImGui::PopTextWrapPos();
+
+                    ImGui::EndTooltip();
                 }
 
                 //
@@ -23703,8 +24699,8 @@ void TradingPostUI::RenderTab(
                     else
                     {
                         ImGui::TextColored(
-                            goodColor,
-                            "CALM"
+                            mutedColor,
+                            "NO SIGNAL"
                         );
 
                         ImGui::SameLine(
@@ -23713,7 +24709,7 @@ void TradingPostUI::RenderTab(
                         );
 
                         ImGui::TextDisabled(
-                            "Nothing unusual"
+                            "No unusual activity detected"
                         );
 
                         if (ImGui::IsItemHovered())
@@ -23738,8 +24734,8 @@ void TradingPostUI::RenderTab(
                             ImGui::Spacing();
 
                             ImGui::TextColored(
-                                goodColor,
-                                "CALM"
+                                mutedColor,
+                                "NO SIGNAL"
                             );
 
                             ImGui::SameLine(
@@ -23748,7 +24744,7 @@ void TradingPostUI::RenderTab(
                             );
 
                             ImGui::TextWrapped(
-                                "No unusual market behavior is being detected right now."
+                                "No unusual market activity is being detected right now."
                             );
 
                             ImGui::PopTextWrapPos();

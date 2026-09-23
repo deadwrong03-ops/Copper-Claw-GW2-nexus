@@ -15,6 +15,181 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+## 2026-09-22 — Paginated Prowl Feed, Adaptive Suggested Bid & Market Snapshot Polish
+
+Completed the next Copper&Claw market-analysis checkpoint with full Prowl pagination, improved Prowl strength differentiation, adaptive Suggested Bid pricing, and clearer wording between Prowl state and volatility.
+
+### Collector `/signals` pagination
+
+The Collector signal endpoint now supports:
+
+```text
+limit
+offset
+hasMore
+nextOffset
+```
+
+The per-request safety limit remains 500 rows, but callers can page beyond it.
+
+Local validation of the active feed returned:
+
+```text
+Page 1: 500 rows, hasMore=true,  nextOffset=500
+Page 2: 116 rows, hasMore=false
+Duplicate IDs across pages: 0
+```
+
+The updated Collector was deployed to the hosted VPS and the public HTTPS endpoint was validated with the new pagination metadata.
+
+**Result: PASS — PAGINATED COLLECTOR SIGNAL API LIVE**
+
+### Prowl Radar pagination
+
+Copper&Claw now pages active and resolved Prowl feeds independently:
+
+```text
+/signals?status=active&limit=500&offset=...
+/signals?status=resolved&limit=500&offset=...
+```
+
+The addon follows `hasMore` / `nextOffset` until each feed is complete.
+
+The previous user-facing `500 (cap)`, `(cap)`, and **FEED LIMIT** states are no longer used because the addon is no longer intentionally stopping at the first 500 rows.
+
+In-game validation exceeded the old cap, including active counts above 500, while the Radar continued to render the top matching cards normally.
+
+**Result: PASS — RADAR NO LONGER TRUNCATED AT 500**
+
+### Market Prowl strength scoring
+
+The Collector-side Prowl strength calculation was adjusted to reduce saturation at `100` without changing signal types, detection thresholds, confirmation rules, or the 5-copper cheap-item floor.
+
+Current behavior:
+
+- quality scoring uses slower diminishing returns
+- persistence begins after the normal 3-scan confirmation
+- persistence adds +1 per additional scan, capped at +5
+- ordinary signals cap at 99
+- 100 is reserved for an exceptionally strong raw signal that persists for at least 9 consecutive scans
+
+Fresh validation produced differentiated strengths in the high-60s instead of a wall of 100s, and later active-feed checks showed no newly generated signals at 100.
+
+**Result: PASS — MOST SIGNIFICANT SORT HAS BETTER DIFFERENTIATION**
+
+### Suggested Bid
+
+Added **Suggested Bid** to the existing Buy Orders card by replacing the older seller-facing signal row rather than adding another panel.
+
+Suggested Bid is a data-derived reference price, not a fill guarantee or prediction.
+
+The model is adaptive so new Collector installations do not require 30 or 90 days of locally collected data before the feature becomes useful:
+
+- less than 7 days usable history → **Developing**
+- 7 to 29 days → **Recent 7d**
+- 30 to 89 days → **30d**
+- 90 days or more → full **30d + 3mo**
+
+The full model uses:
+
+- 70% of the 30-day average buy price
+- 30% of the 3-month average buy price
+- 20% of the measured 7-day trend as a momentum adjustment, capped at +/-2%
+- -0.5% adjustment for **ACTIVE** volatility
+- -1.0% adjustment for **WILD** volatility
+
+Suggested Bid builds its own history view and is independent of whichever Trend Window the player is currently viewing.
+
+It uses history already available to Copper&Claw and **does not automatically invoke the 1-year / GW2TP gap-fill request** merely because Suggested Bid is visible.
+
+If the model value is above the current market, the displayed suggestion is capped at:
+
+```text
+current highest buy order + 1 copper
+```
+
+This avoids suggesting that the player pay more than is needed to become the top visible bidder. When the cap is applied, the tooltip still exposes the underlying model-derived value.
+
+The tooltip also shows:
+
+- model basis
+- model coverage
+- relevant historical average(s)
+- 7-day trend and applied momentum adjustment
+- volatility and any volatility adjustment
+- current highest buy order
+- signed **Top vs suggested** coin / percentage difference
+- current lowest sell listing
+- spread
+- Prowl context
+
+Testing with high-value and low-value items confirmed the suggestion updates when market conditions change without simply mirroring the current top bid.
+
+**Result: PASS — ADAPTIVE SUGGESTED BID VALIDATED IN GAME**
+
+### Buyer View wording
+
+The older **BUY SIGNAL** label in Sell Listings was renamed to **BUYER VIEW**.
+
+The underlying selected-window interpretation remains:
+
+- **Favorable** — at least 1% below average
+- **Typical** — within 1% of average
+- **Caution** — at least 1% above average
+- **Developing** — insufficient reliable data
+
+A hover tooltip now explains the labels and explicitly describes Buyer View as descriptive context rather than a prediction.
+
+**Result: PASS — CLEARER NON-DIRECTIVE WORDING**
+
+### Market Prowl idle wording
+
+The Item Analysis snapshot previously used:
+
+```text
+CALM — Nothing unusual
+```
+
+for the absence of an active Prowl event.
+
+That wording could look contradictory beside **Volatility: ACTIVE** or **Volatility: WILD**, even though Prowl and volatility measure different things.
+
+The idle Prowl state is now:
+
+```text
+NO SIGNAL — No unusual activity detected
+```
+
+and uses a neutral / muted treatment rather than a positive green state.
+
+The same **NO SIGNAL** wording is used in the Watchlist Heatmap Prowl fallback and the Suggested Bid tooltip. **Volatility: CALM** remains unchanged because CALM is still a valid volatility classification.
+
+**Result: PASS — PROWL STATE AND VOLATILITY ARE NOW SEMANTICALLY DISTINCT**
+
+### Minor tooltip polish
+
+The Prowl card order-book tooltip value column was widened so longer labels such as **SELL LISTINGS** and **BUY ORDERS** no longer crowd their values.
+
+No market calculations were changed by this spacing adjustment.
+
+### Current checkpoint
+
+Validated in-game:
+
+- paginated hosted Prowl feed
+- active Radar counts above the old 500-row boundary
+- no user-facing FEED LIMIT state
+- adaptive Suggested Bid
+- current-top-bid + 1c cap
+- Suggested Bid model value retained in tooltip when capped
+- Buyer View wording and hover explanation
+- Market Prowl **NO SIGNAL** idle wording
+- Release x64 builds and current Trading Post UI render normally
+
+**Result: PASS — READY FOR SOURCE CONTROL CHECKPOINT**
+
+---
+
 ## 2026-09-20 — Prowl Radar, Follow List & Watchlist Heatmap
 
 Expanded the addon-side market intelligence workflow around Market Prowl and the Watchlist.
@@ -65,15 +240,17 @@ separately and merges the results for presentation.
 
 This preserves room for the **Resolved 24h** view even when the active side is very large.
 
-The Collector currently caps each query at 500 rows. Radar now treats that as an explicit presentation limitation:
+At this 2026-09-20 checkpoint, the Collector still capped each query at 500 rows. Radar therefore treated that as an explicit presentation limitation:
 
-- affected counts show `(cap)`
-- the header shows **FEED LIMIT**
-- the UI no longer implies that a capped count is the complete market total
+- affected counts showed `(cap)`
+- the header showed **FEED LIMIT**
+- the UI did not imply that a capped count represented the complete market total
 
 In-game validation showed the active query reaching `500 (cap)` while the Radar continued to render normally and expose the limitation.
 
-**Result: PASS — FEED LIMIT MADE EXPLICIT**
+**Result: PASS — FEED LIMIT MADE EXPLICIT AT THIS CHECKPOINT**
+
+> **Superseded 2026-09-22:** Collector `/signals` pagination and addon-side paging now retrieve the complete active and resolved feeds. The user-facing FEED LIMIT / `(cap)` state was removed.
 
 ### Persistent Prowl Follow List
 
@@ -185,12 +362,12 @@ Validated in-game:
 - overlapping Heatmap text was corrected
 - Release x64 build passes after the final Heatmap layout fix
 
-Known follow-up:
+Follow-ups from this checkpoint were completed on 2026-09-22:
 
-- Market Prowl signal-strength scoring can still saturate at `100`, reducing differentiation in **Most Significant** sorting
-- Collector signal pagination / a queryable result model would eventually remove the current 500-row Radar feed cap
+- Prowl strength scoring was reworked to reduce `100` saturation and restore differentiation in **Most Significant**
+- Collector `/signals` pagination plus addon-side paging removed the old 500-row Radar truncation
 
-**Result: PASS — READY FOR SOURCE CONTROL CHECKPOINT**
+**Result: PASS — FOLLOW-UPS COMPLETED IN THE 2026-09-22 CHECKPOINT**
 
 ---
 

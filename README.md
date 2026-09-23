@@ -38,11 +38,12 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Configurable Collector host, port, and HTTP/HTTPS connection settings
 - Automatic migration from legacy `localhost:5177` and `127.0.0.1:5177` HTTP defaults
 - Bounded Collector history and completed-snapshot requests instead of unbounded lifetime downloads
-- On-demand **1 Year** history with Collector-first coverage and cached GW2TP gap filling when older coverage is missing
+- On-demand long-window history for **6 Months / 1 Year**, with Collector-first coverage and cached GW2TP gap filling when older coverage is missing
 - Compact Collector status line showing connection state, active price source, analysis source, last successful contact, and last completed scan age
 - Search items without requiring manual item IDs
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
+- Adaptive **Suggested Bid** reference pricing that matures from recent 7-day data into 30-day and 3-month context as history grows
 - Time-normalized **Avg** and local **Roll Avg** chart references
 - Compact **Market Depth** order-book diagnostics for Sell Listings and Buy Orders
 - **Prowl Radar** live scanner for unusual whole-market price/depth behavior
@@ -178,7 +179,16 @@ Copper&Claw separates the two sides of the Trading Post market while keeping sup
 - % movement
 - selected-window average
 - price position
-- buyer-facing signal
+- **Buyer View**
+
+**Buyer View** summarizes the current lowest sell listing relative to the selected Trend Window average:
+
+- **Favorable** — at least 1% below average
+- **Typical** — within 1% of average
+- **Caution** — at least 1% above average
+- **Developing** — insufficient reliable selected-window data
+
+Buyer View is descriptive context, not a prediction of where the price will move next.
 
 ### Buy Orders
 
@@ -186,9 +196,26 @@ Copper&Claw separates the two sides of the Trading Post market while keeping sup
 - % movement
 - selected-window average
 - price position
-- seller-facing signal
+- **Suggested Bid**
 
-Buyer- and seller-facing signals are kept consistent with the displayed Price Position. For example, a Sell Listing that is above its recent average will not simultaneously be labeled favorable for buyers.
+### Suggested Bid
+
+**Suggested Bid** is a data-derived reference price for placing a buy order. It is intended to expose the market context and leave the final decision to the player; it is not a prediction or a guaranteed fill price.
+
+The model adapts to the history already available for that item:
+
+- less than 7 days of usable history — **Developing**
+- 7 to 29 days — **Recent 7d** model
+- 30 to 89 days — **30d** model
+- 90 days or more — full **30d + 3mo** model
+
+The full model uses the 30-day average as the primary fair-value anchor, with 70% weight on the 30-day average and 30% on the 3-month average. A small 7-day momentum adjustment is applied at 20% of the measured move and capped at +/-2%. **ACTIVE** volatility trims 0.5% and **WILD** volatility trims 1.0%.
+
+Suggested Bid uses history already available to Copper&Claw and **does not itself trigger the 1-year / GW2TP gap-fill request**.
+
+If the model-derived value is above the current market, the displayed Suggested Bid is capped at **current highest buy order + 1 copper** so the addon does not suggest paying more than is needed to take the top visible bid. When this cap is used, the underlying model value remains visible in the hover tooltip. Suggested Bid is also kept below the current lowest sell listing.
+
+The hover tooltip exposes the model basis, coverage, historical inputs, volatility adjustment, current highest buy order, lowest sell listing, spread, Prowl context, and the signed difference between the current top bid and the Suggested Bid.
 
 ### Avg & Roll Avg
 
@@ -235,13 +262,13 @@ Current sort options include:
 
 Radar cards show current Sell / Buy prices, movement, first-seen time, status, item details, and Follow state. Card actions can jump to an already watched item, add an item to the Watchlist, refresh its price, or follow it for 24 hours, 48 hours, or until manually removed.
 
-Active and resolved signals are requested separately from the Collector. This prevents a full active result set from crowding resolved events out of the Radar feed.
+Active and resolved signals are requested separately from the Collector. This prevents a large active result set from crowding resolved events out of the Radar feed.
 
-The Collector signal endpoint currently caps each query at 500 rows. When either the active or resolved query reaches that cap, Radar displays **FEED LIMIT** and marks the affected count with `(cap)` instead of implying the visible count represents the entire market.
+The Collector `/signals` endpoint is paginated with `limit` + `offset`. Each individual request remains capped at 500 rows, while Copper&Claw automatically follows `hasMore` / `nextOffset` until the active or resolved feed is complete. Active and resolved feeds are paged independently, so Radar is no longer intentionally truncated at 500 rows and the old user-facing **FEED LIMIT** / `(cap)` presentation is no longer used.
 
 Tiny-price percentage noise is also filtered from Radar presentation so economically trivial copper moves do not dominate the card set.
 
-The Item Analysis snapshot continues to show the selected item's current Prowl state.
+The Item Analysis snapshot continues to show the selected item's current Prowl state. When no active Prowl event is detected, the snapshot shows **NO SIGNAL — No unusual activity detected**. This is intentionally separate from **Market Volatility**: an item can be ACTIVE or WILD in volatility while Prowl still reports NO SIGNAL if no breakout, breakdown, supply squeeze, or dislocation is currently confirmed.
 
 Confirmed Prowl events are drawn as purple historical markers on both the Sell and Buy charts so both sides of the market can be inspected at the event timestamp. The marker does not mean both sides moved; it marks the same market event on each chart for comparison.
 
@@ -362,7 +389,7 @@ Current behavior:
 - uses the combined available history for trends and analysis
 - newly watched items can immediately gain earlier history already collected by the Collector
 - continues working from local history if the Collector is unavailable
-- can request additional 1-year history on demand when the **1 Year** Trend Window is selected
+- can request additional 1-year history on demand when a **6 Months** or **1 Year** Trend Window needs older coverage
 
 If the Collector has never observed an item, Copper&Claw begins with whatever history is available locally.
 
@@ -445,7 +472,7 @@ Current integration behavior:
 - bounded history requests are used instead of downloading unlimited lifetime history for routine analysis
 - completed Collector scan timestamps are used to measure selected-window coverage and reconstruct unchanged-price observations
 - completed-snapshot requests are time-bounded rather than downloading the Collector's entire scan timeline
-- explicit **1 Year** history requests are handled on demand
+- explicit long-window **6 Months / 1 Year** history requests are handled on demand
 - the Collector checks its own 1-year coverage before considering the cached GW2TP fallback
 - GW2TP is used only to fill older missing 1-year history and is not continuously polled by Copper&Claw
 - Collector data remains authoritative where Collector and cached GW2TP history overlap
