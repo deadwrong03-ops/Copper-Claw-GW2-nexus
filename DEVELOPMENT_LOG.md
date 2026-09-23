@@ -15,6 +15,153 @@ Current development builds may contain features or improvements that have not ye
 
 ---
 
+## 2026-09-23 — Automatic Watchlist Categories, My Bid & Theme Refresh
+
+Completed the next Copper&Claw UI/persistence checkpoint with automatic Watchlist category filtering, a persistent manual My Bid reference, and a full visual-theme refresh.
+
+### Automatic Watchlist categories
+
+Replaced the manual Watchlist folder/group workflow with compact automatic category filters derived from Guild Wars 2 item metadata in the local searchable item index.
+
+Current filters:
+
+- `ALL`
+- `WEAP`
+- `ARMOR`
+- `DYES`
+- `CONS`
+- `MATS`
+- `UPGR`
+- `TRINK`
+- `OTHER`
+
+Behavior:
+
+- categories are display filters only
+- no manual Move to Group workflow is required
+- no Ungrouped maintenance is required
+- the filter is session-only and defaults to `ALL` at launch
+- adding a new watched item switches to that item's category so the new item does not appear to disappear
+- filtering works with the existing Watchlist presentation
+- Favorites remain independent and can be combined with category filtering
+- the category strip stays inside the Watchlist pane and does not push Item Analysis / Trend Window farther down the page
+
+The item-index metadata/cache path was extended so automatic classification can use item type/subtype information and dye unlock metadata while preserving the existing indexed tooltip metadata.
+
+A first category-header sizing pass clipped `ARMOR`. The strip was tightened without increasing height; in-game validation confirmed all category labels fit on one row and the Trend Window remains fully visible.
+
+**Result: PASS — COMPACT AUTO-CATEGORY WATCHLIST VALIDATED IN GAME**
+
+### My Bid
+
+Added a persistent per-item **My Bid** row to the existing Buy Orders card.
+
+My Bid is deliberately separate from Suggested Bid:
+
+- player enters any gold / silver / copper value manually
+- **Use Suggested** can copy the current Suggested Bid as a one-time convenience
+- the saved value does not track later Suggested Bid changes
+- **Edit** and **Clear** remain available
+- hover context compares My Bid with the current highest buy order and Suggested Bid
+- saved timestamp/age is retained
+- the feature is local only and does not claim that a Trading Post order is active, filled, or owned by the player
+
+In-game persistence validation included:
+
+- switching watched items
+- switching Trend Windows
+- multiple Guild Wars 2 restarts
+
+The saved My Bid remained unchanged through all tested cases.
+
+**Result: PASS — MY BID PERSISTENCE VALIDATED**
+
+### Theme refresh
+
+Reworked the Trading Post visual-theme identities around the current Guild Wars 2 release/Living World color direction and added **Guild Wars 2 Core**.
+
+Current selector order is story-chronological:
+
+- Guild Wars 2 Core
+- Scarlet's War (LWS1)
+- Glint's Prophecy (LWS2)
+- Heart of Thorns
+- Glint's Legacy (LWS3)
+- Path of Fire
+- Rise of Kralkatorrik (LWS4)
+- The Icebrood Saga
+- End of Dragons
+- Secrets of the Obscure
+- Janthir Wilds
+- Visions of Eternity
+- Cyberpunk 2077
+
+Existing stored numeric theme IDs were preserved; only the selector presentation order was remapped.
+
+Theme direction now includes:
+
+- Core — crimson / ink / white
+- LWS1 — Scarlet red / toxic lime / molten orange
+- LWS2 — amber / sandstone / dry gold
+- Heart of Thorns — jungle green / bright yellow / Auric gold
+- LWS3 — Bloodstone coral / ash grey / Bloodstone glow
+- Path of Fire — Elonian purple / warm orange / desert gold
+- LWS4 — Brand fuchsia / crystal purple / branded cyan
+- Icebrood Saga — icy blue / blood red / frost white
+- End of Dragons — jade teal / seafoam / cyan
+- Secrets of the Obscure — astral gold / shadow purple / amber
+- Janthir Wilds — moss green / deep blue / ochre
+- Visions of Eternity — nebula pink / violet / ethereal blue
+- Cyberpunk 2077 — cyan-forward controls with acid-yellow identity accents and red danger accents
+
+Cyberpunk was specifically corrected so the interface is no longer visually dominated by yellow.
+
+Sell remains green and Buy remains blue across every cosmetic theme.
+
+**Result: PASS — THEME REFRESH VALIDATED IN GAME**
+
+### Compact-control polish
+
+Polished the small Watchlist action button and category strip after in-game review:
+
+- quieter idle `...` action button
+- theme-aware hover/interaction styling
+- stronger selected-category treatment
+- selected-category underline
+- category spacing tuned without increasing row height
+- `ARMOR` clipping corrected
+
+**Result: PASS**
+
+### Build / compatibility correction
+
+The first automatic-category item-index header accidentally regressed existing indexed tooltip fields (`itemSubtype`, `rarity`, `level`, and `tooltipText`), producing compile errors in `TradingPostUI.cpp`.
+
+The header/index implementation was corrected to preserve all existing tooltip metadata while adding the category metadata required by the new Watchlist filter.
+
+Release x64 rebuild passed after the correction.
+
+**Result: BUILD PASS**
+
+### Current checkpoint
+
+Validated:
+
+- Release x64 build
+- automatic category filtering
+- compact one-row category strip
+- no added Trend Window scrolling
+- My Bid persistence
+- My Bid independence from Suggested Bid
+- refreshed theme palettes
+- Cyberpunk no longer all-yellow
+- story/LWS theme naming and selector order
+- existing indexed item tooltip metadata retained
+
+**Result: PASS — READY FOR SOURCE CONTROL CHECKPOINT**
+
+---
+
 ## 2026-09-22 — Paginated Prowl Feed, Adaptive Suggested Bid & Market Snapshot Polish
 
 Completed the next Copper&Claw market-analysis checkpoint with full Prowl pagination, improved Prowl strength differentiation, adaptive Suggested Bid pricing, and clearer wording between Prowl state and volatility.

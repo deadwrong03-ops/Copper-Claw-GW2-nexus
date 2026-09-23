@@ -66,6 +66,22 @@ struct CopperAndClawSettings
     std::unordered_map<uint32_t, uint64_t>
         tradingPostProwlFollowExpirations;
 
+    //
+    // Per-item My Bid references.
+    //
+    // These are manual, local price markers chosen by the player. They are
+    // intentionally independent from Suggested Bid and are not claimed to be
+    // active Trading Post orders.
+    //
+    // Key   = GW2 item ID
+    // Value = saved bid in copper / saved-at Unix timestamp
+    //
+    std::unordered_map<uint32_t, uint64_t>
+        tradingPostMyBidCopper;
+
+    std::unordered_map<uint32_t, uint64_t>
+        tradingPostMyBidSavedAtUnixSeconds;
+
     // Trading Post watch-list view density:
     // 0 = Normal
     // 1 = Slim
@@ -76,7 +92,7 @@ struct CopperAndClawSettings
 
     // Trading Post visual theme:
     // 0 = Janthir Wilds
-    // 1 = Cyberpunk 2077
+    // 1 = Cyberpunk 2077 (bonus theme)
     // 2 = Heart of Thorns
     // 3 = Path of Fire
     // 4 = End of Dragons
@@ -87,9 +103,11 @@ struct CopperAndClawSettings
     // 9 = Living World Season 3
     // 10 = Living World Season 4
     // 11 = The Icebrood Saga
+    // 12 = Guild Wars 2 Core
     //
-    // Existing theme indices are intentionally preserved.
-    // Janthir Wilds remains the default/release-candidate theme.
+    // Existing theme indices are intentionally preserved for backward
+    // compatibility. Core is appended as a new theme rather than shifting
+    // saved theme selections.
     int tradingPostThemeIndex = 0;
 
     // Automatic backup settings:

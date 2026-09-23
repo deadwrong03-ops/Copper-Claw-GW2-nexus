@@ -278,6 +278,88 @@ bool Settings::Load(
             }
             else if (
                 key ==
+                "tradingPostMyBids"
+                )
+            {
+                g_Settings.tradingPostMyBidCopper.clear();
+                g_Settings.tradingPostMyBidSavedAtUnixSeconds.clear();
+
+                size_t entryStart = 0;
+
+                while (entryStart < value.size())
+                {
+                    const size_t entryEnd =
+                        value.find(',', entryStart);
+
+                    const std::string entry =
+                        value.substr(
+                            entryStart,
+                            entryEnd == std::string::npos
+                            ? std::string::npos
+                            : entryEnd - entryStart
+                        );
+
+                    const size_t firstSeparator =
+                        entry.find(':');
+
+                    const size_t secondSeparator =
+                        firstSeparator == std::string::npos
+                        ? std::string::npos
+                        : entry.find(':', firstSeparator + 1);
+
+                    if (firstSeparator != std::string::npos)
+                    {
+                        const uint32_t itemID =
+                            static_cast<uint32_t>(
+                                std::stoul(
+                                    entry.substr(0, firstSeparator)
+                                )
+                                );
+
+                        const uint64_t bidCopper =
+                            std::stoull(
+                                entry.substr(
+                                    firstSeparator + 1,
+                                    secondSeparator == std::string::npos
+                                    ? std::string::npos
+                                    : secondSeparator - firstSeparator - 1
+                                )
+                            );
+
+                        uint64_t savedAtUnixSeconds = 0;
+
+                        if (secondSeparator != std::string::npos)
+                        {
+                            savedAtUnixSeconds =
+                                std::stoull(
+                                    entry.substr(secondSeparator + 1)
+                                );
+                        }
+
+                        if (itemID > 0 && bidCopper > 0)
+                        {
+                            g_Settings.tradingPostMyBidCopper[itemID] =
+                                bidCopper;
+
+                            if (savedAtUnixSeconds > 0)
+                            {
+                                g_Settings
+                                    .tradingPostMyBidSavedAtUnixSeconds[itemID] =
+                                    savedAtUnixSeconds;
+                            }
+                        }
+                    }
+
+                    if (entryEnd == std::string::npos)
+                    {
+                        break;
+                    }
+
+                    entryStart = entryEnd + 1;
+                }
+            }
+            else if (
+                key ==
                 "tradingPostViewDensityIndex"
                 )
             {
@@ -408,7 +490,7 @@ bool Settings::Load(
         std::clamp(
             g_Settings.tradingPostThemeIndex,
             0,
-            11
+            12
         );
 
     g_Settings.backupIntervalIndex =
@@ -634,6 +716,65 @@ bool Settings::Save(
             << savedProwlFollows[index].first
             << ':'
             << savedProwlFollows[index].second;
+    }
+
+    file << '\n';
+
+    //
+    // Persist manual My Bid references in one deterministic line:
+    // tradingPostMyBids=itemID:copper:savedAt,itemID:copper:savedAt,...
+    //
+    std::vector<uint32_t> savedMyBidItemIDs;
+
+    savedMyBidItemIDs.reserve(
+        g_Settings.tradingPostMyBidCopper.size()
+    );
+
+    for (const auto& entry : g_Settings.tradingPostMyBidCopper)
+    {
+        if (entry.first > 0 && entry.second > 0)
+        {
+            savedMyBidItemIDs.push_back(entry.first);
+        }
+    }
+
+    std::sort(
+        savedMyBidItemIDs.begin(),
+        savedMyBidItemIDs.end()
+    );
+
+    file << "tradingPostMyBids=";
+
+    for (size_t index = 0; index < savedMyBidItemIDs.size(); ++index)
+    {
+        if (index > 0)
+        {
+            file << ',';
+        }
+
+        const uint32_t itemID =
+            savedMyBidItemIDs[index];
+
+        uint64_t savedAtUnixSeconds = 0;
+
+        const auto savedAtIt =
+            g_Settings.tradingPostMyBidSavedAtUnixSeconds.find(itemID);
+
+        if (
+            savedAtIt !=
+            g_Settings.tradingPostMyBidSavedAtUnixSeconds.end()
+            )
+        {
+            savedAtUnixSeconds =
+                savedAtIt->second;
+        }
+
+        file
+            << itemID
+            << ':'
+            << g_Settings.tradingPostMyBidCopper.at(itemID)
+            << ':'
+            << savedAtUnixSeconds;
     }
 
     file << '\n';

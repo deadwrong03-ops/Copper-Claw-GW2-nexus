@@ -2502,6 +2502,12 @@ namespace
                                 "type",
                                 item.itemSubtype
                             );
+
+                            ExtractJsonString(
+                                detailsObject,
+                                "unlock_type",
+                                item.unlockType
+                            );
                         }
 
                         item.tooltipText =
@@ -2693,9 +2699,14 @@ namespace
                     record.item.tooltipText
                 );
 
+            const std::string safeUnlockType =
+                SanitizeCacheSingleLine(
+                    record.item.unlockType
+                );
+
             // Current cache format:
             // itemID, name, variantLabel, iconUrl, itemType, itemSubtype,
-            // rarity, level, tooltipText.
+            // rarity, level, tooltipText, unlockType.
             file
                 << record.item.itemID
                 << '\t'
@@ -2714,6 +2725,8 @@ namespace
                 << record.item.level
                 << '\t'
                 << safeTooltip
+                << '\t'
+                << safeUnlockType
                 << '\n';
         }
 
@@ -2889,6 +2902,21 @@ namespace
                         DecodeCacheMultiline(
                             fields[8]
                         );
+
+                    if (fields.size() >= 10)
+                    {
+                        item.unlockType =
+                            fields[9];
+                    }
+                    else
+                    {
+                        // The previous tooltip-aware cache did not include
+                        // unlock_type. Keep it usable immediately, but mark
+                        // it stale so a background rebuild can populate dye
+                        // category metadata without losing hover details.
+                        legacyCacheFormat =
+                            true;
+                    }
                 }
                 else
                 {
@@ -3184,9 +3212,14 @@ namespace
                     );
 
                 //
-                // On the first-ever build there is no cache to search.
-                // Publish completed batches as they arrive so autocomplete
-                // becomes useful before the full catalog has finished.
+                // Publish each completed metadata batch immediately.
+                //
+                // If this is the first-ever build, append the new records just
+                // like before. If an older usable cache is already loaded,
+                // replace matching records in-place as their fresh metadata
+                // arrives. This is important for hover tooltips: otherwise an
+                // old icon-capable cache remains visible with empty tooltip
+                // fields until the entire catalog rebuild finishes.
                 //
                 if (!hadUsableIndex)
                 {
@@ -3199,10 +3232,58 @@ namespace
                             batchRecords.end()
                         )
                     );
-
-                    g_IndexReady =
-                        !g_Index.empty();
                 }
+                else
+                {
+                    for (
+                        IndexedRecord& freshRecord :
+                        batchRecords
+                        )
+                    {
+                        const uint32_t freshItemID =
+                            freshRecord.item.itemID;
+
+                        const auto existing =
+                            std::lower_bound(
+                                g_Index.begin(),
+                                g_Index.end(),
+                                freshItemID,
+                                [](
+                                    const IndexedRecord& record,
+                                    uint32_t value
+                                    )
+                                {
+                                    return
+                                        record.item.itemID <
+                                        value;
+                                }
+                            );
+
+                        if (
+                            existing != g_Index.end() &&
+                            existing->item.itemID ==
+                            freshItemID
+                            )
+                        {
+                            *existing =
+                                std::move(
+                                    freshRecord
+                                );
+                        }
+                        else
+                        {
+                            g_Index.insert(
+                                existing,
+                                std::move(
+                                    freshRecord
+                                )
+                            );
+                        }
+                    }
+                }
+
+                g_IndexReady =
+                    !g_Index.empty();
             }
 
             std::this_thread::sleep_for(

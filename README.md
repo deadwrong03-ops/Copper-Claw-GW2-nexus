@@ -19,7 +19,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Watch multiple Trading Post items
 - Official Guild Wars 2 item icons beside watched items
 - Hover item icons for brief indexed item details and stats without making a new network request on hover
-- Persistent **Watchlist groups**: Ungrouped, Investments, Consumables, and Materials
+- Automatic **Watchlist category filters**: All, Weapons, Armor, Dyes, Consumables, Materials, Upgrades, Trinkets, and Other
 - Persistent per-item **Favorites**
 - **List / Heatmap** Watchlist presentation with compact market-state tiles
 - Persistent **Prowl Follow List** with 24-hour, 48-hour, or until-removed follow durations
@@ -32,7 +32,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Per-item **Buy Targets**
 - Independent Sell and Buy target alerts
 - Compact target display with dedicated **Edit Targets** controls
-- Persistent watch list, group assignments, targets, settings, and price history
+- Persistent watch list, Favorites, targets, **My Bid** references, settings, and price history
 - Optional integration with the standalone Copper&Claw Collector for broader historical data
 - Hosted Collector connection over HTTPS by default
 - Configurable Collector host, port, and HTTP/HTTPS connection settings
@@ -44,6 +44,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Variant-aware search for duplicate-name items
 - Separate **Sell Listings** and **Buy Orders** market analysis
 - Adaptive **Suggested Bid** reference pricing that matures from recent 7-day data into 30-day and 3-month context as history grows
+- Persistent per-item **My Bid** reference for remembering the price you personally chose without tying it to Suggested Bid
 - Time-normalized **Avg** and local **Roll Avg** chart references
 - Compact **Market Depth** order-book diagnostics for Sell Listings and Buy Orders
 - **Prowl Radar** live scanner for unusual whole-market price/depth behavior
@@ -95,7 +96,7 @@ Volatility sorting uses the same readiness rules as the **Market Volatility** ba
 
 ---
 
-## Watchlist Heatmap, Groups & Favorites
+## Watchlist Heatmap, Categories & Favorites
 
 Copper&Claw's Watchlist uses the current compact card layout and also includes a **Heatmap** presentation for quickly scanning watched items.
 
@@ -104,25 +105,33 @@ Heatmap tiles show the item icon, current Sell price, selected-window percentage
 Heatmap interaction remains fully functional:
 
 - left-click a tile to open that item in **Item Analysis**
-- right-click a tile for Favorite, Follow, Move to Group, Refresh Price, and Remove actions
+- right-click a tile for Favorite, Follow, Refresh Price, and Remove actions
 
 The Heatmap preference persists across Guild Wars 2 restarts.
 
 The Watchlist can also be collapsed into a narrow icon rail. Watched-item icons remain selectable from the rail so Item Analysis can still be switched without reopening the full list.
 
-Watched items can be organized into four groups:
+The old manual Watchlist folder/group workflow has been replaced with compact **automatic category filters**. Copper&Claw classifies watched items from the Guild Wars 2 item metadata stored in the local item index.
 
-- **Ungrouped**
-- **Investments**
-- **Consumables**
-- **Materials**
+Current category buttons:
 
-Items can be moved between groups from their watch-list controls. Group assignments are saved in `CopperAndClaw.ini` and survive a full Guild Wars 2 restart. Moving an item back to **Ungrouped** removes its saved group assignment, and removing a watched item also removes any stale group assignment.
+- **ALL**
+- **WEAP** — Weapons
+- **ARMOR** — Armor and back items
+- **DYES** — Dye unlocks
+- **CONS** — Consumables
+- **MATS** — Crafting materials and trophies
+- **UPGR** — Upgrade components
+- **TRINK** — Trinkets
+- **OTHER** — Items that do not fit the categories above
 
-Items can also be marked as **Favorites** using the star beside the item. **All Items** shows the complete watch list, while **Favorites** instantly filters the list to starred items only.
+Categories are display filters only. Items are not manually moved between folders, and there is no **Ungrouped** maintenance step.
 
-Favorites and group assignments are optional. Newly watched items begin ungrouped and do not require any organization before they can be tracked.
+The category filter is intentionally session-only and starts on **ALL** each launch. When a newly watched item is added while another category is selected, Copper&Claw switches to the new item's category so the item does not appear to vanish.
 
+The compact category strip stays inside the Watchlist pane and does not add another tall section above Item Analysis or push the **Trend Window** farther down the page.
+
+Items can also be marked as **Favorites** using the star beside the item. **All Items** shows the complete watch list, while **Favorites** filters the current category to starred items only.
 ### Prowl Follow List
 
 Any item surfaced by Prowl can be followed without permanently adding it to the Watchlist.
@@ -143,22 +152,27 @@ Follow state is addon-side and persisted in `CopperAndClaw.ini`.
 
 Copper&Claw includes a persistent Trading Post theme selector. Themes change the dashboard's visual identity while preserving the same layout, spacing, analysis behavior, and one-live-analysis performance model.
 
+The selector follows Guild Wars 2 story chronology, with **Cyberpunk 2077** kept at the bottom as a bonus alternate style.
+
 Available themes:
 
-- **Janthir Wilds** — blue / navy / ice
-- **Cyberpunk 2077** — acid yellow / cyan / red
-- **Heart of Thorns** — jungle green / foliage green / Auric gold
-- **Path of Fire** — desert orange / crimson / Elonian gold
-- **End of Dragons** — jade / pale jade
-- **Secrets of the Obscure** — wizard gold / indigo / violet
-- **Visions of Eternity** — magenta-forward with warm yellow / orange support
-- **Scarlet's War (LW1)** — Scarlet red / molten orange / industrial steel
-- **Glint's Prophecy (LW2)** — dry Maguuma olive / sandy gold / weathered earth
-- **Glint's Legacy (LW3)** — ley-line violet / electric blue / Bloodstone crimson
-- **Rise of Kralkatorrik (LW4)** — branded crystal violet / turquoise / deep amethyst
-- **The Icebrood Saga (LW5)** — glacial cyan / frost-white / deep navy
+- **Guild Wars 2 Core** — crimson red / ink black / white
+- **Scarlet's War (LWS1)** — Scarlet red / toxic lime / molten orange
+- **Glint's Prophecy (LWS2)** — amber gold / sandstone brown / dry gold
+- **Heart of Thorns** — jungle green / bright yellow / Auric gold
+- **Glint's Legacy (LWS3)** — Bloodstone coral / ash grey / Bloodstone glow
+- **Path of Fire** — Elonian purple / warm orange / desert gold
+- **Rise of Kralkatorrik (LWS4)** — Brand fuchsia / crystal purple / branded cyan
+- **The Icebrood Saga** — icy blue / blood red / frost white
+- **End of Dragons** — jade teal / seafoam / cyan
+- **Secrets of the Obscure** — astral gold / shadow purple / amber
+- **Janthir Wilds** — forest moss green / deep blue / ochre
+- **Visions of Eternity** — nebula pink / violet / ethereal blue
+- **Cyberpunk 2077** — cyan-forward controls with acid yellow identity accents and red danger accents
 
-The selected theme persists across Guild Wars 2 restarts.
+The theme refresh uses the same visual identity across major panels, compact controls, category buttons, popups, hover/active states, and **My Bid** controls instead of allowing small controls to fall back to unrelated default ImGui colors.
+
+The selected theme persists across Guild Wars 2 restarts. Existing saved numeric theme IDs remain compatible even though the selector presentation order changed.
 
 Trading Post market-side colors remain semantic across every theme:
 
@@ -166,7 +180,6 @@ Trading Post market-side colors remain semantic across every theme:
 - **Buy** stays blue
 
 This keeps Sell / Buy information immediately recognizable even when the surrounding dashboard palette changes.
-
 ---
 
 ## Market Analysis
@@ -197,6 +210,7 @@ Buyer View is descriptive context, not a prediction of where the price will move
 - selected-window average
 - price position
 - **Suggested Bid**
+- **My Bid**
 
 ### Suggested Bid
 
@@ -216,6 +230,22 @@ Suggested Bid uses history already available to Copper&Claw and **does not itsel
 If the model-derived value is above the current market, the displayed Suggested Bid is capped at **current highest buy order + 1 copper** so the addon does not suggest paying more than is needed to take the top visible bid. When this cap is used, the underlying model value remains visible in the hover tooltip. Suggested Bid is also kept below the current lowest sell listing.
 
 The hover tooltip exposes the model basis, coverage, historical inputs, volatility adjustment, current highest buy order, lowest sell listing, spread, Prowl context, and the signed difference between the current top bid and the Suggested Bid.
+
+### My Bid
+
+**My Bid** is a manual, persistent per-item price reference. It is intentionally independent from **Suggested Bid**.
+
+Use **EDIT** to enter a gold / silver / copper value, or use **Use Suggested** to copy the current Suggested Bid as a one-time starting value. After saving, My Bid remains fixed until the player edits or clears it; later changes to Suggested Bid do not change the saved My Bid.
+
+The My Bid tooltip can compare the saved value with:
+
+- the current highest buy order
+- the current Suggested Bid
+- the time the My Bid value was saved
+
+My Bid is local reference data only. Copper&Claw does **not** claim that the corresponding Trading Post order is still active, unfilled, or owned by the player.
+
+In-game validation confirmed My Bid persists when switching watched items, changing Trend Windows, and restarting Guild Wars 2.
 
 ### Avg & Roll Avg
 
@@ -540,7 +570,7 @@ After a successful restore, Copper&Claw records which backup was restored and sh
 
 Backups include:
 
-- Copper&Claw settings, including persistent Watchlist group assignments
+- Copper&Claw settings, including persistent per-item My Bid references
 - watched items
 - Sell Targets
 - Buy Targets
@@ -564,6 +594,7 @@ While the index is building:
 - variant labels may not appear yet
 - item icons may not appear yet
 - hover details may not be available for every item yet
+- automatic Watchlist category classification may be incomplete until item metadata is available
 - some items may temporarily be missing from autocomplete
 
 Allow the index build to finish before judging search or indexed-item metadata behavior. The progress overlay disappears automatically when indexing completes.
@@ -591,7 +622,7 @@ The notice only needs to be acknowledged once for each addon version.
 Copper&Claw saves:
 
 - watched items
-- Watchlist group assignments
+- per-item My Bid references and saved timestamps
 - Favorites
 - Heatmap presentation preference
 - Prowl Follow List and follow expiration times

@@ -24,14 +24,18 @@ struct TradingPostIndexedItem
     std::string iconUrl;
 
     //
-    // Small metadata set retained from /v2/items for hover tooltips.
+    // Small metadata set retained from /v2/items for hover tooltips and
+    // automatic Watchlist category filtering.
+    //
     // itemSubtype is the details.type value when the item exposes one
-    // (Food, Utility, LongBow, Rune, etc.).
+    // (Food, Utility, LongBow, Rune, Unlock, etc.).
+    // unlockType is details.unlock_type when present (Dye, Recipe, etc.).
     //
     std::string itemType;
     std::string itemSubtype;
     std::string rarity;
     uint32_t level = 0;
+    std::string unlockType;
 
     //
     // Preformatted short effect/stat summary built while the item index is
@@ -81,7 +85,7 @@ namespace TradingPostItemIndexManager
 
     //
     // Looks up one indexed Trading Post item by item ID.
-    // Used by the UI to retrieve icon and hover-tooltip metadata.
+    // Used by the UI to retrieve icon, tooltip, and category metadata.
     //
     bool TryGetItem(
         uint32_t itemID,

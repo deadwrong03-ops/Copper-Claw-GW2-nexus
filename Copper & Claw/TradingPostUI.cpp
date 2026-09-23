@@ -3488,72 +3488,173 @@ void TradingPostUI::RenderTab(
     };
 
     //
-    // Watch-list grouping.
+    // Watch-list auto categories.
     //
-    // Group assignments live in g_Settings so they persist through a full
-    // game/addon restart. Ungrouped items do not need an explicit saved entry.
+    // Categories are derived from the GW2 item metadata stored in the local
+    // searchable item index. They are display filters only: watched items are
+    // never moved, rewritten, or manually assigned to folders.
     //
-    constexpr int WATCH_GROUP_COUNT = 4;
+    // The filter is intentionally session-only and defaults to ALL each launch.
+    // When a new item is added while another category is selected, the filter
+    // jumps to the new item's category so the item never appears to vanish.
+    //
+    constexpr int WATCH_CATEGORY_COUNT = 9;
 
-    const char* watchGroupLabels[WATCH_GROUP_COUNT] =
+    const char* watchCategoryLabels[WATCH_CATEGORY_COUNT] =
     {
-        "Ungrouped",
-        "Investments",
+        "ALL",
+        "WEAP",
+        "ARMOR",
+        "DYES",
+        "CONS",
+        "MATS",
+        "UPGR",
+        "TRINK",
+        "OTHER"
+    };
+
+    const char* watchCategoryTooltips[WATCH_CATEGORY_COUNT] =
+    {
+        "All watched items",
+        "Weapons",
+        "Armor and back items",
+        "Dye unlocks",
         "Consumables",
-        "Materials"
+        "Crafting materials and trophies",
+        "Upgrade components",
+        "Trinkets",
+        "Everything else"
     };
 
-    auto& watchGroupAssignments =
-        g_Settings.tradingPostWatchGroupAssignments;
+    static int watchCategoryFilterIndex = 0;
 
-    static bool watchGroupCollapsed[WATCH_GROUP_COUNT] =
-    {
-        false,
-        false,
-        false,
-        false
-    };
+    auto GetWatchCategoryIndexFromIndexedItem =
+        [](
+            const TradingPostIndexedItem& indexedItem
+            ) -> int
+        {
+            if (indexedItem.itemType == "Weapon")
+            {
+                return 1;
+            }
 
-    auto GetWatchGroupIndex =
-        [&watchGroupAssignments](
+            if (
+                indexedItem.itemType == "Armor" ||
+                indexedItem.itemType == "Back"
+                )
+            {
+                return 2;
+            }
+
+            if (
+                indexedItem.itemType == "Consumable" &&
+                indexedItem.unlockType == "Dye"
+                )
+            {
+                return 3;
+            }
+
+            if (indexedItem.itemType == "Consumable")
+            {
+                return 4;
+            }
+
+            if (
+                indexedItem.itemType == "CraftingMaterial" ||
+                indexedItem.itemType == "Trophy"
+                )
+            {
+                return 5;
+            }
+
+            if (indexedItem.itemType == "UpgradeComponent")
+            {
+                return 6;
+            }
+
+            if (indexedItem.itemType == "Trinket")
+            {
+                return 7;
+            }
+
+            return 8;
+        };
+
+    auto GetWatchCategoryIndex =
+        [&GetWatchCategoryIndexFromIndexedItem](
             uint32_t itemID
             ) -> int
         {
-            const auto found =
-                watchGroupAssignments.find(
-                    itemID
-                );
+            TradingPostIndexedItem indexedItem;
 
             if (
-                found == watchGroupAssignments.end()
+                itemID == 0 ||
+                !TradingPostItemIndexManager::TryGetItem(
+                    itemID,
+                    indexedItem
+                )
                 )
             {
-                return 0;
+                return 8;
             }
 
-            return std::clamp(
-                found->second,
-                0,
-                WATCH_GROUP_COUNT - 1
-            );
+            return
+                GetWatchCategoryIndexFromIndexedItem(
+                    indexedItem
+                );
         };
 
+    auto WatchCategoryMatches =
+        [&GetWatchCategoryIndex](
+            uint32_t itemID
+            ) -> bool
+        {
+            return
+                watchCategoryFilterIndex == 0 ||
+                GetWatchCategoryIndex(itemID) ==
+                watchCategoryFilterIndex;
+        };
+
+    //
+    // Theme selector display order.
+    //
+    // The saved numeric theme IDs are deliberately NOT renumbered. This map
+    // gives the selector a clean story-chronological order and keeps Cyberpunk
+    // as the final bonus theme without changing anyone's existing saved theme.
+    //
     const char* tradingPostThemeLabels[] =
     {
-        "Janthir Wilds",
-        "Cyberpunk 2077",
+        "Guild Wars 2 Core",
+        "Scarlet's War (LWS1)",
+        "Glint's Prophecy (LWS2)",
         "Heart of Thorns",
+        "Glint's Legacy (LWS3)",
         "Path of Fire",
+        "Rise of Kralkatorrik (LWS4)",
+        "The Icebrood Saga",
         "End of Dragons",
         "Secrets of the Obscure",
+        "Janthir Wilds",
         "Visions of Eternity",
-        "Scarlet's War (LW1)",
-        "Glint's Prophecy (LW2)",
-        "Glint's Legacy (LW3)",
-        "Rise of Kralkatorrik (LW4)",
-        "The Icebrood Saga (LW5)"
+        "Cyberpunk 2077"
     };
 
+    constexpr int tradingPostThemeDisplayToStored[] =
+    {
+        12, // Guild Wars 2 Core
+        7,  // Scarlet's War (LWS1)
+        8,  // Glint's Prophecy (LWS2)
+        2,  // Heart of Thorns
+        9,  // Glint's Legacy (LWS3)
+        3,  // Path of Fire
+        10, // Rise of Kralkatorrik (LWS4)
+        11, // The Icebrood Saga
+        4,  // End of Dragons
+        5,  // Secrets of the Obscure
+        0,  // Janthir Wilds
+        6,  // Visions of Eternity
+        1   // Cyberpunk 2077
+    };
 
     //
     // Compact control palette used by the top toolbar and per-item action menus.
@@ -3577,63 +3678,68 @@ void TradingPostUI::RenderTab(
             int themeIndex
             )
         {
-            // Bright, deliberately separated accents. These are used by
-            // compact controls and Market Prowl, where the old darker
-            // secondary colors made several themes look nearly identical.
+            // Compact controls use the same thematic identity as the dashboard.
+            // Most themes use their primary color here. Cyberpunk deliberately
+            // uses cyan so the interface is not a wall of yellow.
             ImVec4 accent(
-                0.30f,
-                0.60f,
-                0.86f,
+                0.443f,
+                0.518f,
+                0.286f,
                 1.00f
             );
 
             switch (themeIndex)
             {
             case 1:
-                // Cyberpunk: acid yellow.
-                accent = ImVec4(0.98f, 0.90f, 0.08f, 1.00f);
+                // Cyberpunk 2077: electric cyan controls with acid-yellow telemetry.
+                accent = ImVec4(0.00f, 0.88f, 0.96f, 1.00f);
                 break;
             case 2:
-                // Heart of Thorns: bright jungle green.
-                accent = ImVec4(0.58f, 0.80f, 0.18f, 1.00f);
+                // Heart of Thorns: jungle green.
+                accent = ImVec4(0.365f, 0.612f, 0.224f, 1.00f);
                 break;
             case 3:
-                // Path of Fire: hot desert orange.
-                accent = ImVec4(0.94f, 0.40f, 0.18f, 1.00f);
+                // Path of Fire: Elonian purple.
+                accent = ImVec4(0.455f, 0.259f, 0.573f, 1.00f);
                 break;
             case 4:
-                // End of Dragons: jade.
-                accent = ImVec4(0.12f, 0.74f, 0.68f, 1.00f);
+                // End of Dragons: jade teal.
+                accent = ImVec4(0.137f, 0.663f, 0.624f, 1.00f);
                 break;
             case 5:
-                // Secrets of the Obscure: brighter wizard violet.
-                accent = ImVec4(0.72f, 0.52f, 0.90f, 1.00f);
+                // Secrets of the Obscure: astral gold.
+                accent = ImVec4(0.831f, 0.643f, 0.275f, 1.00f);
                 break;
             case 6:
-                // Visions of Eternity: vivid magenta.
-                accent = ImVec4(0.92f, 0.36f, 0.66f, 1.00f);
+                // Visions of Eternity: nebula pink.
+                accent = ImVec4(0.765f, 0.310f, 0.588f, 1.00f);
                 break;
             case 7:
-                // Living World 1: Scarlet red.
-                accent = ImVec4(0.90f, 0.24f, 0.24f, 1.00f);
+                // Living World Season 1: Scarlet red.
+                accent = ImVec4(0.831f, 0.169f, 0.196f, 1.00f);
                 break;
             case 8:
-                // Living World 2: sandy gold / dry Maguuma.
-                accent = ImVec4(0.78f, 0.64f, 0.28f, 1.00f);
+                // Living World Season 2: amber gold.
+                accent = ImVec4(0.784f, 0.584f, 0.239f, 1.00f);
                 break;
             case 9:
-                // Living World 3: electric ley blue.
-                accent = ImVec4(0.30f, 0.68f, 0.98f, 1.00f);
+                // Living World Season 3: Bloodstone coral.
+                accent = ImVec4(0.784f, 0.310f, 0.337f, 1.00f);
                 break;
             case 10:
-                // Living World 4: branded crystal magenta.
-                accent = ImVec4(0.82f, 0.36f, 0.88f, 1.00f);
+                // Living World Season 4: branded fuchsia.
+                accent = ImVec4(0.761f, 0.275f, 0.643f, 1.00f);
                 break;
             case 11:
-                // Icebrood Saga: very bright glacial cyan.
-                accent = ImVec4(0.58f, 0.86f, 0.98f, 1.00f);
+                // Icebrood Saga: icy blue.
+                accent = ImVec4(0.529f, 0.835f, 0.929f, 1.00f);
+                break;
+            case 12:
+                // Guild Wars 2 Core: crimson red.
+                accent = ImVec4(0.788f, 0.169f, 0.208f, 1.00f);
                 break;
             default:
+                // Janthir Wilds: forest moss green.
                 break;
             }
 
@@ -13396,14 +13502,49 @@ void TradingPostUI::RenderTab(
     ImGui::TextDisabled("Theme:");
     ImGui::SameLine();
 
+    int tradingPostThemeDisplayIndex = 0;
+
+    for (
+        int displayIndex = 0;
+        displayIndex <
+        static_cast<int>(
+            sizeof(tradingPostThemeDisplayToStored) /
+            sizeof(tradingPostThemeDisplayToStored[0])
+            );
+        ++displayIndex
+        )
+    {
+        if (
+            tradingPostThemeDisplayToStored[displayIndex] ==
+            g_Settings.tradingPostThemeIndex
+            )
+        {
+            tradingPostThemeDisplayIndex =
+                displayIndex;
+            break;
+        }
+    }
+
     if (DrawThemedCombo(
         "##TradingPostTheme",
-        &g_Settings.tradingPostThemeIndex,
+        &tradingPostThemeDisplayIndex,
         tradingPostThemeLabels,
         static_cast<int>(sizeof(tradingPostThemeLabels) / sizeof(tradingPostThemeLabels[0])),
         230.0f
     ))
     {
+        g_Settings.tradingPostThemeIndex =
+            tradingPostThemeDisplayToStored[
+                std::clamp(
+                    tradingPostThemeDisplayIndex,
+                    0,
+                    static_cast<int>(
+                        sizeof(tradingPostThemeDisplayToStored) /
+                        sizeof(tradingPostThemeDisplayToStored[0])
+                        ) - 1
+                )
+            ];
+
         Settings::Save(moduleHandle);
     }
 
@@ -14034,22 +14175,6 @@ void TradingPostUI::RenderTab(
         break;
     }
 
-    // Group after the user's selected sort. std::stable_sort keeps the already
-    // sorted order intact inside each group.
-    std::stable_sort(
-        watchedItems.begin(),
-        watchedItems.end(),
-        [&GetWatchGroupIndex](
-            const TradingPostWatchItem& a,
-            const TradingPostWatchItem& b
-            )
-        {
-            return
-                GetWatchGroupIndex(a.itemID) <
-                GetWatchGroupIndex(b.itemID);
-        }
-    );
-
     if (watchedItems.empty())
     {
         ImGui::TextDisabled(
@@ -14623,19 +14748,19 @@ void TradingPostUI::RenderTab(
                             itemActionPalette.accent.x,
                             itemActionPalette.accent.y,
                             itemActionPalette.accent.z,
-                            0.72f
+                            0.30f
                         )
                     );
                     ImGui::PushStyleColor(
                         ImGuiCol_Text,
-                        itemActionPalette.accent
+                        itemActionPalette.text
                     );
 
                     if (
                         ImGui::Button(
                             "...##ItemActions",
                             ImVec2(
-                                30.0f,
+                                32.0f,
                                 20.0f
                             )
                         )
@@ -15937,1034 +16062,227 @@ void TradingPostUI::RenderTab(
 
     //
     // Janthir Wilds defaults / release-candidate baseline.
+    // Forest moss green + deep blue + ochre.
     //
-    ImVec4 themePrimary(
-        0.26f,
-        0.58f,
-        0.82f,
-        1.00f
-    );
-
-    ImVec4 themeTelemetry(
-        0.55f,
-        0.80f,
-        0.92f,
-        1.00f
-    );
-
-    ImVec4 themeSecondary(
-        0.30f,
-        0.60f,
-        0.86f,
-        1.00f
-    );
-
-    ImVec4 themeRightPanel(
-        0.045f,
-        0.047f,
-        0.060f,
-        0.97f
-    );
-
-    ImVec4 themeRightPanelRaised(
-        0.058f,
-        0.062f,
-        0.080f,
-        0.98f
-    );
-
-    ImVec4 themeDanger(
-        0.90f,
-        0.26f,
-        0.30f,
-        1.00f
-    );
-
-    ImVec4 themePanel(
-        0.043f,
-        0.046f,
-        0.058f,
-        0.97f
-    );
-
-    ImVec4 themePanelRaised(
-        0.055f,
-        0.062f,
-        0.078f,
-        0.98f
-    );
-
-    ImVec4 themeActionHovered(
-        0.42f,
-        0.68f,
-        0.96f,
-        1.00f
-    );
-
-    ImVec4 themeActionActive(
-        0.16f,
-        0.30f,
-        0.58f,
-        1.00f
-    );
-
-    ImVec4 themeActionText(
-        0.94f,
-        0.97f,
-        1.00f,
-        1.00f
-    );
-
-    ImVec4 themePopupBg(
-        0.050f,
-        0.052f,
-        0.066f,
-        0.99f
-    );
+    ImVec4 themePrimary(0.443f, 0.518f, 0.286f, 1.00f);
+    ImVec4 themeTelemetry(0.765f, 0.604f, 0.314f, 1.00f);
+    ImVec4 themeSecondary(0.204f, 0.310f, 0.408f, 1.00f);
+    ImVec4 themeRightPanel(0.033f, 0.043f, 0.046f, 0.97f);
+    ImVec4 themeRightPanelRaised(0.051f, 0.066f, 0.066f, 0.98f);
+    ImVec4 themeDanger(0.82f, 0.31f, 0.33f, 1.00f);
+    ImVec4 themePanel(0.039f, 0.058f, 0.052f, 0.97f);
+    ImVec4 themePanelRaised(0.067f, 0.102f, 0.090f, 0.98f);
+    ImVec4 themeActionHovered(0.55f, 0.63f, 0.34f, 1.00f);
+    ImVec4 themeActionActive(0.27f, 0.35f, 0.20f, 1.00f);
+    ImVec4 themeActionText(0.94f, 0.97f, 1.00f, 1.00f);
+    ImVec4 themePopupBg(0.031f, 0.043f, 0.039f, 0.99f);
 
     switch (g_Settings.tradingPostThemeIndex)
     {
     case 1:
     {
-        //
-        // Cyberpunk 2077:
-        // acid yellow + cyan telemetry + red danger + near-black panels.
-        //
-        themePrimary = ImVec4(
-            0.99f,
-            0.91f,
-            0.04f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.00f,
-            0.88f,
-            0.96f,
-            1.00f
-        );
-
-        themeSecondary = themeTelemetry;
-
-        themeDanger = ImVec4(
-            1.00f,
-            0.08f,
-            0.25f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.025f,
-            0.029f,
-            0.034f,
-            0.96f
-        );
-
-        themePanelRaised = ImVec4(
-            0.055f,
-            0.062f,
-            0.070f,
-            0.96f
-        );
-
-        themeRightPanel =
-            themePanel;
-
-        themeRightPanelRaised =
-            themePanelRaised;
-
-        themeActionHovered = ImVec4(
-            1.00f,
-            0.96f,
-            0.24f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.68f,
-            0.60f,
-            0.02f,
-            1.00f
-        );
-
-        // Dark text keeps both cyan and yellow button states readable.
-        themeActionText = ImVec4(
-            0.015f,
-            0.020f,
-            0.025f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.025f,
-            0.029f,
-            0.034f,
-            0.99f
-        );
-
+        // Cyberpunk 2077: electric cyan + acid yellow + hot red.
+        // Cyan is the structural/UI color, yellow is a sharp telemetry accent,
+        // and red is reserved for danger. This prevents the old all-yellow wash.
+        themePrimary = ImVec4(0.000f, 0.878f, 0.961f, 1.00f);
+        themeTelemetry = ImVec4(0.988f, 0.910f, 0.039f, 1.00f);
+        themeSecondary = ImVec4(1.000f, 0.157f, 0.314f, 1.00f);
+        themeDanger = ImVec4(1.000f, 0.078f, 0.251f, 1.00f);
+        themePanel = ImVec4(0.018f, 0.027f, 0.033f, 0.97f);
+        themePanelRaised = ImVec4(0.029f, 0.052f, 0.061f, 0.98f);
+        themeRightPanel = ImVec4(0.016f, 0.023f, 0.030f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.026f, 0.047f, 0.056f, 0.98f);
+        themeActionHovered = ImVec4(0.08f, 0.74f, 0.82f, 1.00f);
+        themeActionActive = ImVec4(0.02f, 0.38f, 0.44f, 1.00f);
+        themeActionText = ImVec4(0.94f, 0.98f, 1.00f, 1.00f);
+        themePopupBg = ImVec4(0.016f, 0.024f, 0.030f, 0.99f);
         break;
     }
 
     case 2:
     {
-        //
-        // Heart of Thorns:
-        // jungle green + acid foliage + restrained Auric gold.
-        //
-        themePrimary = ImVec4(
-            0.62f,
-            0.82f,
-            0.18f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.88f,
-            0.72f,
-            0.26f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.22f,
-            0.56f,
-            0.14f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.84f,
-            0.24f,
-            0.18f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.034f,
-            0.047f,
-            0.031f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.052f,
-            0.071f,
-            0.043f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.032f,
-            0.042f,
-            0.031f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.050f,
-            0.064f,
-            0.043f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.40f,
-            0.66f,
-            0.20f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.18f,
-            0.38f,
-            0.12f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.030f,
-            0.042f,
-            0.028f,
-            0.99f
-        );
-
+        // Heart of Thorns: jungle green + bright yellow + Auric gold.
+        themePrimary = ImVec4(0.365f, 0.612f, 0.224f, 1.00f);
+        themeTelemetry = ImVec4(0.863f, 0.667f, 0.235f, 1.00f);
+        themeSecondary = ImVec4(0.847f, 0.839f, 0.263f, 1.00f);
+        themeDanger = ImVec4(0.84f, 0.24f, 0.18f, 1.00f);
+        themePanel = ImVec4(0.031f, 0.047f, 0.027f, 0.97f);
+        themePanelRaised = ImVec4(0.051f, 0.076f, 0.039f, 0.98f);
+        themeRightPanel = ImVec4(0.028f, 0.040f, 0.029f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.044f, 0.063f, 0.039f, 0.98f);
+        themeActionHovered = ImVec4(0.49f, 0.72f, 0.28f, 1.00f);
+        themeActionActive = ImVec4(0.20f, 0.39f, 0.12f, 1.00f);
+        themePopupBg = ImVec4(0.028f, 0.041f, 0.025f, 0.99f);
         break;
     }
 
     case 3:
     {
-        //
-        // Path of Fire:
-        // desert orange + crimson + warm Elonian gold.
-        //
-        themePrimary = ImVec4(
-            0.91f,
-            0.36f,
-            0.17f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.84f,
-            0.64f,
-            0.29f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.70f,
-            0.08f,
-            0.30f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.92f,
-            0.12f,
-            0.20f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.052f,
-            0.036f,
-            0.038f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.075f,
-            0.048f,
-            0.050f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.046f,
-            0.034f,
-            0.040f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.070f,
-            0.045f,
-            0.055f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.96f,
-            0.48f,
-            0.22f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.55f,
-            0.07f,
-            0.22f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.048f,
-            0.032f,
-            0.036f,
-            0.99f
-        );
-
+        // Path of Fire: Elonian purple + warm orange + desert gold.
+        themePrimary = ImVec4(0.455f, 0.259f, 0.573f, 1.00f);
+        themeTelemetry = ImVec4(0.835f, 0.655f, 0.294f, 1.00f);
+        themeSecondary = ImVec4(0.847f, 0.459f, 0.196f, 1.00f);
+        themeDanger = ImVec4(0.88f, 0.18f, 0.24f, 1.00f);
+        themePanel = ImVec4(0.046f, 0.032f, 0.052f, 0.97f);
+        themePanelRaised = ImVec4(0.069f, 0.046f, 0.079f, 0.98f);
+        themeRightPanel = ImVec4(0.043f, 0.033f, 0.047f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.064f, 0.046f, 0.069f, 0.98f);
+        themeActionHovered = ImVec4(0.59f, 0.37f, 0.70f, 1.00f);
+        themeActionActive = ImVec4(0.30f, 0.16f, 0.40f, 1.00f);
+        themePopupBg = ImVec4(0.041f, 0.029f, 0.048f, 0.99f);
         break;
     }
 
     case 4:
     {
-        //
-        // End of Dragons:
-        // jade + pale jade light with deep red reserved for danger.
-        //
-        themePrimary = ImVec4(
-            0.09f,
-            0.66f,
-            0.61f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.46f,
-            0.84f,
-            0.79f,
-            1.00f
-        );
-
-        // Keep the secondary identity in the jade family so the clean
-        // dashboard does not become a red/green split surface.
-        themeSecondary = ImVec4(
-            0.07f,
-            0.42f,
-            0.39f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.66f,
-            0.20f,
-            0.24f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.030f,
-            0.049f,
-            0.047f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.043f,
-            0.073f,
-            0.069f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.030f,
-            0.044f,
-            0.045f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.043f,
-            0.066f,
-            0.066f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.18f,
-            0.62f,
-            0.58f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.05f,
-            0.34f,
-            0.32f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.027f,
-            0.044f,
-            0.042f,
-            0.99f
-        );
-
+        // End of Dragons: jade teal + seafoam + cyan.
+        themePrimary = ImVec4(0.137f, 0.663f, 0.624f, 1.00f);
+        themeTelemetry = ImVec4(0.259f, 0.851f, 0.886f, 1.00f);
+        themeSecondary = ImVec4(0.443f, 0.820f, 0.741f, 1.00f);
+        themeDanger = ImVec4(0.66f, 0.20f, 0.24f, 1.00f);
+        themePanel = ImVec4(0.028f, 0.049f, 0.047f, 0.97f);
+        themePanelRaised = ImVec4(0.041f, 0.073f, 0.069f, 0.98f);
+        themeRightPanel = ImVec4(0.027f, 0.044f, 0.045f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.040f, 0.066f, 0.066f, 0.98f);
+        themeActionHovered = ImVec4(0.20f, 0.72f, 0.67f, 1.00f);
+        themeActionActive = ImVec4(0.06f, 0.38f, 0.35f, 1.00f);
+        themePopupBg = ImVec4(0.025f, 0.043f, 0.041f, 0.99f);
         break;
     }
 
     case 5:
     {
-        //
-        // Secrets of the Obscure:
-        // wizard gold + indigo + restrained violet telemetry.
-        //
-        themePrimary = ImVec4(
-            0.90f,
-            0.70f,
-            0.30f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.72f,
-            0.54f,
-            0.90f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.46f,
-            0.34f,
-            0.68f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.78f,
-            0.22f,
-            0.34f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.052f,
-            0.046f,
-            0.066f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.076f,
-            0.064f,
-            0.096f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.040f,
-            0.038f,
-            0.052f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.057f,
-            0.052f,
-            0.075f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.55f,
-            0.46f,
-            0.72f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.25f,
-            0.21f,
-            0.38f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.040f,
-            0.036f,
-            0.052f,
-            0.99f
-        );
-
+        // Secrets of the Obscure: astral gold + shadow purple + amber.
+        themePrimary = ImVec4(0.831f, 0.643f, 0.275f, 1.00f);
+        themeTelemetry = ImVec4(0.902f, 0.757f, 0.424f, 1.00f);
+        themeSecondary = ImVec4(0.396f, 0.294f, 0.529f, 1.00f);
+        themeDanger = ImVec4(0.78f, 0.22f, 0.34f, 1.00f);
+        themePanel = ImVec4(0.050f, 0.043f, 0.060f, 0.97f);
+        themePanelRaised = ImVec4(0.073f, 0.060f, 0.089f, 0.98f);
+        themeRightPanel = ImVec4(0.040f, 0.036f, 0.050f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.057f, 0.050f, 0.072f, 0.98f);
+        themeActionHovered = ImVec4(0.91f, 0.74f, 0.39f, 1.00f);
+        themeActionActive = ImVec4(0.48f, 0.34f, 0.12f, 1.00f);
+        themePopupBg = ImVec4(0.039f, 0.034f, 0.049f, 0.99f);
         break;
     }
 
     case 6:
     {
-        //
-        // Visions of Eternity:
-        // magenta-forward identity + warm yellow telemetry + orange support.
-        // This deliberately separates it from Path of Fire's desert-orange look.
-        //
-        themePrimary = ImVec4(
-            0.70f,
-            0.23f,
-            0.48f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.95f,
-            0.72f,
-            0.25f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.95f,
-            0.47f,
-            0.20f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.88f,
-            0.14f,
-            0.28f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.050f,
-            0.031f,
-            0.047f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.074f,
-            0.041f,
-            0.066f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.040f,
-            0.031f,
-            0.051f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.060f,
-            0.041f,
-            0.072f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.90f,
-            0.34f,
-            0.62f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.46f,
-            0.12f,
-            0.31f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.044f,
-            0.028f,
-            0.043f,
-            0.99f
-        );
-
+        // Visions of Eternity: nebula pink + violet + ethereal blue.
+        themePrimary = ImVec4(0.765f, 0.310f, 0.588f, 1.00f);
+        themeTelemetry = ImVec4(0.349f, 0.612f, 0.820f, 1.00f);
+        themeSecondary = ImVec4(0.459f, 0.298f, 0.682f, 1.00f);
+        themeDanger = ImVec4(0.88f, 0.14f, 0.28f, 1.00f);
+        themePanel = ImVec4(0.049f, 0.030f, 0.047f, 0.97f);
+        themePanelRaised = ImVec4(0.073f, 0.041f, 0.067f, 0.98f);
+        themeRightPanel = ImVec4(0.037f, 0.031f, 0.052f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.055f, 0.043f, 0.073f, 0.98f);
+        themeActionHovered = ImVec4(0.88f, 0.42f, 0.69f, 1.00f);
+        themeActionActive = ImVec4(0.45f, 0.15f, 0.34f, 1.00f);
+        themePopupBg = ImVec4(0.043f, 0.027f, 0.043f, 0.99f);
         break;
     }
 
     case 7:
     {
-        //
-        // Living World Season 1:
-        // Scarlet red + molten orange + industrial steel.
-        //
-        themePrimary = ImVec4(
-            0.82f,
-            0.12f,
-            0.18f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.95f,
-            0.45f,
-            0.16f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.24f,
-            0.30f,
-            0.36f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            1.00f,
-            0.16f,
-            0.20f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.045f,
-            0.039f,
-            0.041f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.068f,
-            0.053f,
-            0.055f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.038f,
-            0.041f,
-            0.045f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.055f,
-            0.060f,
-            0.066f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.42f,
-            0.50f,
-            0.58f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.18f,
-            0.23f,
-            0.28f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.042f,
-            0.034f,
-            0.037f,
-            0.99f
-        );
-
+        // Living World Season 1: Scarlet red + toxic lime + molten orange.
+        themePrimary = ImVec4(0.831f, 0.169f, 0.196f, 1.00f);
+        themeTelemetry = ImVec4(0.922f, 0.455f, 0.188f, 1.00f);
+        themeSecondary = ImVec4(0.561f, 0.796f, 0.271f, 1.00f);
+        themeDanger = ImVec4(1.00f, 0.14f, 0.18f, 1.00f);
+        themePanel = ImVec4(0.046f, 0.038f, 0.040f, 0.97f);
+        themePanelRaised = ImVec4(0.069f, 0.052f, 0.054f, 0.98f);
+        themeRightPanel = ImVec4(0.037f, 0.041f, 0.042f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.054f, 0.059f, 0.063f, 0.98f);
+        themeActionHovered = ImVec4(0.93f, 0.27f, 0.30f, 1.00f);
+        themeActionActive = ImVec4(0.49f, 0.08f, 0.11f, 1.00f);
+        themePopupBg = ImVec4(0.041f, 0.033f, 0.036f, 0.99f);
         break;
     }
 
     case 8:
     {
-        //
-        // Living World Season 2:
-        // dry Maguuma olive + sandy gold + weathered earth.
-        //
-        themePrimary = ImVec4(
-            0.76f,
-            0.66f,
-            0.28f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.92f,
-            0.76f,
-            0.42f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.50f,
-            0.38f,
-            0.16f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.76f,
-            0.25f,
-            0.19f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.054f,
-            0.050f,
-            0.033f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.080f,
-            0.071f,
-            0.043f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.042f,
-            0.041f,
-            0.033f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.061f,
-            0.057f,
-            0.043f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.52f,
-            0.44f,
-            0.25f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.28f,
-            0.24f,
-            0.15f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.043f,
-            0.041f,
-            0.030f,
-            0.99f
-        );
-
+        // Living World Season 2: amber gold + sandstone brown + dry gold.
+        themePrimary = ImVec4(0.784f, 0.584f, 0.239f, 1.00f);
+        themeTelemetry = ImVec4(0.894f, 0.733f, 0.384f, 1.00f);
+        themeSecondary = ImVec4(0.502f, 0.376f, 0.267f, 1.00f);
+        themeDanger = ImVec4(0.76f, 0.25f, 0.19f, 1.00f);
+        themePanel = ImVec4(0.053f, 0.047f, 0.033f, 0.97f);
+        themePanelRaised = ImVec4(0.079f, 0.067f, 0.043f, 0.98f);
+        themeRightPanel = ImVec4(0.042f, 0.039f, 0.033f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.061f, 0.055f, 0.043f, 0.98f);
+        themeActionHovered = ImVec4(0.88f, 0.68f, 0.30f, 1.00f);
+        themeActionActive = ImVec4(0.43f, 0.30f, 0.12f, 1.00f);
+        themePopupBg = ImVec4(0.043f, 0.039f, 0.029f, 0.99f);
         break;
     }
 
     case 9:
     {
-        //
-        // Living World Season 3:
-        // ley-line violet + electric blue + Bloodstone crimson.
-        //
-        themePrimary = ImVec4(
-            0.42f,
-            0.50f,
-            0.92f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.28f,
-            0.76f,
-            1.00f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.64f,
-            0.20f,
-            0.34f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.86f,
-            0.17f,
-            0.26f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.038f,
-            0.036f,
-            0.055f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.056f,
-            0.050f,
-            0.080f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.033f,
-            0.038f,
-            0.057f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.047f,
-            0.054f,
-            0.081f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.62f,
-            0.43f,
-            0.88f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.33f,
-            0.21f,
-            0.57f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.035f,
-            0.033f,
-            0.052f,
-            0.99f
-        );
-
+        // Living World Season 3: Bloodstone coral + ashen grey.
+        themePrimary = ImVec4(0.784f, 0.310f, 0.337f, 1.00f);
+        themeTelemetry = ImVec4(0.929f, 0.467f, 0.443f, 1.00f);
+        themeSecondary = ImVec4(0.431f, 0.443f, 0.467f, 1.00f);
+        themeDanger = ImVec4(0.88f, 0.15f, 0.20f, 1.00f);
+        themePanel = ImVec4(0.047f, 0.036f, 0.041f, 0.97f);
+        themePanelRaised = ImVec4(0.069f, 0.050f, 0.058f, 0.98f);
+        themeRightPanel = ImVec4(0.039f, 0.039f, 0.044f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.056f, 0.056f, 0.063f, 0.98f);
+        themeActionHovered = ImVec4(0.90f, 0.40f, 0.42f, 1.00f);
+        themeActionActive = ImVec4(0.46f, 0.15f, 0.18f, 1.00f);
+        themePopupBg = ImVec4(0.041f, 0.033f, 0.038f, 0.99f);
         break;
     }
 
     case 10:
     {
-        //
-        // Living World Season 4:
-        // branded crystal violet + bright turquoise + deep amethyst.
-        //
-        themePrimary = ImVec4(
-            0.82f,
-            0.36f,
-            0.88f,
-            1.00f
-        );
-
-        themeTelemetry = ImVec4(
-            0.18f,
-            0.82f,
-            0.82f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.46f,
-            0.18f,
-            0.60f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.90f,
-            0.24f,
-            0.45f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.041f,
-            0.033f,
-            0.052f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.061f,
-            0.044f,
-            0.077f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.031f,
-            0.040f,
-            0.050f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.043f,
-            0.059f,
-            0.072f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.48f,
-            0.31f,
-            0.65f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.25f,
-            0.14f,
-            0.38f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.037f,
-            0.030f,
-            0.048f,
-            0.99f
-        );
-
+        // Living World Season 4: Brand fuchsia + crystal purple + cyan.
+        themePrimary = ImVec4(0.761f, 0.275f, 0.643f, 1.00f);
+        themeTelemetry = ImVec4(0.282f, 0.722f, 0.773f, 1.00f);
+        themeSecondary = ImVec4(0.455f, 0.247f, 0.620f, 1.00f);
+        themeDanger = ImVec4(0.90f, 0.24f, 0.45f, 1.00f);
+        themePanel = ImVec4(0.041f, 0.032f, 0.052f, 0.97f);
+        themePanelRaised = ImVec4(0.061f, 0.043f, 0.077f, 0.98f);
+        themeRightPanel = ImVec4(0.030f, 0.040f, 0.050f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.042f, 0.059f, 0.072f, 0.98f);
+        themeActionHovered = ImVec4(0.87f, 0.38f, 0.74f, 1.00f);
+        themeActionActive = ImVec4(0.43f, 0.14f, 0.37f, 1.00f);
+        themePopupBg = ImVec4(0.037f, 0.029f, 0.048f, 0.99f);
         break;
     }
 
     case 11:
     {
-        //
-        // The Icebrood Saga:
-        // glacial cyan + frost-white telemetry + deep Jormag navy.
-        //
-        themePrimary = ImVec4(
-            0.58f,
-            0.86f,
-            0.98f,
-            1.00f
-        );
+        // Icebrood Saga: icy blue + frost white + blood red.
+        themePrimary = ImVec4(0.529f, 0.835f, 0.929f, 1.00f);
+        themeTelemetry = ImVec4(0.910f, 0.973f, 1.000f, 1.00f);
+        themeSecondary = ImVec4(0.659f, 0.204f, 0.227f, 1.00f);
+        themeDanger = ImVec4(0.76f, 0.18f, 0.22f, 1.00f);
+        themePanel = ImVec4(0.027f, 0.041f, 0.055f, 0.97f);
+        themePanelRaised = ImVec4(0.039f, 0.058f, 0.078f, 0.98f);
+        themeRightPanel = ImVec4(0.024f, 0.036f, 0.052f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.036f, 0.051f, 0.074f, 0.98f);
+        themeActionHovered = ImVec4(0.66f, 0.89f, 0.98f, 1.00f);
+        themeActionActive = ImVec4(0.20f, 0.39f, 0.57f, 1.00f);
+        themePopupBg = ImVec4(0.024f, 0.035f, 0.050f, 0.99f);
+        break;
+    }
 
-        themeTelemetry = ImVec4(
-            0.88f,
-            0.96f,
-            1.00f,
-            1.00f
-        );
-
-        themeSecondary = ImVec4(
-            0.18f,
-            0.36f,
-            0.62f,
-            1.00f
-        );
-
-        themeDanger = ImVec4(
-            0.62f,
-            0.27f,
-            0.52f,
-            1.00f
-        );
-
-        themePanel = ImVec4(
-            0.028f,
-            0.041f,
-            0.055f,
-            0.97f
-        );
-
-        themePanelRaised = ImVec4(
-            0.039f,
-            0.058f,
-            0.078f,
-            0.98f
-        );
-
-        themeRightPanel = ImVec4(
-            0.025f,
-            0.036f,
-            0.052f,
-            0.97f
-        );
-
-        themeRightPanelRaised = ImVec4(
-            0.036f,
-            0.051f,
-            0.074f,
-            0.98f
-        );
-
-        themeActionHovered = ImVec4(
-            0.30f,
-            0.48f,
-            0.72f,
-            1.00f
-        );
-
-        themeActionActive = ImVec4(
-            0.12f,
-            0.22f,
-            0.42f,
-            1.00f
-        );
-
-        themePopupBg = ImVec4(
-            0.024f,
-            0.035f,
-            0.050f,
-            0.99f
-        );
-
+    case 12:
+    {
+        // Guild Wars 2 Core: crimson red + ink black + white.
+        themePrimary = ImVec4(0.788f, 0.169f, 0.208f, 1.00f);
+        themeTelemetry = ImVec4(0.949f, 0.933f, 0.914f, 1.00f);
+        themeSecondary = ImVec4(0.231f, 0.208f, 0.239f, 1.00f);
+        themeDanger = ImVec4(0.96f, 0.12f, 0.16f, 1.00f);
+        themePanel = ImVec4(0.041f, 0.035f, 0.038f, 0.97f);
+        themePanelRaised = ImVec4(0.063f, 0.049f, 0.054f, 0.98f);
+        themeRightPanel = ImVec4(0.032f, 0.031f, 0.034f, 0.97f);
+        themeRightPanelRaised = ImVec4(0.048f, 0.045f, 0.050f, 0.98f);
+        themeActionHovered = ImVec4(0.91f, 0.28f, 0.31f, 1.00f);
+        themeActionActive = ImVec4(0.49f, 0.08f, 0.11f, 1.00f);
+        themePopupBg = ImVec4(0.034f, 0.030f, 0.032f, 0.99f);
         break;
     }
 
@@ -17559,6 +16877,239 @@ void TradingPostUI::RenderTab(
             26.0f
         );
 
+        //
+        // Compact auto-category strip. This lives inside the Watchlist pane,
+        // not above the shared workspace, so it does not push Item Analysis or
+        // the Trend Window downward. Short labels keep every category on one row.
+        //
+        int watchCategoryCounts[WATCH_CATEGORY_COUNT] = {};
+
+        for (
+            const TradingPostWatchItem& categoryCountItem :
+            watchedItems
+            )
+        {
+            ++watchCategoryCounts[0];
+
+            const int categoryIndex =
+                std::clamp(
+                    GetWatchCategoryIndex(
+                        categoryCountItem.itemID
+                    ),
+                    1,
+                    WATCH_CATEGORY_COUNT - 1
+                );
+
+            ++watchCategoryCounts[
+                categoryIndex
+            ];
+        }
+
+        const float categorySpacing = 4.0f;
+        const float categoryAvailableWidth =
+            compactWatchListExpandedWidth -
+            14.0f;
+
+        float categoryNaturalWidths[WATCH_CATEGORY_COUNT] = {};
+        float categoryNaturalTotal = 0.0f;
+
+        for (
+            int categoryIndex = 0;
+            categoryIndex < WATCH_CATEGORY_COUNT;
+            ++categoryIndex
+            )
+        {
+            categoryNaturalWidths[categoryIndex] =
+                ImGui::CalcTextSize(
+                    watchCategoryLabels[categoryIndex]
+                ).x +
+                10.0f;
+
+            categoryNaturalTotal +=
+                categoryNaturalWidths[categoryIndex];
+        }
+
+        categoryNaturalTotal +=
+            categorySpacing *
+            static_cast<float>(
+                WATCH_CATEGORY_COUNT - 1
+                );
+
+        const float categoryScale =
+            categoryNaturalTotal >
+            categoryAvailableWidth
+            ? categoryAvailableWidth /
+            categoryNaturalTotal
+            : 1.0f;
+
+        ImGui::PushStyleVar(
+            ImGuiStyleVar_FramePadding,
+            ImVec2(
+                2.0f,
+                2.0f
+            )
+        );
+        ImGui::PushStyleVar(
+            ImGuiStyleVar_FrameRounding,
+            2.0f
+        );
+        ImGui::PushStyleVar(
+            ImGuiStyleVar_FrameBorderSize,
+            1.0f
+        );
+
+        for (
+            int categoryIndex = 0;
+            categoryIndex < WATCH_CATEGORY_COUNT;
+            ++categoryIndex
+            )
+        {
+            if (categoryIndex > 0)
+            {
+                ImGui::SameLine(
+                    0.0f,
+                    categorySpacing
+                );
+            }
+
+            const bool categorySelected =
+                watchCategoryFilterIndex ==
+                categoryIndex;
+
+            const ImVec4 categoryButton =
+                categorySelected
+                ? ImVec4(
+                    themePrimary.x,
+                    themePrimary.y,
+                    themePrimary.z,
+                    0.30f
+                )
+                : ImVec4(
+                    themePrimary.x,
+                    themePrimary.y,
+                    themePrimary.z,
+                    0.07f
+                );
+
+            const ImVec4 categoryButtonHovered(
+                themePrimary.x,
+                themePrimary.y,
+                themePrimary.z,
+                categorySelected
+                ? 0.34f
+                : 0.19f
+            );
+
+            const ImVec4 categoryButtonActive(
+                themePrimary.x,
+                themePrimary.y,
+                themePrimary.z,
+                0.42f
+            );
+
+            ImGui::PushStyleColor(
+                ImGuiCol_Button,
+                categoryButton
+            );
+            ImGui::PushStyleColor(
+                ImGuiCol_ButtonHovered,
+                categoryButtonHovered
+            );
+            ImGui::PushStyleColor(
+                ImGuiCol_ButtonActive,
+                categoryButtonActive
+            );
+            ImGui::PushStyleColor(
+                ImGuiCol_Border,
+                ImVec4(
+                    themePrimary.x,
+                    themePrimary.y,
+                    themePrimary.z,
+                    categorySelected
+                    ? 0.95f
+                    : 0.24f
+                )
+            );
+            ImGui::PushStyleColor(
+                ImGuiCol_Text,
+                categorySelected
+                ? themePrimary
+                : ImGui::GetStyleColorVec4(
+                    ImGuiCol_TextDisabled
+                )
+            );
+
+            const float categoryButtonWidth =
+                std::max(
+                    26.0f,
+                    categoryNaturalWidths[categoryIndex] *
+                    categoryScale
+                );
+
+            if (
+                ImGui::Button(
+                    watchCategoryLabels[categoryIndex],
+                    ImVec2(
+                        categoryButtonWidth,
+                        19.0f
+                    )
+                )
+                )
+            {
+                watchCategoryFilterIndex =
+                    categoryIndex;
+            }
+
+            if (categorySelected)
+            {
+                const ImVec2 selectedCategoryMin =
+                    ImGui::GetItemRectMin();
+
+                const ImVec2 selectedCategoryMax =
+                    ImGui::GetItemRectMax();
+
+                ImGui::GetWindowDrawList()->AddLine(
+                    ImVec2(
+                        selectedCategoryMin.x + 3.0f,
+                        selectedCategoryMax.y - 1.0f
+                    ),
+                    ImVec2(
+                        selectedCategoryMax.x - 3.0f,
+                        selectedCategoryMax.y - 1.0f
+                    ),
+                    ImGui::GetColorU32(
+                        ImVec4(
+                            themePrimary.x,
+                            themePrimary.y,
+                            themePrimary.z,
+                            0.95f
+                        )
+                    ),
+                    1.5f
+                );
+            }
+
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip(
+                    "%s (%d)",
+                    watchCategoryTooltips[categoryIndex],
+                    watchCategoryCounts[categoryIndex]
+                );
+            }
+
+            ImGui::PopStyleColor(5);
+        }
+
+        ImGui::PopStyleVar(3);
+
+        ImGui::Dummy(
+            ImVec2(
+                0.0f,
+                2.0f
+            )
+        );
+
         // Keep item search at the top of the Watchlist so adding an item never
         // requires scrolling to the bottom of the Trading Post page. Search results
         // open directly below the field and temporarily give up card-list height.
@@ -17801,6 +17352,11 @@ void TradingPostUI::RenderTab(
 
             if (added)
             {
+                watchCategoryFilterIndex =
+                    GetWatchCategoryIndexFromIndexedItem(
+                        selectedItem
+                    );
+
                 searchStatus =
                     "Added: " +
                     selectedDisplayName;
@@ -17975,6 +17531,11 @@ void TradingPostUI::RenderTab(
                             showFavoritesOnly &&
                             !item.isFavorite
                             )
+                        {
+                            continue;
+                        }
+
+                        if (!WatchCategoryMatches(item.itemID))
                         {
                             continue;
                         }
@@ -19090,60 +18651,6 @@ void TradingPostUI::RenderTab(
                                 }
                             }
 
-                            if (
-                                ImGui::BeginMenu(
-                                    "Move to Group"
-                                )
-                                )
-                            {
-                                const int currentWatchGroupIndex =
-                                    GetWatchGroupIndex(
-                                        item.itemID
-                                    );
-
-                                for (
-                                    int groupIndex = 0;
-                                    groupIndex <
-                                    WATCH_GROUP_COUNT;
-                                    ++groupIndex
-                                    )
-                                {
-                                    const bool groupSelected =
-                                        currentWatchGroupIndex ==
-                                        groupIndex;
-
-                                    if (
-                                        ImGui::MenuItem(
-                                            watchGroupLabels[
-                                                groupIndex
-                                            ],
-                                            nullptr,
-                                            groupSelected
-                                        )
-                                        )
-                                    {
-                                        if (groupIndex == 0)
-                                        {
-                                            watchGroupAssignments.erase(
-                                                item.itemID
-                                            );
-                                        }
-                                        else
-                                        {
-                                            watchGroupAssignments[
-                                                item.itemID
-                                            ] =
-                                                groupIndex;
-                                        }
-
-                                        Settings::Save(
-                                            moduleHandle
-                                        );
-                                    }
-                                }
-
-                                ImGui::EndMenu();
-                            }
 
                             if (
                                 ImGui::Selectable(
@@ -19176,18 +18683,6 @@ void TradingPostUI::RenderTab(
                                         RemoveItem(
                                             item.itemID
                                         );
-
-                                    if (
-                                        watchGroupAssignments.erase(
-                                            item.itemID
-                                        ) >
-                                        0
-                                        )
-                                    {
-                                        Settings::Save(
-                                            moduleHandle
-                                        );
-                                    }
 
                                     if (
                                         selectedDetailsItemID ==
@@ -19238,7 +18733,7 @@ void TradingPostUI::RenderTab(
             }
             else
             {
-                int visibleWatchGroupCounts[WATCH_GROUP_COUNT] = {};
+                int visibleWatchItemCount = 0;
 
                 for (
                     const TradingPostWatchItem& countItem :
@@ -19253,21 +18748,22 @@ void TradingPostUI::RenderTab(
                         continue;
                     }
 
-                    const int countGroupIndex =
-                        std::clamp(
-                            GetWatchGroupIndex(
-                                countItem.itemID
-                            ),
-                            0,
-                            WATCH_GROUP_COUNT - 1
-                        );
+                    if (!WatchCategoryMatches(countItem.itemID))
+                    {
+                        continue;
+                    }
 
-                    ++visibleWatchGroupCounts[
-                        countGroupIndex
-                    ];
+                    ++visibleWatchItemCount;
                 }
 
-                int renderedWatchGroupIndex = -1;
+                if (visibleWatchItemCount == 0)
+                {
+                    ImGui::TextDisabled(
+                        showFavoritesOnly
+                        ? "No favorite items in this category."
+                        : "No watched items in this category."
+                    );
+                }
 
                 for (
                     const TradingPostWatchItem& item :
@@ -19282,140 +18778,7 @@ void TradingPostUI::RenderTab(
                         continue;
                     }
 
-                    const int itemWatchGroupIndex =
-                        std::clamp(
-                            GetWatchGroupIndex(
-                                item.itemID
-                            ),
-                            0,
-                            WATCH_GROUP_COUNT - 1
-                        );
-
-                    if (
-                        itemWatchGroupIndex !=
-                        renderedWatchGroupIndex
-                        )
-                    {
-                        renderedWatchGroupIndex =
-                            itemWatchGroupIndex;
-
-                        char watchGroupHeader[96] = {};
-
-                        std::snprintf(
-                            watchGroupHeader,
-                            sizeof(watchGroupHeader),
-                            "%s %s  (%d)##WatchGroupHeader%d",
-                            watchGroupCollapsed[itemWatchGroupIndex]
-                            ? "+"
-                            : "-",
-                            watchGroupLabels[itemWatchGroupIndex],
-                            visibleWatchGroupCounts[itemWatchGroupIndex],
-                            itemWatchGroupIndex
-                        );
-
-                        ImGui::PushStyleColor(
-                            ImGuiCol_Header,
-                            ImVec4(
-                                themePrimary.x,
-                                themePrimary.y,
-                                themePrimary.z,
-                                0.10f
-                            )
-                        );
-
-                        ImGui::PushStyleColor(
-                            ImGuiCol_HeaderHovered,
-                            ImVec4(
-                                themePrimary.x,
-                                themePrimary.y,
-                                themePrimary.z,
-                                0.20f
-                            )
-                        );
-
-                        ImGui::PushStyleColor(
-                            ImGuiCol_HeaderActive,
-                            ImVec4(
-                                themePrimary.x,
-                                themePrimary.y,
-                                themePrimary.z,
-                                0.28f
-                            )
-                        );
-
-                        ImGui::PushStyleColor(
-                            ImGuiCol_Text,
-                            ImVec4(
-                                themePrimary.x +
-                                (1.0f - themePrimary.x) * 0.30f,
-                                themePrimary.y +
-                                (1.0f - themePrimary.y) * 0.30f,
-                                themePrimary.z +
-                                (1.0f - themePrimary.z) * 0.30f,
-                                1.00f
-                            )
-                        );
-
-                        if (
-                            ImGui::Selectable(
-                                watchGroupHeader,
-                                false,
-                                0,
-                                ImVec2(
-                                    ImGui::GetContentRegionAvail().x,
-                                    0.0f
-                                )
-                            )
-                            )
-                        {
-                            watchGroupCollapsed[
-                                itemWatchGroupIndex
-                            ] =
-                                !watchGroupCollapsed[
-                                    itemWatchGroupIndex
-                                ];
-                        }
-
-                        ImGui::PopStyleColor(4);
-
-                        const ImVec2 groupRuleStart =
-                            ImGui::GetCursorScreenPos();
-
-                        ImGui::GetWindowDrawList()->AddLine(
-                            ImVec2(
-                                groupRuleStart.x,
-                                groupRuleStart.y - 1.0f
-                            ),
-                            ImVec2(
-                                groupRuleStart.x +
-                                ImGui::GetContentRegionAvail().x -
-                                4.0f,
-                                groupRuleStart.y - 1.0f
-                            ),
-                            ImGui::GetColorU32(
-                                ImVec4(
-                                    themePrimary.x,
-                                    themePrimary.y,
-                                    themePrimary.z,
-                                    0.22f
-                                )
-                            ),
-                            1.0f
-                        );
-
-                        ImGui::Dummy(
-                            ImVec2(
-                                0.0f,
-                                3.0f
-                            )
-                        );
-                    }
-
-                    if (
-                        watchGroupCollapsed[
-                            itemWatchGroupIndex
-                        ]
-                        )
+                    if (!WatchCategoryMatches(item.itemID))
                     {
                         continue;
                     }
@@ -20055,7 +19418,7 @@ void TradingPostUI::RenderTab(
 
                     ImGui::SetCursorScreenPos(
                         ImVec2(
-                            cardEnd.x - 38.0f,
+                            cardEnd.x - 41.0f,
                             cardStart.y + 7.0f
                         )
                     );
@@ -20087,20 +19450,20 @@ void TradingPostUI::RenderTab(
                             compactActionPalette.accent.y,
                             compactActionPalette.accent.z,
                             compactSelected
-                            ? 0.95f
-                            : 0.58f
+                            ? 0.58f
+                            : 0.24f
                         )
                     );
                     ImGui::PushStyleColor(
                         ImGuiCol_Text,
-                        compactActionPalette.accent
+                        compactActionPalette.text
                     );
 
                     if (
                         ImGui::Button(
                             "...##CompactCardActions",
                             ImVec2(
-                                28.0f,
+                                31.0f,
                                 20.0f
                             )
                         )
@@ -20187,57 +19550,6 @@ void TradingPostUI::RenderTab(
                                 );
                         }
 
-                        if (
-                            ImGui::BeginMenu(
-                                "Move to Group"
-                            )
-                            )
-                        {
-                            const int currentWatchGroupIndex =
-                                GetWatchGroupIndex(
-                                    item.itemID
-                                );
-
-                            for (
-                                int groupIndex = 0;
-                                groupIndex < WATCH_GROUP_COUNT;
-                                ++groupIndex
-                                )
-                            {
-                                const bool groupSelected =
-                                    currentWatchGroupIndex ==
-                                    groupIndex;
-
-                                if (
-                                    ImGui::MenuItem(
-                                        watchGroupLabels[groupIndex],
-                                        nullptr,
-                                        groupSelected
-                                    )
-                                    )
-                                {
-                                    if (groupIndex == 0)
-                                    {
-                                        watchGroupAssignments.erase(
-                                            item.itemID
-                                        );
-                                    }
-                                    else
-                                    {
-                                        watchGroupAssignments[
-                                            item.itemID
-                                        ] = groupIndex;
-                                    }
-
-                                    Settings::Save(
-                                        moduleHandle
-                                    );
-                                }
-                            }
-
-                            ImGui::EndMenu();
-                        }
-
                         if (!item.isDefault)
                         {
                             ImGui::Separator();
@@ -20257,21 +19569,6 @@ void TradingPostUI::RenderTab(
                                         item.itemID
                                     );
 
-                                //
-                                // Do not leave stale group assignments behind after an
-                                // item is removed from the watch list.
-                                //
-                                if (
-                                    watchGroupAssignments.erase(
-                                        item.itemID
-                                    ) >
-                                    0
-                                    )
-                                {
-                                    Settings::Save(
-                                        moduleHandle
-                                    );
-                                }
 
                                 if (
                                     selectedDetailsItemID ==
@@ -24063,6 +23360,537 @@ void TradingPostUI::RenderTab(
 
                     ImGui::EndTooltip();
                 }
+
+                //
+                // My Bid is a manual, persistent per-item reference. It is
+                // deliberately independent from Suggested Bid and does not
+                // imply that Copper&Claw can verify an active TP order.
+                //
+                const auto myBidIt =
+                    g_Settings.tradingPostMyBidCopper.find(
+                        item.itemID
+                    );
+
+                const bool myBidAvailable =
+                    myBidIt !=
+                    g_Settings.tradingPostMyBidCopper.end() &&
+                    myBidIt->second > 0;
+
+                const uint64_t myBidCopper =
+                    myBidAvailable
+                    ? myBidIt->second
+                    : 0;
+
+                ImGui::BeginGroup();
+
+                ImGui::TextDisabled(
+                    "MY BID"
+                );
+
+                ImGui::SameLine(
+                    125.0f
+                );
+
+                if (myBidAvailable)
+                {
+                    DrawCoinValueColored(
+                        myBidCopper,
+                        nullptr,
+                        ImGui::GetStyleColorVec4(
+                            ImGuiCol_Text
+                        )
+                    );
+                }
+                else
+                {
+                    ImGui::TextDisabled(
+                        "Not set"
+                    );
+                }
+
+                ImGui::EndGroup();
+
+                const bool myBidValueHovered =
+                    ImGui::IsItemHovered();
+
+                ImGui::SameLine(
+                    0.0f,
+                    8.0f
+                );
+
+                static uint32_t myBidEditorItemID = 0;
+                static int myBidEditorGold = 0;
+                static int myBidEditorSilver = 0;
+                static int myBidEditorCopper = 0;
+
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_FrameRounding,
+                    3.0f
+                );
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_FrameBorderSize,
+                    1.0f
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_Button,
+                    primaryViewPalette.frameBg
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_ButtonHovered,
+                    primaryViewPalette.frameHovered
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_ButtonActive,
+                    primaryViewPalette.frameActive
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_Border,
+                    ImVec4(
+                        primaryViewPalette.accent.x,
+                        primaryViewPalette.accent.y,
+                        primaryViewPalette.accent.z,
+                        0.62f
+                    )
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_Text,
+                    primaryViewPalette.text
+                );
+
+                if (
+                    ImGui::SmallButton(
+                        "EDIT##MyBid"
+                    )
+                    )
+                {
+                    myBidEditorItemID =
+                        item.itemID;
+
+                    const uint64_t startingCopper =
+                        myBidAvailable
+                        ? myBidCopper
+                        : suggestedBidAvailable
+                        ? suggestedBidCopper
+                        : 0;
+
+                    myBidEditorGold =
+                        static_cast<int>(
+                            startingCopper / 10000ULL
+                            );
+
+                    myBidEditorSilver =
+                        static_cast<int>(
+                            (startingCopper % 10000ULL) / 100ULL
+                            );
+
+                    myBidEditorCopper =
+                        static_cast<int>(
+                            startingCopper % 100ULL
+                            );
+
+                    ImGui::OpenPopup(
+                        "##MyBidEditorPopup"
+                    );
+                }
+
+                ImGui::PopStyleColor(5);
+                ImGui::PopStyleVar(2);
+
+                if (myBidValueHovered)
+                {
+                    ImGui::BeginTooltip();
+                    ImGui::PushTextWrapPos(
+                        ImGui::GetCursorPos().x +
+                        390.0f
+                    );
+
+                    ImGui::TextColored(
+                        primaryViewPalette.accent,
+                        "MY BID"
+                    );
+
+                    ImGui::TextWrapped(
+                        "A manual price reference you saved for this item. "
+                        "It does not move when Suggested Bid changes and does not "
+                        "claim that the order is still active in the Trading Post."
+                    );
+
+                    if (myBidAvailable)
+                    {
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        ImGui::Text(
+                            "Saved bid"
+                        );
+                        ImGui::SameLine(125.0f);
+                        DrawCoinValueColored(
+                            myBidCopper,
+                            nullptr,
+                            ImGui::GetStyleColorVec4(ImGuiCol_Text)
+                        );
+
+                        if (price.buyUnitPrice > 0)
+                        {
+                            const int64_t versusTop =
+                                static_cast<int64_t>(myBidCopper) -
+                                static_cast<int64_t>(price.buyUnitPrice);
+
+                            ImGui::Text(
+                                "Vs current top"
+                            );
+                            ImGui::SameLine(125.0f);
+                            ImGui::Text(
+                                "%s%s",
+                                versusTop >= 0 ? "+" : "-",
+                                FormatCoinValue(
+                                    static_cast<uint64_t>(
+                                        versusTop >= 0
+                                        ? versusTop
+                                        : -versusTop
+                                        )
+                                ).c_str()
+                            );
+                        }
+
+                        if (suggestedBidAvailable)
+                        {
+                            const int64_t versusSuggested =
+                                static_cast<int64_t>(myBidCopper) -
+                                static_cast<int64_t>(suggestedBidCopper);
+
+                            ImGui::Text(
+                                "Vs suggested"
+                            );
+                            ImGui::SameLine(125.0f);
+                            ImGui::Text(
+                                "%s%s",
+                                versusSuggested >= 0 ? "+" : "-",
+                                FormatCoinValue(
+                                    static_cast<uint64_t>(
+                                        versusSuggested >= 0
+                                        ? versusSuggested
+                                        : -versusSuggested
+                                        )
+                                ).c_str()
+                            );
+                        }
+
+                        const auto myBidSavedAtIt =
+                            g_Settings
+                            .tradingPostMyBidSavedAtUnixSeconds
+                            .find(item.itemID);
+
+                        if (
+                            myBidSavedAtIt !=
+                            g_Settings
+                            .tradingPostMyBidSavedAtUnixSeconds
+                            .end() &&
+                            myBidSavedAtIt->second > 0 &&
+                            marketProwlNowUnixSeconds >=
+                            myBidSavedAtIt->second
+                            )
+                        {
+                            const uint64_t ageSeconds =
+                                marketProwlNowUnixSeconds -
+                                myBidSavedAtIt->second;
+
+                            std::string ageText;
+
+                            if (ageSeconds < 60ULL)
+                            {
+                                ageText = "just now";
+                            }
+                            else if (ageSeconds < 3600ULL)
+                            {
+                                ageText =
+                                    std::to_string(ageSeconds / 60ULL) +
+                                    "m ago";
+                            }
+                            else if (ageSeconds < 86400ULL)
+                            {
+                                ageText =
+                                    std::to_string(ageSeconds / 3600ULL) +
+                                    "h ago";
+                            }
+                            else
+                            {
+                                ageText =
+                                    std::to_string(ageSeconds / 86400ULL) +
+                                    "d ago";
+                            }
+
+                            ImGui::TextDisabled(
+                                "Saved %s",
+                                ageText.c_str()
+                            );
+                        }
+                    }
+
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndTooltip();
+                }
+
+                ImGui::SetNextWindowSize(
+                    ImVec2(
+                        390.0f,
+                        0.0f
+                    ),
+                    ImGuiCond_Appearing
+                );
+
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_PopupRounding,
+                    4.0f
+                );
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_PopupBorderSize,
+                    1.0f
+                );
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_FrameRounding,
+                    3.0f
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_PopupBg,
+                    primaryViewPalette.popupBg
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_Border,
+                    ImVec4(
+                        primaryViewPalette.accent.x,
+                        primaryViewPalette.accent.y,
+                        primaryViewPalette.accent.z,
+                        0.70f
+                    )
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_FrameBg,
+                    primaryViewPalette.frameBg
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_FrameBgHovered,
+                    primaryViewPalette.frameHovered
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_FrameBgActive,
+                    primaryViewPalette.frameActive
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_Button,
+                    primaryViewPalette.frameBg
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_ButtonHovered,
+                    primaryViewPalette.frameHovered
+                );
+                ImGui::PushStyleColor(
+                    ImGuiCol_ButtonActive,
+                    primaryViewPalette.frameActive
+                );
+
+                if (
+                    ImGui::BeginPopup(
+                        "##MyBidEditorPopup"
+                    )
+                    )
+                {
+                    if (
+                        myBidEditorItemID !=
+                        item.itemID
+                        )
+                    {
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else
+                    {
+                        ImGui::TextColored(
+                            primaryViewPalette.accent,
+                            "MY BID"
+                        );
+
+                        ImGui::TextDisabled(
+                            "%s",
+                            item.name.c_str()
+                        );
+
+                        ImGui::TextWrapped(
+                            "Save the price you want to remember. This is a local "
+                            "reference only; Copper&Claw does not verify whether a "
+                            "Trading Post order is active or filled."
+                        );
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        if (
+                            ImGui::BeginTable(
+                                "##MyBidEditorValues",
+                                3,
+                                ImGuiTableFlags_SizingFixedFit |
+                                ImGuiTableFlags_NoSavedSettings
+                            )
+                            )
+                        {
+                            ImGui::TableSetupColumn(
+                                "Gold",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                108.0f
+                            );
+                            ImGui::TableSetupColumn(
+                                "Silver",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                92.0f
+                            );
+                            ImGui::TableSetupColumn(
+                                "Copper",
+                                ImGuiTableColumnFlags_WidthFixed,
+                                92.0f
+                            );
+
+                            ImGui::TableNextRow();
+
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::TextDisabled("Gold");
+                            ImGui::SetNextItemWidth(72.0f);
+                            ImGui::InputInt(
+                                "##MyBidGold",
+                                &myBidEditorGold,
+                                0,
+                                0
+                            );
+
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::TextDisabled("Silver");
+                            ImGui::SetNextItemWidth(56.0f);
+                            ImGui::InputInt(
+                                "##MyBidSilver",
+                                &myBidEditorSilver,
+                                0,
+                                0
+                            );
+
+                            ImGui::TableSetColumnIndex(2);
+                            ImGui::TextDisabled("Copper");
+                            ImGui::SetNextItemWidth(56.0f);
+                            ImGui::InputInt(
+                                "##MyBidCopper",
+                                &myBidEditorCopper,
+                                0,
+                                0
+                            );
+
+                            ImGui::EndTable();
+                        }
+
+                        myBidEditorGold =
+                            std::max(0, myBidEditorGold);
+
+                        myBidEditorSilver =
+                            std::clamp(
+                                myBidEditorSilver,
+                                0,
+                                99
+                            );
+
+                        myBidEditorCopper =
+                            std::clamp(
+                                myBidEditorCopper,
+                                0,
+                                99
+                            );
+
+                        ImGui::Spacing();
+
+                        if (
+                            suggestedBidAvailable &&
+                            ImGui::Button(
+                                "USE SUGGESTED"
+                            )
+                            )
+                        {
+                            myBidEditorGold =
+                                static_cast<int>(
+                                    suggestedBidCopper /
+                                    10000ULL
+                                    );
+
+                            myBidEditorSilver =
+                                static_cast<int>(
+                                    (suggestedBidCopper % 10000ULL) /
+                                    100ULL
+                                    );
+
+                            myBidEditorCopper =
+                                static_cast<int>(
+                                    suggestedBidCopper %
+                                    100ULL
+                                    );
+                        }
+
+                        ImGui::SameLine();
+
+                        if (ImGui::Button("SAVE"))
+                        {
+                            const uint64_t newMyBidCopper =
+                                static_cast<uint64_t>(myBidEditorGold) *
+                                10000ULL +
+                                static_cast<uint64_t>(myBidEditorSilver) *
+                                100ULL +
+                                static_cast<uint64_t>(myBidEditorCopper);
+
+                            if (newMyBidCopper > 0)
+                            {
+                                g_Settings
+                                    .tradingPostMyBidCopper[
+                                        item.itemID
+                                    ] =
+                                    newMyBidCopper;
+
+                                        g_Settings
+                                            .tradingPostMyBidSavedAtUnixSeconds[
+                                                item.itemID
+                                            ] =
+                                            marketProwlNowUnixSeconds;
+
+                                                Settings::Save(
+                                                    moduleHandle
+                                                );
+                            }
+
+                            ImGui::CloseCurrentPopup();
+                        }
+
+                        if (myBidAvailable)
+                        {
+                            ImGui::SameLine();
+
+                            if (ImGui::Button("CLEAR"))
+                            {
+                                g_Settings
+                                    .tradingPostMyBidCopper
+                                    .erase(item.itemID);
+
+                                g_Settings
+                                    .tradingPostMyBidSavedAtUnixSeconds
+                                    .erase(item.itemID);
+
+                                Settings::Save(
+                                    moduleHandle
+                                );
+
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                    }
+
+                    ImGui::EndPopup();
+                }
+
+                ImGui::PopStyleColor(8);
+                ImGui::PopStyleVar(3);
 
                 //
                 // Matching card for buy-order market data.
