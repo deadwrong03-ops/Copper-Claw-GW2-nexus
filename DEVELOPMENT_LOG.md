@@ -76,6 +76,38 @@ The saved My Bid remained unchanged through all tested cases.
 
 **Result: PASS — MY BID PERSISTENCE VALIDATED**
 
+### My Bid Status
+
+Extended the existing My Bid row with a compact live comparison against the current highest visible buy order.
+
+Current states:
+
+- **AT TOP** — saved My Bid exactly matches the current highest buy order
+- **OUTBID** — current highest buy order is above My Bid
+- **ABOVE TOP** — My Bid is above the current highest buy order
+- **NO MARKET DATA** — no usable current buy price is available
+
+For **OUTBID** and **ABOVE TOP**, the Buy Orders card also shows the exact coin difference.
+
+The existing My Bid tooltip now includes the same plain-language status while retaining:
+
+- saved My Bid
+- comparison with the current top buy order
+- comparison with Suggested Bid
+- saved age
+
+This remains informational only. The addon compares the saved local reference with the visible market and does not claim that a corresponding Trading Post order still exists or belongs to the player.
+
+In-game validation covered all three normal comparison states:
+
+- My Bid = current top → **AT TOP**
+- My Bid below current top → **OUTBID**
+- My Bid above current top → **ABOVE TOP**
+
+No settings schema or persistence change was required.
+
+**Result: PASS — MY BID STATUS VALIDATED IN GAME**
+
 ### Theme refresh
 
 Reworked the Trading Post visual-theme identities around the current Guild Wars 2 release/Living World color direction and added **Guild Wars 2 Core**.
@@ -153,6 +185,7 @@ Validated:
 - no added Trend Window scrolling
 - My Bid persistence
 - My Bid independence from Suggested Bid
+- My Bid Status: AT TOP / OUTBID / ABOVE TOP
 - refreshed theme palettes
 - Cyberpunk no longer all-yellow
 - story/LWS theme naming and selector order

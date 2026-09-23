@@ -23381,6 +23381,36 @@ void TradingPostUI::RenderTab(
                     ? myBidIt->second
                     : 0;
 
+                const bool myBidMarketAvailable =
+                    myBidAvailable &&
+                    price.buyUnitPrice > 0;
+
+                const bool myBidAtTop =
+                    myBidMarketAvailable &&
+                    myBidCopper ==
+                    price.buyUnitPrice;
+
+                const bool myBidOutbid =
+                    myBidMarketAvailable &&
+                    myBidCopper <
+                    price.buyUnitPrice;
+
+                const bool myBidAboveTop =
+                    myBidMarketAvailable &&
+                    myBidCopper >
+                    price.buyUnitPrice;
+
+                const uint64_t myBidTopDifferenceCopper =
+                    myBidMarketAvailable
+                    ? (
+                        myBidOutbid
+                        ? price.buyUnitPrice - myBidCopper
+                        : myBidAboveTop
+                        ? myBidCopper - price.buyUnitPrice
+                        : 0
+                        )
+                    : 0;
+
                 ImGui::BeginGroup();
 
                 ImGui::TextDisabled(
@@ -23496,6 +23526,72 @@ void TradingPostUI::RenderTab(
                 ImGui::PopStyleColor(5);
                 ImGui::PopStyleVar(2);
 
+                //
+                // My Bid Status compares the saved local reference with the
+                // current highest visible buy order. It does not claim that a
+                // corresponding Trading Post order still exists.
+                //
+                if (myBidAvailable)
+                {
+                    ImGui::TextDisabled(
+                        "MY BID STATUS"
+                    );
+
+                    ImGui::SameLine(
+                        125.0f
+                    );
+
+                    if (!myBidMarketAvailable)
+                    {
+                        ImGui::TextDisabled(
+                            "NO MARKET DATA"
+                        );
+                    }
+                    else if (myBidAtTop)
+                    {
+                        ImGui::TextColored(
+                            goodColor,
+                            "AT TOP"
+                        );
+                    }
+                    else if (myBidOutbid)
+                    {
+                        ImGui::TextColored(
+                            trendDownColor,
+                            "OUTBID"
+                        );
+
+                        ImGui::SameLine(
+                            0.0f,
+                            6.0f
+                        );
+
+                        DrawCoinValueColored(
+                            myBidTopDifferenceCopper,
+                            nullptr,
+                            trendDownColor
+                        );
+                    }
+                    else if (myBidAboveTop)
+                    {
+                        ImGui::TextColored(
+                            attentionColor,
+                            "ABOVE TOP"
+                        );
+
+                        ImGui::SameLine(
+                            0.0f,
+                            6.0f
+                        );
+
+                        DrawCoinValueColored(
+                            myBidTopDifferenceCopper,
+                            nullptr,
+                            attentionColor
+                        );
+                    }
+                }
+
                 if (myBidValueHovered)
                 {
                     ImGui::BeginTooltip();
@@ -23530,6 +23626,39 @@ void TradingPostUI::RenderTab(
                             nullptr,
                             ImGui::GetStyleColorVec4(ImGuiCol_Text)
                         );
+
+                        ImGui::Text(
+                            "Status"
+                        );
+                        ImGui::SameLine(125.0f);
+
+                        if (!myBidMarketAvailable)
+                        {
+                            ImGui::TextDisabled(
+                                "NO MARKET DATA"
+                            );
+                        }
+                        else if (myBidAtTop)
+                        {
+                            ImGui::TextColored(
+                                goodColor,
+                                "AT TOP"
+                            );
+                        }
+                        else if (myBidOutbid)
+                        {
+                            ImGui::TextColored(
+                                trendDownColor,
+                                "OUTBID"
+                            );
+                        }
+                        else if (myBidAboveTop)
+                        {
+                            ImGui::TextColored(
+                                attentionColor,
+                                "ABOVE TOP"
+                            );
+                        }
 
                         if (price.buyUnitPrice > 0)
                         {

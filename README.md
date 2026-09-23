@@ -243,9 +243,16 @@ The My Bid tooltip can compare the saved value with:
 - the current Suggested Bid
 - the time the My Bid value was saved
 
-My Bid is local reference data only. Copper&Claw does **not** claim that the corresponding Trading Post order is still active, unfilled, or owned by the player.
+Copper&Claw also shows a compact **My Bid Status** against the current highest visible buy order:
 
-In-game validation confirmed My Bid persists when switching watched items, changing Trend Windows, and restarting Guild Wars 2.
+- **AT TOP** — My Bid exactly matches the current highest buy order
+- **OUTBID** — the current highest buy order is above My Bid; the UI shows the coin amount My Bid is behind
+- **ABOVE TOP** — My Bid is above the current highest buy order; the UI shows the coin amount My Bid is above it
+- **NO MARKET DATA** — no usable current buy price is available for comparison
+
+My Bid Status is a market comparison only. Copper&Claw does **not** claim that the corresponding Trading Post order still exists, is unfilled, or belongs to the player.
+
+In-game validation confirmed My Bid persists when switching watched items, changing Trend Windows, and restarting Guild Wars 2. The **AT TOP**, **OUTBID**, and **ABOVE TOP** status states were also validated in-game.
 
 ### Avg & Roll Avg
 
