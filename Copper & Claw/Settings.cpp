@@ -443,6 +443,22 @@ bool Settings::Load(
             }
             else if (
                 key ==
+                "collectorSyncProfileId"
+                )
+            {
+                g_Settings.collectorSyncProfileId =
+                    value;
+            }
+            else if (
+                key ==
+                "collectorSyncKey"
+                )
+            {
+                g_Settings.collectorSyncKey =
+                    value;
+            }
+            else if (
+                key ==
                 "acknowledgedUpdateNoticeVersion"
                 )
             {
@@ -829,6 +845,16 @@ bool Settings::Save(
             ? 1
             : 0
             )
+        << '\n';
+
+    file
+        << "collectorSyncProfileId="
+        << g_Settings.collectorSyncProfileId
+        << '\n';
+
+    file
+        << "collectorSyncKey="
+        << g_Settings.collectorSyncKey
         << '\n';
 
     file

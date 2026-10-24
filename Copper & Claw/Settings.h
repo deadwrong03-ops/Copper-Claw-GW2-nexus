@@ -136,6 +136,16 @@ struct CopperAndClawSettings
     bool collectorUseHttps = true;
 
     //
+    // Private watchlist sync credentials.
+    //
+    // These are intentionally empty by default and are written only to the
+    // user's local CopperAndClaw.ini. Never hardcode a real sync credential
+    // into the addon source or repository.
+    //
+    std::string collectorSyncProfileId;
+    std::string collectorSyncKey;
+
+    //
     // Packed addon version for which the one-time post-update
     // item-index notice has already been acknowledged.
     //

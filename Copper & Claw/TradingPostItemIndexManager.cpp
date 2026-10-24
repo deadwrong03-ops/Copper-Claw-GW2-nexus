@@ -8,6 +8,7 @@
 #include <winhttp.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -18,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -1630,236 +1632,446 @@ namespace
             " sec";
     }
 
+    bool ExtractJsonBool(
+        const std::string& json,
+        const std::string& key,
+        bool& outValue
+    )
+    {
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (keyPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition + searchKey.size()
+            );
+
+        if (colonPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        size_t valueStart =
+            colonPosition + 1;
+
+        while (
+            valueStart < json.size() &&
+            (
+                json[valueStart] == ' ' ||
+                json[valueStart] == '\t' ||
+                json[valueStart] == '\r' ||
+                json[valueStart] == '\n'
+                )
+            )
+        {
+            ++valueStart;
+        }
+
+        if (
+            json.compare(
+                valueStart,
+                4,
+                "true"
+            ) == 0
+            )
+        {
+            outValue = true;
+            return true;
+        }
+
+        if (
+            json.compare(
+                valueStart,
+                5,
+                "false"
+            ) == 0
+            )
+        {
+            outValue = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ExtractJsonNumberText(
+        const std::string& json,
+        const std::string& key,
+        std::string& outValue
+    )
+    {
+        outValue.clear();
+
+        const std::string searchKey =
+            "\"" + key + "\"";
+
+        const size_t keyPosition =
+            json.find(
+                searchKey
+            );
+
+        if (keyPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        const size_t colonPosition =
+            json.find(
+                ':',
+                keyPosition + searchKey.size()
+            );
+
+        if (colonPosition == std::string::npos)
+        {
+            return false;
+        }
+
+        size_t valueStart =
+            colonPosition + 1;
+
+        while (
+            valueStart < json.size() &&
+            (
+                json[valueStart] == ' ' ||
+                json[valueStart] == '\t' ||
+                json[valueStart] == '\r' ||
+                json[valueStart] == '\n'
+                )
+            )
+        {
+            ++valueStart;
+        }
+
+        size_t valueEnd =
+            valueStart;
+
+        if (
+            valueEnd < json.size() &&
+            (
+                json[valueEnd] == '-' ||
+                json[valueEnd] == '+'
+                )
+            )
+        {
+            ++valueEnd;
+        }
+
+        bool sawDigit = false;
+
+        while (
+            valueEnd < json.size() &&
+            (
+                (json[valueEnd] >= '0' && json[valueEnd] <= '9') ||
+                json[valueEnd] == '.' ||
+                json[valueEnd] == 'e' ||
+                json[valueEnd] == 'E' ||
+                json[valueEnd] == '-' ||
+                json[valueEnd] == '+'
+                )
+            )
+        {
+            if (
+                json[valueEnd] >= '0' &&
+                json[valueEnd] <= '9'
+                )
+            {
+                sawDigit = true;
+            }
+
+            ++valueEnd;
+        }
+
+        if (!sawDigit)
+        {
+            return false;
+        }
+
+        outValue =
+            json.substr(
+                valueStart,
+                valueEnd - valueStart
+            );
+
+        return true;
+    }
+
+    std::string JoinStringValues(
+        const std::vector<std::string>& values
+    )
+    {
+        std::string result;
+
+        for (size_t i = 0;
+            i < values.size();
+            ++i)
+        {
+            if (i > 0)
+            {
+                result += ", ";
+            }
+
+            result += values[i];
+        }
+
+        return result;
+    }
+
+    std::string FormatCopperAmount(
+        uint32_t copper
+    )
+    {
+        const uint32_t gold =
+            copper / 10000U;
+
+        const uint32_t silver =
+            (copper % 10000U) / 100U;
+
+        const uint32_t remainingCopper =
+            copper % 100U;
+
+        std::string result;
+
+        if (gold > 0)
+        {
+            result +=
+                std::to_string(gold) +
+                "g";
+        }
+
+        if (silver > 0)
+        {
+            if (!result.empty())
+            {
+                result += " ";
+            }
+
+            result +=
+                std::to_string(silver) +
+                "s";
+        }
+
+        if (
+            remainingCopper > 0 ||
+            result.empty()
+            )
+        {
+            if (!result.empty())
+            {
+                result += " ";
+            }
+
+            result +=
+                std::to_string(
+                    remainingCopper
+                ) +
+                "c";
+        }
+
+        return result;
+    }
+
+    size_t CountJsonObjectsInArray(
+        const std::string& json,
+        const std::string& key
+    )
+    {
+        std::string arrayText;
+
+        if (
+            !ExtractJsonArray(
+                json,
+                key,
+                arrayText
+            )
+            )
+        {
+            return 0;
+        }
+
+        return
+            ExtractObjectsFromArray(
+                arrayText
+            ).size();
+    }
+
+    bool ExtractRgbArray(
+        const std::string& json,
+        const std::string& key,
+        uint8_t& outRed,
+        uint8_t& outGreen,
+        uint8_t& outBlue
+    )
+    {
+        std::string arrayText;
+
+        if (
+            !ExtractJsonArray(
+                json,
+                key,
+                arrayText
+            )
+            )
+        {
+            return false;
+        }
+
+        std::array<uint32_t, 3> values = {};
+        size_t valueCount = 0;
+        size_t position = 0;
+
+        while (
+            position < arrayText.size() &&
+            valueCount < values.size()
+            )
+        {
+            while (
+                position < arrayText.size() &&
+                (
+                    arrayText[position] < '0' ||
+                    arrayText[position] > '9'
+                    )
+                )
+            {
+                ++position;
+            }
+
+            if (position >= arrayText.size())
+            {
+                break;
+            }
+
+            const size_t start =
+                position;
+
+            while (
+                position < arrayText.size() &&
+                arrayText[position] >= '0' &&
+                arrayText[position] <= '9'
+                )
+            {
+                ++position;
+            }
+
+            try
+            {
+                values[valueCount] =
+                    static_cast<uint32_t>(
+                        std::stoul(
+                            arrayText.substr(
+                                start,
+                                position - start
+                            )
+                        )
+                        );
+
+                ++valueCount;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+
+        if (valueCount != 3)
+        {
+            return false;
+        }
+
+        for (uint32_t value : values)
+        {
+            if (value > 255U)
+            {
+                return false;
+            }
+        }
+
+        outRed =
+            static_cast<uint8_t>(
+                values[0]
+                );
+
+        outGreen =
+            static_cast<uint8_t>(
+                values[1]
+                );
+
+        outBlue =
+            static_cast<uint8_t>(
+                values[2]
+                );
+
+        return true;
+    }
+
     std::string BuildTooltipText(
         const std::string& itemObject,
         const std::string& itemType
     )
     {
+        (void)itemType;
+
         std::vector<std::string> lines;
+
+        //
+        // Dye Color ID intentionally comes first.
+        //
         std::string detailsObject;
 
-        const bool hasDetails =
+        if (
             ExtractJsonObject(
                 itemObject,
                 "details",
                 detailsObject
-            );
-
-        if (hasDetails)
+            )
+            )
         {
-            std::string effectDescription;
-
-            if (
-                ExtractJsonString(
-                    detailsObject,
-                    "description",
-                    effectDescription
-                ) &&
-                !effectDescription.empty()
-                )
-            {
-                AppendTooltipLines(
-                    lines,
-                    effectDescription
-                );
-            }
-
-            std::string attributesArray;
-
-            if (
-                ExtractJsonArray(
-                    detailsObject,
-                    "attributes",
-                    attributesArray
-                )
-                )
-            {
-                const std::vector<std::string>
-                    attributeObjects =
-                    ExtractObjectsFromArray(
-                        attributesArray
-                    );
-
-                for (
-                    const std::string& attributeObject :
-                    attributeObjects
-                    )
-                {
-                    std::string attribute;
-                    uint32_t modifier = 0;
-
-                    if (
-                        ExtractJsonString(
-                            attributeObject,
-                            "attribute",
-                            attribute
-                        ) &&
-                        ExtractJsonUInt(
-                            attributeObject,
-                            "modifier",
-                            modifier
-                        )
-                        )
-                    {
-                        const std::string friendly =
-                            ToFriendlyAttributeName(
-                                attribute
-                            );
-
-                        if (!friendly.empty())
-                        {
-                            AppendTooltipLines(
-                                lines,
-                                "+" +
-                                std::to_string(modifier) +
-                                " " +
-                                friendly
-                            );
-                        }
-                    }
-                }
-            }
-
-            const std::vector<std::string> bonuses =
-                ExtractStringArray(
-                    detailsObject,
-                    "bonuses"
-                );
-
-            for (
-                const std::string& bonus :
-                bonuses
-                )
-            {
-                AppendTooltipLines(
-                    lines,
-                    bonus
-                );
-            }
-
-            uint32_t durationMilliseconds = 0;
+            uint32_t colorId = 0;
 
             if (
                 ExtractJsonUInt(
                     detailsObject,
-                    "duration_ms",
-                    durationMilliseconds
+                    "color_id",
+                    colorId
                 ) &&
-                durationMilliseconds > 0
+                colorId > 0
                 )
             {
-                AppendTooltipLines(
-                    lines,
-                    "Duration: " +
-                    FormatDurationMilliseconds(
-                        durationMilliseconds
+                lines.push_back(
+                    "Dye Color ID: " +
+                    std::to_string(
+                        colorId
                     )
-                );
-            }
-
-            if (itemType == "Weapon")
-            {
-                uint32_t minimumPower = 0;
-                uint32_t maximumPower = 0;
-
-                if (
-                    ExtractJsonUInt(
-                        detailsObject,
-                        "min_power",
-                        minimumPower
-                    ) &&
-                    ExtractJsonUInt(
-                        detailsObject,
-                        "max_power",
-                        maximumPower
-                    )
-                    )
-                {
-                    AppendTooltipLines(
-                        lines,
-                        "Weapon Strength: " +
-                        std::to_string(minimumPower) +
-                        " - " +
-                        std::to_string(maximumPower)
-                    );
-                }
-            }
-
-            if (itemType == "Armor")
-            {
-                uint32_t defense = 0;
-
-                if (
-                    ExtractJsonUInt(
-                        detailsObject,
-                        "defense",
-                        defense
-                    ) &&
-                    defense > 0
-                    )
-                {
-                    AppendTooltipLines(
-                        lines,
-                        "Defense: " +
-                        std::to_string(defense)
-                    );
-                }
-            }
-
-            if (itemType == "Bag")
-            {
-                uint32_t slots = 0;
-
-                if (
-                    ExtractJsonUInt(
-                        detailsObject,
-                        "size",
-                        slots
-                    ) &&
-                    slots > 0
-                    )
-                {
-                    AppendTooltipLines(
-                        lines,
-                        std::to_string(slots) +
-                        " slots"
-                    );
-                }
-            }
-        }
-
-        if (lines.empty())
-        {
-            std::string description;
-
-            if (
-                ExtractJsonString(
-                    itemObject,
-                    "description",
-                    description
-                ) &&
-                !description.empty()
-                )
-            {
-                AppendTooltipLines(
-                    lines,
-                    description
                 );
             }
         }
 
-        // Keep hover cards useful and compact. Very large rune/effect lists are
-        // intentionally abbreviated instead of recreating the full game tooltip.
-        constexpr size_t MAX_TOOLTIP_LINES = 8;
+        uint32_t vendorValue = 0;
 
-        if (lines.size() > MAX_TOOLTIP_LINES)
+        if (
+            ExtractJsonUInt(
+                itemObject,
+                "vendor_value",
+                vendorValue
+            ) &&
+            vendorValue > 0
+            )
         {
-            lines.resize(
-                MAX_TOOLTIP_LINES
-            );
-
             lines.push_back(
-                "..."
+                "Vendor Value: " +
+                FormatCopperAmount(
+                    vendorValue
+                )
             );
         }
 
@@ -1874,7 +2086,8 @@ namespace
                 result += '\n';
             }
 
-            result += lines[i];
+            result +=
+                lines[i];
         }
 
         return result;
@@ -2253,6 +2466,79 @@ namespace
         return true;
     }
 
+    bool HttpGetWithRetry(
+        const std::wstring& path,
+        std::string& response,
+        int maxAttempts = 4
+    )
+    {
+        if (maxAttempts < 1)
+        {
+            maxAttempts = 1;
+        }
+
+        for (int attempt = 1;
+            attempt <= maxAttempts;
+            ++attempt)
+        {
+            if (g_StopWorker.load())
+            {
+                return false;
+            }
+
+            if (
+                HttpGet(
+                    path,
+                    response
+                )
+                )
+            {
+                return true;
+            }
+
+            if (attempt >= maxAttempts)
+            {
+                break;
+            }
+
+            //
+            // Brief exponential backoff for transient GW2 API/network
+            // failures. Keep the index-build state active so the progress
+            // overlay stays visible while this batch retries.
+            //
+            const int delayMilliseconds =
+                500 <<
+                (attempt - 1);
+
+            int waitedMilliseconds = 0;
+
+            while (
+                waitedMilliseconds <
+                delayMilliseconds
+                )
+            {
+                if (g_StopWorker.load())
+                {
+                    return false;
+                }
+
+                constexpr int sleepSliceMilliseconds =
+                    100;
+
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(
+                        sleepSliceMilliseconds
+                    )
+                );
+
+                waitedMilliseconds +=
+                    sleepSliceMilliseconds;
+            }
+        }
+
+        return false;
+    }
+
     std::vector<uint32_t> ParseIdArray(
         const std::string& json
     )
@@ -2508,6 +2794,12 @@ namespace
                                 "unlock_type",
                                 item.unlockType
                             );
+
+                            ExtractJsonUInt(
+                                detailsObject,
+                                "color_id",
+                                item.colorId
+                            );
                         }
 
                         item.tooltipText =
@@ -2706,7 +2998,9 @@ namespace
 
             // Current cache format:
             // itemID, name, variantLabel, iconUrl, itemType, itemSubtype,
-            // rarity, level, tooltipText, unlockType.
+            // rarity, level, tooltipText, unlockType, colorId,
+            // dyeColorRed, dyeColorGreen, dyeColorBlue, dyeColorAvailable,
+            // detailFormatVersion.
             file
                 << record.item.itemID
                 << '\t'
@@ -2727,6 +3021,28 @@ namespace
                 << safeTooltip
                 << '\t'
                 << safeUnlockType
+                << '\t'
+                << record.item.colorId
+                << '\t'
+                << static_cast<uint32_t>(
+                    record.item.dyeColorRed
+                    )
+                << '\t'
+                << static_cast<uint32_t>(
+                    record.item.dyeColorGreen
+                    )
+                << '\t'
+                << static_cast<uint32_t>(
+                    record.item.dyeColorBlue
+                    )
+                << '\t'
+                << (
+                    record.item.dyeColorAvailable
+                    ? 1
+                    : 0
+                    )
+                << '\t'
+                << 3
                 << '\n';
         }
 
@@ -2917,6 +3233,60 @@ namespace
                         legacyCacheFormat =
                             true;
                     }
+
+                    if (fields.size() >= 15)
+                    {
+                        item.colorId =
+                            static_cast<uint32_t>(
+                                std::stoul(
+                                    fields[10]
+                                )
+                                );
+
+                        item.dyeColorRed =
+                            static_cast<uint8_t>(
+                                std::stoul(
+                                    fields[11]
+                                )
+                                );
+
+                        item.dyeColorGreen =
+                            static_cast<uint8_t>(
+                                std::stoul(
+                                    fields[12]
+                                )
+                                );
+
+                        item.dyeColorBlue =
+                            static_cast<uint8_t>(
+                                std::stoul(
+                                    fields[13]
+                                )
+                                );
+
+                        item.dyeColorAvailable =
+                            fields[14] == "1";
+
+                        if (
+                            fields.size() < 16 ||
+                            fields[15] != "3"
+                            )
+                        {
+                            // The cache data is still usable immediately, but
+                            // force one background rebuild so saved tooltip
+                            // details use the current compact format.
+                            legacyCacheFormat =
+                                true;
+                        }
+                    }
+                    else
+                    {
+                        // Older caches remain immediately searchable, but one
+                        // background refresh upgrades them with dye RGB data
+                        // and the current compact detail format.
+                        legacyCacheFormat =
+                            true;
+                    }
                 }
                 else
                 {
@@ -3041,6 +3411,221 @@ namespace
         return path;
     }
 
+    std::wstring BuildColorsBatchPath(
+        const std::vector<uint32_t>& ids,
+        size_t start,
+        size_t count
+    )
+    {
+        std::wstring path =
+            L"/v2/colors?ids=";
+
+        for (size_t i = 0;
+            i < count;
+            ++i)
+        {
+            if (i > 0)
+            {
+                path += L",";
+            }
+
+            path +=
+                std::to_wstring(
+                    ids[
+                        start + i
+                    ]
+                );
+        }
+
+        return path;
+    }
+
+    void PopulateDyeColors(
+        std::vector<TradingPostIndexedItem>& items
+    )
+    {
+        std::vector<uint32_t> colorIDs;
+
+        for (
+            const TradingPostIndexedItem& item :
+            items
+            )
+        {
+            if (
+                item.unlockType == "Dye" &&
+                item.colorId > 0
+                )
+            {
+                colorIDs.push_back(
+                    item.colorId
+                );
+            }
+        }
+
+        std::sort(
+            colorIDs.begin(),
+            colorIDs.end()
+        );
+
+        colorIDs.erase(
+            std::unique(
+                colorIDs.begin(),
+                colorIDs.end()
+            ),
+            colorIDs.end()
+        );
+
+        if (colorIDs.empty())
+        {
+            return;
+        }
+
+        std::unordered_map<
+            uint32_t,
+            std::array<uint8_t, 3>
+        > rgbByColorID;
+
+        for (size_t start = 0;
+            start < colorIDs.size();
+            start += ITEM_BATCH_SIZE)
+        {
+            if (g_StopWorker.load())
+            {
+                return;
+            }
+
+            const size_t remaining =
+                colorIDs.size() - start;
+
+            const size_t batchCount =
+                std::min(
+                    ITEM_BATCH_SIZE,
+                    remaining
+                );
+
+            const std::wstring path =
+                BuildColorsBatchPath(
+                    colorIDs,
+                    start,
+                    batchCount
+                );
+
+            std::string colorResponse;
+
+            if (
+                !HttpGetWithRetry(
+                    path,
+                    colorResponse
+                )
+                )
+            {
+                // Dye previews are enrichment only. Never fail the whole item
+                // index because the color endpoint had a temporary problem.
+                continue;
+            }
+
+            const std::vector<std::string>
+                colorObjects =
+                ExtractObjectsFromArray(
+                    colorResponse
+                );
+
+            for (
+                const std::string& colorObject :
+                colorObjects
+                )
+            {
+                uint32_t colorID = 0;
+
+                if (
+                    !ExtractJsonUInt(
+                        colorObject,
+                        "id",
+                        colorID
+                    ) ||
+                    colorID == 0
+                    )
+                {
+                    continue;
+                }
+
+                std::string clothObject;
+
+                if (
+                    !ExtractJsonObject(
+                        colorObject,
+                        "cloth",
+                        clothObject
+                    )
+                    )
+                {
+                    continue;
+                }
+
+                uint8_t red = 0;
+                uint8_t green = 0;
+                uint8_t blue = 0;
+
+                if (
+                    !ExtractRgbArray(
+                        clothObject,
+                        "rgb",
+                        red,
+                        green,
+                        blue
+                    )
+                    )
+                {
+                    continue;
+                }
+
+                rgbByColorID[
+                    colorID
+                ] = {
+                    red,
+                    green,
+                    blue
+                };
+            }
+        }
+
+        for (
+            TradingPostIndexedItem& item :
+            items
+            )
+        {
+            if (
+                item.unlockType != "Dye" ||
+                item.colorId == 0
+                )
+            {
+                continue;
+            }
+
+            const auto found =
+                rgbByColorID.find(
+                    item.colorId
+                );
+
+            if (found == rgbByColorID.end())
+            {
+                continue;
+            }
+
+            item.dyeColorRed =
+                found->second[0];
+
+            item.dyeColorGreen =
+                found->second[1];
+
+            item.dyeColorBlue =
+                found->second[2];
+
+            item.dyeColorAvailable =
+                true;
+        }
+    }
+
     void SetBuildFailure(
         const std::string& message
     )
@@ -3069,7 +3654,7 @@ namespace
         std::string priceIdsResponse;
 
         if (
-            !HttpGet(
+            !HttpGetWithRetry(
                 L"/v2/commerce/prices",
                 priceIdsResponse
             )
@@ -3158,7 +3743,7 @@ namespace
             std::string itemResponse;
 
             if (
-                !HttpGet(
+                !HttpGetWithRetry(
                     path,
                     itemResponse
                 )
@@ -3292,6 +3877,15 @@ namespace
                 )
             );
         }
+
+        //
+        // Enrich dyes with their actual material preview RGB after all item
+        // metadata is present. This uses the public colors endpoint in batches
+        // and never blocks the render thread.
+        //
+        PopulateDyeColors(
+            rebuiltItems
+        );
 
         std::vector<IndexedRecord> rebuiltRecords =
             BuildRecords(

@@ -24,23 +24,39 @@ struct TradingPostIndexedItem
     std::string iconUrl;
 
     //
-    // Small metadata set retained from /v2/items for hover tooltips and
-    // automatic Watchlist category filtering.
-    //
+    // Small metadata set retained from /v2/items for hover tooltips.
     // itemSubtype is the details.type value when the item exposes one
-    // (Food, Utility, LongBow, Rune, Unlock, etc.).
-    // unlockType is details.unlock_type when present (Dye, Recipe, etc.).
+    // (Food, Utility, LongBow, Rune, etc.).
     //
     std::string itemType;
     std::string itemSubtype;
-    std::string rarity;
-    uint32_t level = 0;
-    std::string unlockType;
 
     //
-    // Preformatted short effect/stat summary built while the item index is
-    // refreshed. Keeping this in the local index means icon hover tooltips
-    // never need to make a network request.
+    // Consumable unlock subtype from details.unlock_type when present.
+    // Used by the Watchlist automatic category filter to distinguish dyes
+    // from other consumables without any account/API-key access.
+    //
+    std::string unlockType;
+
+    std::string rarity;
+    uint32_t level = 0;
+
+    //
+    // Dye metadata from details.color_id plus the Guild Wars 2 /v2/colors
+    // cloth RGB preview. These stay in the local item-index cache so the UI
+    // never performs a network request while rendering.
+    //
+    uint32_t colorId = 0;
+    uint8_t dyeColorRed = 0;
+    uint8_t dyeColorGreen = 0;
+    uint8_t dyeColorBlue = 0;
+    bool dyeColorAvailable = false;
+
+    //
+    // Preformatted player-facing detail summary built from the public
+    // /v2/items metadata. This includes whichever useful fields exist for the
+    // item type: descriptions, stats, weapon strength, defense, durations,
+    // upgrade information, restrictions, vendor value, and similar details.
     //
     std::string tooltipText;
 };
@@ -85,7 +101,7 @@ namespace TradingPostItemIndexManager
 
     //
     // Looks up one indexed Trading Post item by item ID.
-    // Used by the UI to retrieve icon, tooltip, and category metadata.
+    // Used by the UI to retrieve icon, hover-tooltip, and automatic-category metadata.
     //
     bool TryGetItem(
         uint32_t itemID,

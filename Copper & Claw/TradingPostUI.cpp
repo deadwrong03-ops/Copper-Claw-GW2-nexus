@@ -114,6 +114,307 @@ namespace
             );
     }
 
+    bool ExtractJsonStringValue(
+        const std::string& json,
+        const std::string& key,
+        std::string& outValue
+    );
+
+    struct MobilePairingStartResult
+    {
+        bool success = false;
+        std::string error;
+        std::string token;
+        std::string expiresAtUtc;
+    };
+
+    MobilePairingStartResult StartMobilePairingSession(
+        const std::string& collectorHostText,
+        uint16_t collectorPortValue,
+        bool collectorUseHttpsValue,
+        const std::string& profileId,
+        const std::string& syncKey
+    )
+    {
+        MobilePairingStartResult result;
+
+        if (profileId.empty() || syncKey.empty())
+        {
+            result.error =
+                "Sync pairing is not configured yet.";
+            return result;
+        }
+
+        std::wstring collectorHost(
+            collectorHostText.begin(),
+            collectorHostText.end()
+        );
+
+        if (collectorHost.empty())
+        {
+            collectorHost =
+                L"127.0.0.1";
+        }
+
+        HINTERNET session =
+            WinHttpOpen(
+                L"CopperAndClaw/1.0",
+                WINHTTP_ACCESS_TYPE_NO_PROXY,
+                WINHTTP_NO_PROXY_NAME,
+                WINHTTP_NO_PROXY_BYPASS,
+                0
+            );
+
+        if (session == nullptr)
+        {
+            result.error =
+                "Could not open the Collector HTTP session.";
+            return result;
+        }
+
+        WinHttpSetTimeouts(
+            session,
+            3000,
+            3000,
+            3000,
+            3000
+        );
+
+        HINTERNET connection =
+            WinHttpConnect(
+                session,
+                collectorHost.c_str(),
+                static_cast<INTERNET_PORT>(
+                    collectorPortValue
+                    ),
+                0
+            );
+
+        if (connection == nullptr)
+        {
+            WinHttpCloseHandle(session);
+            result.error =
+                "Could not connect to the Collector.";
+            return result;
+        }
+
+        const DWORD requestFlags =
+            collectorUseHttpsValue
+            ? WINHTTP_FLAG_SECURE
+            : 0;
+
+        HINTERNET request =
+            WinHttpOpenRequest(
+                connection,
+                L"POST",
+                L"/sync/pair/start",
+                nullptr,
+                WINHTTP_NO_REFERER,
+                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                requestFlags
+            );
+
+        if (request == nullptr)
+        {
+            WinHttpCloseHandle(connection);
+            WinHttpCloseHandle(session);
+            result.error =
+                "Could not create the mobile pairing request.";
+            return result;
+        }
+
+        std::wstring wideProfileId(
+            profileId.begin(),
+            profileId.end()
+        );
+
+        std::wstring wideSyncKey(
+            syncKey.begin(),
+            syncKey.end()
+        );
+
+        std::wstring headers =
+            L"X-CopperClaw-Profile-Id: " +
+            wideProfileId +
+            L"\r\nX-CopperClaw-Sync-Key: " +
+            wideSyncKey +
+            L"\r\nAccept: application/json\r\n";
+
+        const BOOL sent =
+            WinHttpSendRequest(
+                request,
+                headers.c_str(),
+                static_cast<DWORD>(-1L),
+                WINHTTP_NO_REQUEST_DATA,
+                0,
+                0,
+                0
+            );
+
+        if (
+            !sent ||
+            !WinHttpReceiveResponse(
+                request,
+                nullptr
+            )
+            )
+        {
+            WinHttpCloseHandle(request);
+            WinHttpCloseHandle(connection);
+            WinHttpCloseHandle(session);
+            result.error =
+                "The Collector did not answer the mobile pairing request.";
+            return result;
+        }
+
+        DWORD statusCode = 0;
+        DWORD statusCodeSize =
+            sizeof(statusCode);
+
+        const BOOL statusRead =
+            WinHttpQueryHeaders(
+                request,
+                WINHTTP_QUERY_STATUS_CODE |
+                WINHTTP_QUERY_FLAG_NUMBER,
+                WINHTTP_HEADER_NAME_BY_INDEX,
+                &statusCode,
+                &statusCodeSize,
+                WINHTTP_NO_HEADER_INDEX
+            );
+
+        std::string response;
+
+        while (true)
+        {
+            DWORD available = 0;
+
+            if (!WinHttpQueryDataAvailable(
+                request,
+                &available))
+            {
+                break;
+            }
+
+            if (available == 0)
+            {
+                break;
+            }
+
+            std::vector<char> buffer(
+                static_cast<size_t>(available) + 1,
+                '\0'
+            );
+
+            DWORD bytesRead = 0;
+
+            if (!WinHttpReadData(
+                request,
+                buffer.data(),
+                available,
+                &bytesRead))
+            {
+                break;
+            }
+
+            response.append(
+                buffer.data(),
+                bytesRead
+            );
+        }
+
+        WinHttpCloseHandle(request);
+        WinHttpCloseHandle(connection);
+        WinHttpCloseHandle(session);
+
+        if (!statusRead || statusCode != 201)
+        {
+            result.error =
+                "Collector returned HTTP " +
+                std::to_string(statusCode) +
+                " for mobile pairing.";
+            return result;
+        }
+
+        if (!ExtractJsonStringValue(
+            response,
+            "token",
+            result.token) ||
+            result.token.empty())
+        {
+            result.error =
+                "Collector returned an invalid pairing token.";
+            return result;
+        }
+
+        ExtractJsonStringValue(
+            response,
+            "expiresAtUtc",
+            result.expiresAtUtc
+        );
+
+        result.success = true;
+        return result;
+    }
+
+    Texture_t* GetMobilePairingQrTexture(
+        const std::string& token
+    )
+    {
+        if (
+            token.empty() ||
+            APIDefs == nullptr ||
+            APIDefs->Textures_GetOrCreateFromURL ==
+            nullptr
+            )
+        {
+            return nullptr;
+        }
+
+        std::string remote =
+            g_Settings.collectorUseHttps
+            ? "https://"
+            : "http://";
+
+        remote +=
+            g_Settings.collectorHost.empty()
+            ? "127.0.0.1"
+            : g_Settings.collectorHost;
+
+        const bool defaultPort =
+            (
+                g_Settings.collectorUseHttps &&
+                g_Settings.collectorPort == 443
+                ) ||
+            (
+                !g_Settings.collectorUseHttps &&
+                g_Settings.collectorPort == 80
+                );
+
+        if (!defaultPort)
+        {
+            remote +=
+                ":" +
+                std::to_string(
+                    g_Settings.collectorPort
+                );
+        }
+
+        const std::string endpoint =
+            "/sync/pair/qr?token=" +
+            token;
+
+        const std::string identifier =
+            "CopperAndClaw_MobilePairQr_" +
+            token;
+
+        return
+            APIDefs->Textures_GetOrCreateFromURL(
+                identifier.c_str(),
+                remote.c_str(),
+                endpoint.c_str()
+            );
+    }
+
     struct MarketProwlSignalRow
     {
         uint64_t id = 0;
@@ -10275,6 +10576,60 @@ void TradingPostUI::RenderTab(
             );
         };
 
+    static std::future<MobilePairingStartResult>
+        mobilePairingFuture;
+
+    static bool mobilePairingRequestInFlight =
+        false;
+
+    static std::string mobilePairingToken;
+    static std::string mobilePairingExpiresAtUtc;
+    static std::string mobilePairingError;
+    static bool openMobilePairingPopup = false;
+
+    if (
+        mobilePairingRequestInFlight &&
+        mobilePairingFuture.valid() &&
+        mobilePairingFuture.wait_for(
+            std::chrono::milliseconds(0)
+        ) == std::future_status::ready
+        )
+    {
+        MobilePairingStartResult pairingResult;
+
+        try
+        {
+            pairingResult =
+                mobilePairingFuture.get();
+        }
+        catch (...)
+        {
+            pairingResult.success = false;
+            pairingResult.error =
+                "Mobile pairing request failed.";
+        }
+
+        mobilePairingRequestInFlight =
+            false;
+
+        if (pairingResult.success)
+        {
+            mobilePairingToken =
+                std::move(pairingResult.token);
+
+            mobilePairingExpiresAtUtc =
+                std::move(pairingResult.expiresAtUtc);
+
+            mobilePairingError.clear();
+            openMobilePairingPopup = true;
+        }
+        else
+        {
+            mobilePairingError =
+                pairingResult.error;
+        }
+    }
+
     DrawPrimaryViewButton(
         "WATCHLIST##TradingPostPrimaryView",
         0,
@@ -10291,6 +10646,229 @@ void TradingPostUI::RenderTab(
         1,
         138.0f
     );
+
+    ImGui::SameLine(
+        0.0f,
+        8.0f
+    );
+
+    if (
+        ImGui::Button(
+            mobilePairingRequestInFlight
+            ? "PAIRING..."
+            : "PAIR MOBILE",
+            ImVec2(
+                116.0f,
+                28.0f
+            )
+        ) &&
+        !mobilePairingRequestInFlight
+        )
+    {
+        mobilePairingError.clear();
+        mobilePairingToken.clear();
+        mobilePairingExpiresAtUtc.clear();
+
+        if (
+            g_Settings.collectorSyncProfileId.empty() ||
+            g_Settings.collectorSyncKey.empty()
+            )
+        {
+            mobilePairingError =
+                "Sync pairing must be configured before pairing a phone.";
+        }
+        else
+        {
+            const std::string collectorHost =
+                g_Settings.collectorHost;
+
+            const uint16_t collectorPort =
+                static_cast<uint16_t>(
+                    g_Settings.collectorPort
+                    );
+
+            const bool collectorUseHttps =
+                g_Settings.collectorUseHttps;
+
+            const std::string profileId =
+                g_Settings.collectorSyncProfileId;
+
+            const std::string syncKey =
+                g_Settings.collectorSyncKey;
+
+            mobilePairingRequestInFlight =
+                true;
+
+            try
+            {
+                mobilePairingFuture =
+                    std::async(
+                        std::launch::async,
+                        [
+                            collectorHost,
+                            collectorPort,
+                            collectorUseHttps,
+                            profileId,
+                            syncKey
+                        ]()
+                        {
+                            return
+                                StartMobilePairingSession(
+                                    collectorHost,
+                                    collectorPort,
+                                    collectorUseHttps,
+                                    profileId,
+                                    syncKey
+                                );
+                        }
+                    );
+            }
+            catch (...)
+            {
+                mobilePairingRequestInFlight =
+                    false;
+
+                mobilePairingError =
+                    "Could not start the mobile pairing request.";
+            }
+        }
+    }
+
+    if (!mobilePairingError.empty())
+    {
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip(
+                "%s",
+                mobilePairingError.c_str()
+            );
+        }
+    }
+    else if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip(
+            "Create a short-lived one-use QR code for the Copper&Claw Android app."
+        );
+    }
+
+    if (openMobilePairingPopup)
+    {
+        ImGui::OpenPopup(
+            "Pair Copper&Claw Mobile"
+        );
+
+        openMobilePairingPopup = false;
+    }
+
+    ImGui::SetNextWindowSize(
+        ImVec2(
+            390.0f,
+            500.0f
+        ),
+        ImGuiCond_Appearing
+    );
+
+    if (
+        ImGui::BeginPopupModal(
+            "Pair Copper&Claw Mobile",
+            nullptr,
+            ImGuiWindowFlags_NoResize
+        )
+        )
+    {
+        ImGui::TextColored(
+            primaryViewPalette.accent,
+            "PAIR MOBILE APP"
+        );
+
+        ImGui::Spacing();
+
+        ImGui::TextWrapped(
+            "Scan this QR code with your phone camera. It contains a short-lived one-use pairing token, not your permanent Copper&Claw sync key."
+        );
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        Texture_t* pairingQr =
+            GetMobilePairingQrTexture(
+                mobilePairingToken
+            );
+
+        if (
+            pairingQr != nullptr &&
+            pairingQr->Resource != nullptr
+            )
+        {
+            const float qrSize =
+                280.0f;
+
+            const float availableWidth =
+                ImGui::GetContentRegionAvail().x;
+
+            if (availableWidth > qrSize)
+            {
+                ImGui::SetCursorPosX(
+                    ImGui::GetCursorPosX() +
+                    (availableWidth - qrSize) *
+                    0.5f
+                );
+            }
+
+            ImGui::Image(
+                pairingQr->Resource,
+                ImVec2(
+                    qrSize,
+                    qrSize
+                )
+            );
+        }
+        else
+        {
+            ImGui::Dummy(
+                ImVec2(
+                    0.0f,
+                    120.0f
+                )
+            );
+
+            ImGui::TextDisabled(
+                "Loading QR code..."
+            );
+        }
+
+        ImGui::Spacing();
+
+        if (!mobilePairingExpiresAtUtc.empty())
+        {
+            ImGui::TextDisabled(
+                "Expires: %s",
+                mobilePairingExpiresAtUtc.c_str()
+            );
+        }
+
+        ImGui::TextDisabled(
+            "The token can be redeemed once and expires after about 5 minutes."
+        );
+
+        ImGui::Spacing();
+
+        if (
+            ImGui::Button(
+                "Close",
+                ImVec2(
+                    90.0f,
+                    26.0f
+                )
+            )
+            )
+        {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -18986,6 +19564,15 @@ void TradingPostUI::RenderTab(
                     const float compactBodyTextX =
                         cardStart.x + 12.0f;
 
+                    TradingPostIndexedItem compactIndexedItem;
+
+                    const bool hasCompactIndexedItem =
+                        TradingPostItemIndexManager::
+                        TryGetItem(
+                            item.itemID,
+                            compactIndexedItem
+                        );
+
                     Texture_t* compactItemIcon =
                         GetTradingPostItemIcon(
                             item.itemID
@@ -19073,16 +19660,10 @@ void TradingPostUI::RenderTab(
                             )
                             )
                         {
-                            TradingPostIndexedItem tooltipItem;
-
-                            if (
-                                TradingPostItemIndexManager::
-                                TryGetItem(
-                                    item.itemID,
-                                    tooltipItem
-                                )
-                                )
+                            if (hasCompactIndexedItem)
                             {
+                                const TradingPostIndexedItem& tooltipItem =
+                                    compactIndexedItem;
                                 ImGui::BeginTooltip();
 
                                 ImGui::PushTextWrapPos(
@@ -20658,6 +21239,15 @@ void TradingPostUI::RenderTab(
             // Stock-quote style identity block: icon, name, then the two live
             // sides of the market. Keeping this information in one strip means
             // the watch list is navigation, not a second place to read prices.
+            TradingPostIndexedItem selectedIndexedItem;
+
+            const bool hasSelectedIndexedItem =
+                TradingPostItemIndexManager::
+                TryGetItem(
+                    item.itemID,
+                    selectedIndexedItem
+                );
+
             Texture_t* selectedItemIcon =
                 GetTradingPostItemIcon(
                     item.itemID
@@ -20745,6 +21335,228 @@ void TradingPostUI::RenderTab(
                     selectedImageMin,
                     selectedImageMax
                 );
+
+                if (
+                    hasSelectedIndexedItem &&
+                    ImGui::IsMouseHoveringRect(
+                        selectedIconMin,
+                        selectedIconMax,
+                        true
+                    )
+                    )
+                {
+                    ImGui::BeginTooltip();
+
+                    ImGui::PushTextWrapPos(
+                        ImGui::GetFontSize() *
+                        34.0f
+                    );
+
+                    ImGui::SetWindowFontScale(
+                        1.08f
+                    );
+
+                    ImGui::TextColored(
+                        ImVec4(
+                            0.92f,
+                            0.96f,
+                            1.00f,
+                            1.00f
+                        ),
+                        "%s",
+                        selectedIndexedItem.name.c_str()
+                    );
+
+                    ImGui::SetWindowFontScale(
+                        1.00f
+                    );
+
+                    std::string selectedMetadataLine;
+
+                    if (!selectedIndexedItem.rarity.empty())
+                    {
+                        selectedMetadataLine +=
+                            selectedIndexedItem.rarity;
+                    }
+
+                    const std::string& selectedTypeLabel =
+                        !selectedIndexedItem.itemSubtype.empty()
+                        ? selectedIndexedItem.itemSubtype
+                        : selectedIndexedItem.itemType;
+
+                    if (!selectedTypeLabel.empty())
+                    {
+                        if (!selectedMetadataLine.empty())
+                        {
+                            selectedMetadataLine +=
+                                "  |  ";
+                        }
+
+                        selectedMetadataLine +=
+                            selectedTypeLabel;
+                    }
+
+                    if (selectedIndexedItem.level > 0)
+                    {
+                        if (!selectedMetadataLine.empty())
+                        {
+                            selectedMetadataLine +=
+                                "  |  ";
+                        }
+
+                        selectedMetadataLine +=
+                            "Level " +
+                            std::to_string(
+                                selectedIndexedItem.level
+                            );
+                    }
+
+                    if (!selectedMetadataLine.empty())
+                    {
+                        ImGui::TextDisabled(
+                            "%s",
+                            selectedMetadataLine.c_str()
+                        );
+                    }
+
+                    if (
+                        selectedIndexedItem.unlockType == "Dye" &&
+                        selectedIndexedItem.dyeColorAvailable
+                        )
+                    {
+                        ImGui::Spacing();
+
+                        const ImVec2 tooltipSwatchMin =
+                            ImGui::GetCursorScreenPos();
+
+                        const ImVec2 tooltipSwatchMax(
+                            tooltipSwatchMin.x + 28.0f,
+                            tooltipSwatchMin.y + 18.0f
+                        );
+
+                        ImGui::GetWindowDrawList()->AddRectFilled(
+                            tooltipSwatchMin,
+                            tooltipSwatchMax,
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    static_cast<float>(
+                                        selectedIndexedItem.dyeColorRed
+                                        ) / 255.0f,
+                                    static_cast<float>(
+                                        selectedIndexedItem.dyeColorGreen
+                                        ) / 255.0f,
+                                    static_cast<float>(
+                                        selectedIndexedItem.dyeColorBlue
+                                        ) / 255.0f,
+                                    1.00f
+                                )
+                            ),
+                            3.0f
+                        );
+
+                        ImGui::GetWindowDrawList()->AddRect(
+                            tooltipSwatchMin,
+                            tooltipSwatchMax,
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    0.92f,
+                                    0.94f,
+                                    0.98f,
+                                    0.92f
+                                )
+                            ),
+                            3.0f,
+                            0,
+                            1.0f
+                        );
+
+                        ImGui::Dummy(
+                            ImVec2(
+                                28.0f,
+                                18.0f
+                            )
+                        );
+                    }
+
+                    if (!selectedIndexedItem.tooltipText.empty())
+                    {
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        ImGui::TextUnformatted(
+                            selectedIndexedItem.tooltipText.c_str()
+                        );
+                    }
+
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndTooltip();
+                }
+            }
+
+            //
+            // Dyes get a clean, always-visible color chip directly beneath
+            // the selected item name. Keep the left identity area dedicated to
+            // the item itself, while the market quote columns begin farther right.
+            //
+            if (
+                hasSelectedIndexedItem &&
+                selectedIndexedItem.unlockType == "Dye" &&
+                selectedIndexedItem.dyeColorAvailable
+                )
+            {
+                const float selectedDyeSwatchSize =
+                    26.0f;
+
+                const ImVec2 selectedDyeSwatchMin(
+                    janthirHeaderStart.x +
+                    72.0f,
+                    janthirHeaderStart.y +
+                    38.0f
+                );
+
+                const ImVec2 selectedDyeSwatchMax(
+                    selectedDyeSwatchMin.x +
+                    selectedDyeSwatchSize,
+                    selectedDyeSwatchMin.y +
+                    selectedDyeSwatchSize
+                );
+
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    selectedDyeSwatchMin,
+                    selectedDyeSwatchMax,
+                    ImGui::GetColorU32(
+                        ImVec4(
+                            static_cast<float>(
+                                selectedIndexedItem.dyeColorRed
+                                ) / 255.0f,
+                            static_cast<float>(
+                                selectedIndexedItem.dyeColorGreen
+                                ) / 255.0f,
+                            static_cast<float>(
+                                selectedIndexedItem.dyeColorBlue
+                                ) / 255.0f,
+                            1.00f
+                        )
+                    ),
+                    4.0f
+                );
+
+                ImGui::GetWindowDrawList()->AddRect(
+                    selectedDyeSwatchMin,
+                    selectedDyeSwatchMax,
+                    ImGui::GetColorU32(
+                        ImVec4(
+                            0.92f,
+                            0.94f,
+                            0.98f,
+                            0.92f
+                        )
+                    ),
+                    4.0f,
+                    0,
+                    1.0f
+                );
             }
 
             ImGui::SetCursorScreenPos(
@@ -20773,50 +21585,11 @@ void TradingPostUI::RenderTab(
                 1.00f
             );
 
-            if (
-                hasPrice &&
-                price.available
-                )
-            {
-                ImDrawList* headerDrawList =
-                    ImGui::GetWindowDrawList();
-
-                const ImVec2 sellTextPos(
-                    janthirHeaderStart.x +
-                    72.0f,
-                    janthirHeaderStart.y +
-                    42.0f
-                );
-
-                const float sellTextEndX =
-                    DrawCoinValueColoredAt(
-                        headerDrawList,
-                        sellTextPos,
-                        static_cast<uint64_t>(
-                            price.sellUnitPrice
-                            ),
-                        "SELL",
-                        ImGui::GetColorU32(
-                            sellColor
-                        )
-                    );
-
-                DrawCoinValueColoredAt(
-                    headerDrawList,
-                    ImVec2(
-                        sellTextEndX +
-                        28.0f,
-                        sellTextPos.y
-                    ),
-                    static_cast<uint64_t>(
-                        price.buyUnitPrice
-                        ),
-                    "BUY",
-                    ImGui::GetColorU32(
-                        buyColor
-                    )
-                );
-            }
+            //
+            // The live quote summary is drawn after the selected Trend Window
+            // statistics are available. That lets the identity strip show
+            // BUY | SELL | WINDOW AVG without adding any vertical height.
+            //
 
 
             //
@@ -21304,6 +22077,201 @@ void TradingPostUI::RenderTab(
                 const DealWindowStats& buyStats =
                     detailsCache.buyStats;
 
+                //
+                // Compact market-dashboard summary inside the existing selected
+                // item identity strip. This is presentation-only: TOP BUY and
+                // LOWEST SELL remain the live market quotes, while the dynamic
+                // selected-window AVG uses the canonical time-normalized sell-side
+                // average for the currently
+                // selected Trend Window. No extra vertical space is consumed.
+                //
+                {
+                    ImDrawList* selectedSummaryDrawList =
+                        ImGui::GetWindowDrawList();
+
+                    const float summaryStartX =
+                        janthirHeaderStart.x +
+                        205.0f;
+
+                    const float summaryRightX =
+                        janthirHeaderEnd.x -
+                        12.0f;
+
+                    const float summaryWidth =
+                        std::max(
+                            1.0f,
+                            summaryRightX -
+                            summaryStartX
+                        );
+
+                    const float summaryColumnWidth =
+                        summaryWidth /
+                        3.0f;
+
+                    const float summaryLabelY =
+                        janthirHeaderStart.y +
+                        35.0f;
+
+                    const float summaryValueY =
+                        janthirHeaderStart.y +
+                        50.0f;
+
+                    const ImVec4 windowAverageColor(
+                        0.93f,
+                        0.76f,
+                        0.28f,
+                        1.00f
+                    );
+
+                    for (int dividerIndex = 1; dividerIndex < 3; ++dividerIndex)
+                    {
+                        const float dividerX =
+                            summaryStartX +
+                            summaryColumnWidth *
+                            static_cast<float>(
+                                dividerIndex
+                                );
+
+                        selectedSummaryDrawList->AddLine(
+                            ImVec2(
+                                dividerX,
+                                janthirHeaderStart.y +
+                                34.0f
+                            ),
+                            ImVec2(
+                                dividerX,
+                                janthirHeaderEnd.y -
+                                8.0f
+                            ),
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    themeTelemetry.x,
+                                    themeTelemetry.y,
+                                    themeTelemetry.z,
+                                    0.30f
+                                )
+                            ),
+                            1.0f
+                        );
+                    }
+
+                    auto DrawSummaryColumn =
+                        [&](
+                            int columnIndex,
+                            const char* label,
+                            const ImVec4& labelColor,
+                            bool valueAvailable,
+                            uint64_t valueCopper
+                            )
+                        {
+                            const float columnX =
+                                summaryStartX +
+                                summaryColumnWidth *
+                                static_cast<float>(
+                                    columnIndex
+                                    ) +
+                                8.0f;
+
+                            selectedSummaryDrawList->AddText(
+                                ImVec2(
+                                    columnX,
+                                    summaryLabelY
+                                ),
+                                ImGui::GetColorU32(
+                                    ImVec4(
+                                        labelColor.x,
+                                        labelColor.y,
+                                        labelColor.z,
+                                        0.92f
+                                    )
+                                ),
+                                label
+                            );
+
+                            if (valueAvailable)
+                            {
+                                DrawCoinValueColoredAt(
+                                    selectedSummaryDrawList,
+                                    ImVec2(
+                                        columnX,
+                                        summaryValueY
+                                    ),
+                                    valueCopper,
+                                    nullptr,
+                                    ImGui::GetColorU32(
+                                        labelColor
+                                    )
+                                );
+                            }
+                            else
+                            {
+                                selectedSummaryDrawList->AddText(
+                                    ImVec2(
+                                        columnX,
+                                        summaryValueY
+                                    ),
+                                    ImGui::GetColorU32(
+                                        mutedColor
+                                    ),
+                                    "Developing"
+                                );
+                            }
+                        };
+
+                    DrawSummaryColumn(
+                        0,
+                        "TOP BUY",
+                        buyColor,
+                        price.buyUnitPrice > 0,
+                        static_cast<uint64_t>(
+                            price.buyUnitPrice
+                            )
+                    );
+
+                    DrawSummaryColumn(
+                        1,
+                        "LOWEST SELL",
+                        sellColor,
+                        price.sellUnitPrice > 0,
+                        static_cast<uint64_t>(
+                            price.sellUnitPrice
+                            )
+                    );
+
+                    const char* summaryWindowAverageLabels[] =
+                    {
+                        "15M AVG",
+                        "30M AVG",
+                        "1H AVG",
+                        "6H AVG",
+                        "24H AVG",
+                        "3D AVG",
+                        "7D AVG",
+                        "30D AVG",
+                        "3 MONTHS AVG",
+                        "6 MONTHS AVG",
+                        "1 YEAR AVG"
+                    };
+
+                    const int summaryWindowIndex =
+                        std::clamp(
+                            g_Settings.tradingPostTrendWindowIndex,
+                            0,
+                            10
+                        );
+
+                    DrawSummaryColumn(
+                        2,
+                        summaryWindowAverageLabels[
+                            summaryWindowIndex
+                        ],
+                        windowAverageColor,
+                        sellStats.available &&
+                        sellStats.averageSell > 0,
+                        sellStats.averageSell
+                    );
+                }
+
 
                 const std::vector<SparklinePoint>&
                     analysisBuyHistoryGold =
@@ -21766,10 +22734,48 @@ void TradingPostUI::RenderTab(
                 const ImVec2 sellMarketCardTopLeft =
                     ImGui::GetCursorScreenPos();
 
+                //
+                // UI polish: give the sell-side card a slightly stronger
+                // visual title and a quiet divider without changing layout
+                // height or any analysis behavior.
+                //
+                ImGui::SetWindowFontScale(
+                    1.04f
+                );
+
                 ImGui::TextColored(
                     sellColor,
                     "SELL LISTINGS"
                 );
+
+                ImGui::SetWindowFontScale(
+                    1.00f
+                );
+
+                {
+                    const ImVec2 titleRuleCursor =
+                        ImGui::GetCursorScreenPos();
+
+                    ImGui::GetWindowDrawList()->AddLine(
+                        ImVec2(
+                            sellMarketCardTopLeft.x,
+                            titleRuleCursor.y - 2.0f
+                        ),
+                        ImVec2(
+                            sellMarketCardTopLeft.x + 286.0f,
+                            titleRuleCursor.y - 2.0f
+                        ),
+                        ImGui::GetColorU32(
+                            ImVec4(
+                                sellColor.x,
+                                sellColor.y,
+                                sellColor.z,
+                                0.22f
+                            )
+                        ),
+                        1.0f
+                    );
+                }
 
                 const char* listingDirection =
                     "Stable";
@@ -21890,6 +22896,31 @@ void TradingPostUI::RenderTab(
                     {
                         ImGui::TextDisabled(
                             "Developing"
+                        );
+                    }
+
+                    {
+                        const ImVec2 metricDividerCursor =
+                            ImGui::GetCursorScreenPos();
+
+                        ImGui::GetWindowDrawList()->AddLine(
+                            ImVec2(
+                                sellMarketCardTopLeft.x,
+                                metricDividerCursor.y - 2.0f
+                            ),
+                            ImVec2(
+                                sellMarketCardTopLeft.x + 286.0f,
+                                metricDividerCursor.y - 2.0f
+                            ),
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    sellColor.x,
+                                    sellColor.y,
+                                    sellColor.z,
+                                    0.14f
+                                )
+                            ),
+                            1.0f
                         );
                     }
 
@@ -22051,6 +23082,31 @@ void TradingPostUI::RenderTab(
                         sellVsAverage
                     );
 
+                    {
+                        const ImVec2 metricDividerCursor =
+                            ImGui::GetCursorScreenPos();
+
+                        ImGui::GetWindowDrawList()->AddLine(
+                            ImVec2(
+                                sellMarketCardTopLeft.x,
+                                metricDividerCursor.y - 2.0f
+                            ),
+                            ImVec2(
+                                sellMarketCardTopLeft.x + 286.0f,
+                                metricDividerCursor.y - 2.0f
+                            ),
+                            ImGui::GetColorU32(
+                                ImVec4(
+                                    sellColor.x,
+                                    sellColor.y,
+                                    sellColor.z,
+                                    0.14f
+                                )
+                            ),
+                            1.0f
+                        );
+                    }
+
                     ImGui::BeginGroup();
 
                     ImGui::TextDisabled(
@@ -22176,10 +23232,10 @@ void TradingPostUI::RenderTab(
                                 sellColor.x,
                                 sellColor.y,
                                 sellColor.z,
-                                0.34f
+                                0.26f
                             )
                         ),
-                        4.0f,
+                        5.0f,
                         0,
                         1.0f
                     );
@@ -22201,10 +23257,10 @@ void TradingPostUI::RenderTab(
                                 sellColor.x,
                                 sellColor.y,
                                 sellColor.z,
-                                0.82f
+                                0.90f
                             )
                         ),
-                        2.0f
+                        3.0f
                     );
                 }
 
@@ -22700,10 +23756,47 @@ void TradingPostUI::RenderTab(
                 const ImVec2 buyMarketCardTopLeft =
                     ImGui::GetCursorScreenPos();
 
+                //
+                // Match the sell-side hierarchy: stronger title, same footprint,
+                // and no change to the bid calculations underneath.
+                //
+                ImGui::SetWindowFontScale(
+                    1.04f
+                );
+
                 ImGui::TextColored(
                     buyColor,
                     "BUY ORDERS"
                 );
+
+                ImGui::SetWindowFontScale(
+                    1.00f
+                );
+
+                {
+                    const ImVec2 titleRuleCursor =
+                        ImGui::GetCursorScreenPos();
+
+                    ImGui::GetWindowDrawList()->AddLine(
+                        ImVec2(
+                            buyMarketCardTopLeft.x,
+                            titleRuleCursor.y - 2.0f
+                        ),
+                        ImVec2(
+                            buyMarketCardTopLeft.x + 286.0f,
+                            titleRuleCursor.y - 2.0f
+                        ),
+                        ImGui::GetColorU32(
+                            ImVec4(
+                                buyColor.x,
+                                buyColor.y,
+                                buyColor.z,
+                                0.22f
+                            )
+                        ),
+                        1.0f
+                    );
+                }
 
                 const char* orderDirection =
                     "Stable";
@@ -22916,6 +24009,33 @@ void TradingPostUI::RenderTab(
                         buyVsAverage
                     );
 
+                }
+
+                // Quietly separate market statistics from the bid-reference tools.
+                // This is draw-only and consumes no additional vertical space.
+                {
+                    const ImVec2 metricDividerCursor =
+                        ImGui::GetCursorScreenPos();
+
+                    ImGui::GetWindowDrawList()->AddLine(
+                        ImVec2(
+                            buyMarketCardTopLeft.x,
+                            metricDividerCursor.y - 2.0f
+                        ),
+                        ImVec2(
+                            buyMarketCardTopLeft.x + 286.0f,
+                            metricDividerCursor.y - 2.0f
+                        ),
+                        ImGui::GetColorU32(
+                            ImVec4(
+                                buyColor.x,
+                                buyColor.y,
+                                buyColor.z,
+                                0.14f
+                            )
+                        ),
+                        1.0f
+                    );
                 }
 
                 //
@@ -24057,10 +25177,10 @@ void TradingPostUI::RenderTab(
                                 buyColor.x,
                                 buyColor.y,
                                 buyColor.z,
-                                0.34f
+                                0.26f
                             )
                         ),
-                        4.0f,
+                        5.0f,
                         0,
                         1.0f
                     );
@@ -24082,10 +25202,10 @@ void TradingPostUI::RenderTab(
                                 buyColor.x,
                                 buyColor.y,
                                 buyColor.z,
-                                0.82f
+                                0.90f
                             )
                         ),
-                        2.0f
+                        3.0f
                     );
                 }
 
@@ -24212,6 +25332,42 @@ void TradingPostUI::RenderTab(
                     ImGui::TextColored(
                         themeTelemetry,
                         "MARKET DEPTH"
+                    );
+
+                    const ImVec2 depthHeaderMin =
+                        ImGui::GetItemRectMin();
+
+                    const ImVec2 depthHeaderMax =
+                        ImGui::GetItemRectMax();
+
+                    const ImVec2 depthWindowPos =
+                        ImGui::GetWindowPos();
+
+                    const ImVec2 depthWindowSize =
+                        ImGui::GetWindowSize();
+
+                    ImGui::GetWindowDrawList()->AddLine(
+                        ImVec2(
+                            depthHeaderMax.x + 8.0f,
+                            depthHeaderMin.y +
+                            ImGui::GetTextLineHeight() * 0.52f
+                        ),
+                        ImVec2(
+                            depthWindowPos.x +
+                            depthWindowSize.x -
+                            10.0f,
+                            depthHeaderMin.y +
+                            ImGui::GetTextLineHeight() * 0.52f
+                        ),
+                        ImGui::GetColorU32(
+                            ImVec4(
+                                themeTelemetry.x,
+                                themeTelemetry.y,
+                                themeTelemetry.z,
+                                0.24f
+                            )
+                        ),
+                        1.0f
                     );
 
                     if (ImGui::IsItemHovered())
@@ -24342,70 +25498,71 @@ void TradingPostUI::RenderTab(
                             }
                         }
 
-                        ImGui::TextDisabled(
-                            "SELL LISTINGS"
-                        );
+                        if (
+                            ImGui::BeginTable(
+                                "##MarketDepthMetrics",
+                                3,
+                                ImGuiTableFlags_SizingStretchSame |
+                                ImGuiTableFlags_NoSavedSettings
+                            )
+                            )
+                        {
+                            ImGui::TableNextRow();
 
-                        ImGui::SameLine(
-                            0.0f,
-                            6.0f
-                        );
+                            ImGui::TableNextColumn();
+                            ImGui::TextDisabled(
+                                "SELL LISTINGS"
+                            );
+                            ImGui::SameLine(
+                                0.0f,
+                                6.0f
+                            );
+                            ImGui::TextColored(
+                                sellColor,
+                                "%s  (%+lld)",
+                                FormatGoldWithCommas(
+                                    latestDepth.sellQuantity
+                                ).c_str(),
+                                static_cast<long long>(
+                                    latestSellDepthChange
+                                    )
+                            );
 
-                        ImGui::TextColored(
-                            sellColor,
-                            "%s  (%+lld)",
-                            FormatGoldWithCommas(
-                                latestDepth.sellQuantity
-                            ).c_str(),
-                            static_cast<long long>(
-                                latestSellDepthChange
-                                )
-                        );
+                            ImGui::TableNextColumn();
+                            ImGui::TextDisabled(
+                                "BUY ORDERS"
+                            );
+                            ImGui::SameLine(
+                                0.0f,
+                                6.0f
+                            );
+                            ImGui::TextColored(
+                                buyColor,
+                                "%s  (%+lld)",
+                                FormatGoldWithCommas(
+                                    latestDepth.buyQuantity
+                                ).c_str(),
+                                static_cast<long long>(
+                                    latestBuyDepthChange
+                                    )
+                            );
 
-                        ImGui::SameLine(
-                            0.0f,
-                            24.0f
-                        );
+                            ImGui::TableNextColumn();
+                            ImGui::TextDisabled(
+                                "LATEST MOVE"
+                            );
+                            ImGui::SameLine(
+                                0.0f,
+                                6.0f
+                            );
+                            ImGui::TextColored(
+                                depthClueColor,
+                                "%s",
+                                depthClueText
+                            );
 
-                        ImGui::TextDisabled(
-                            "BUY ORDERS"
-                        );
-
-                        ImGui::SameLine(
-                            0.0f,
-                            6.0f
-                        );
-
-                        ImGui::TextColored(
-                            buyColor,
-                            "%s  (%+lld)",
-                            FormatGoldWithCommas(
-                                latestDepth.buyQuantity
-                            ).c_str(),
-                            static_cast<long long>(
-                                latestBuyDepthChange
-                                )
-                        );
-
-                        ImGui::SameLine(
-                            0.0f,
-                            24.0f
-                        );
-
-                        ImGui::TextDisabled(
-                            "LATEST MOVE"
-                        );
-
-                        ImGui::SameLine(
-                            0.0f,
-                            6.0f
-                        );
-
-                        ImGui::TextColored(
-                            depthClueColor,
-                            "%s",
-                            depthClueText
-                        );
+                            ImGui::EndTable();
+                        }
                     }
                     else
                     {
@@ -24444,8 +25601,6 @@ void TradingPostUI::RenderTab(
                 }
 
                 // Stock-dashboard KPI rail. The important context is arranged
-                // Stock-dashboard KPI rail. The important context is arranged
-                // Stock-dashboard KPI rail. The important context is arranged
                 // left-to-right under the charts so the pane stays fixed-height
                 // and never requires its own vertical scrolling.
                 const char* confidenceLabel =
@@ -24469,8 +25624,41 @@ void TradingPostUI::RenderTab(
 
                 ImGui::Separator();
 
-                ImGui::TextDisabled(
+                ImGui::TextColored(
+                    themeTelemetry,
                     "MARKET SNAPSHOT"
+                );
+
+                const ImVec2 snapshotHeaderMin =
+                    ImGui::GetItemRectMin();
+
+                const ImVec2 snapshotHeaderMax =
+                    ImGui::GetItemRectMax();
+
+                const ImVec2 snapshotContentMax =
+                    ImGui::GetWindowContentRegionMax();
+
+                ImGui::GetWindowDrawList()->AddLine(
+                    ImVec2(
+                        snapshotHeaderMax.x + 8.0f,
+                        snapshotHeaderMin.y +
+                        ImGui::GetTextLineHeight() * 0.52f
+                    ),
+                    ImVec2(
+                        ImGui::GetWindowPos().x +
+                        snapshotContentMax.x,
+                        snapshotHeaderMin.y +
+                        ImGui::GetTextLineHeight() * 0.52f
+                    ),
+                    ImGui::GetColorU32(
+                        ImVec4(
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
+                            0.24f
+                        )
+                    ),
+                    1.0f
                 );
 
                 ImGui::PushStyleColor(
@@ -24479,7 +25667,17 @@ void TradingPostUI::RenderTab(
                         themeTelemetry.x,
                         themeTelemetry.y,
                         themeTelemetry.z,
-                        0.20f
+                        0.28f
+                    )
+                );
+
+                ImGui::PushStyleColor(
+                    ImGuiCol_TableRowBg,
+                    ImVec4(
+                        themePanelRaised.x,
+                        themePanelRaised.y,
+                        themePanelRaised.z,
+                        0.18f
                     )
                 );
 
@@ -24489,6 +25687,7 @@ void TradingPostUI::RenderTab(
                         6,
                         ImGuiTableFlags_SizingStretchSame |
                         ImGuiTableFlags_BordersInnerV |
+                        ImGuiTableFlags_RowBg |
                         ImGuiTableFlags_NoSavedSettings,
                         ImVec2(
                             0.0f,
@@ -24500,7 +25699,13 @@ void TradingPostUI::RenderTab(
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
 
-                    ImGui::TextDisabled(
+                    ImGui::TextColored(
+                        ImVec4(
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
+                            0.78f
+                        ),
                         "CONFIDENCE"
                     );
 
@@ -24512,11 +25717,17 @@ void TradingPostUI::RenderTab(
 
                     ImGui::TableNextColumn();
 
-                    ImGui::TextDisabled(
+                    ImGui::TextColored(
+                        ImVec4(
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
+                            0.78f
+                        ),
                         "COVERAGE"
                     );
 
-                    ImGui::TextDisabled(
+                    ImGui::Text(
                         "%d%%  %s / %s",
                         coveragePercent,
                         spanText.c_str(),
@@ -24532,7 +25743,13 @@ void TradingPostUI::RenderTab(
 
                     ImGui::TableNextColumn();
 
-                    ImGui::TextDisabled(
+                    ImGui::TextColored(
+                        ImVec4(
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
+                            0.78f
+                        ),
                         "MARKET PROWL"
                     );
 
@@ -24774,7 +25991,13 @@ void TradingPostUI::RenderTab(
                         }
                     }
 
-                    ImGui::TextDisabled(
+                    ImGui::TextColored(
+                        ImVec4(
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
+                            0.78f
+                        ),
                         "VOLATILITY"
                     );
 
@@ -24899,7 +26122,13 @@ void TradingPostUI::RenderTab(
                                 ) *
                             100.0;
 
-                        ImGui::TextDisabled(
+                        ImGui::TextColored(
+                            ImVec4(
+                                themeTelemetry.x,
+                                themeTelemetry.y,
+                                themeTelemetry.z,
+                                0.78f
+                            ),
                             "SPREAD"
                         );
 
@@ -24907,7 +26136,7 @@ void TradingPostUI::RenderTab(
                             spreadCopper,
                             nullptr,
                             ImGui::GetStyleColorVec4(
-                                ImGuiCol_TextDisabled
+                                ImGuiCol_Text
                             )
                         );
 
@@ -24916,14 +26145,20 @@ void TradingPostUI::RenderTab(
                             5.0f
                         );
 
-                        ImGui::TextDisabled(
+                        ImGui::Text(
                             "(%.2f%%)",
                             spreadPercent
                         );
                     }
                     else
                     {
-                        ImGui::TextDisabled(
+                        ImGui::TextColored(
+                            ImVec4(
+                                themeTelemetry.x,
+                                themeTelemetry.y,
+                                themeTelemetry.z,
+                                0.78f
+                            ),
                             "SPREAD"
                         );
 
@@ -24934,7 +26169,13 @@ void TradingPostUI::RenderTab(
 
                     ImGui::TableNextColumn();
 
-                    ImGui::TextDisabled(
+                    ImGui::TextColored(
+                        ImVec4(
+                            themeTelemetry.x,
+                            themeTelemetry.y,
+                            themeTelemetry.z,
+                            0.78f
+                        ),
                         "PRICE ALERTS"
                     );
 
@@ -25005,7 +26246,9 @@ void TradingPostUI::RenderTab(
                     ImGui::EndTable();
                 }
 
-                ImGui::PopStyleColor();
+                ImGui::PopStyleColor(
+                    2
+                );
 
             }
             else
