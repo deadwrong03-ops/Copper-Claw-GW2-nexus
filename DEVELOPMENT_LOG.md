@@ -8,10 +8,59 @@ The project began by extracting the already-working Trading Post framework that 
 
 Display name: `Copper&Claw`  
 Filesystem/data prefix: `CopperAndClaw`  
-Latest published release: `v0.1.4`  
+Latest published release: `v0.2.0`
 Development: `Active`
 
 Current development builds may contain features or improvements that have not yet been included in the latest published release.
+
+---
+
+## 2026-10-24 — v0.2.0 Release
+
+Prepared and validated the first minor-version Copper&Claw release after v0.1.4. v0.2.0 rolls the major post-v0.1.4 development work into one public release candidate.
+
+### Release scope
+
+The v0.2.0 release includes the major market-analysis and Watchlist work completed since v0.1.4:
+
+- **Prowl Radar** with Live, New 1h, Following, and Resolved 24h views
+- paginated Collector `/signals` retrieval beyond the original 500-row presentation boundary
+- persistent Prowl Follow List
+- Watchlist Heatmap
+- automatic Watchlist category filters backed by local item-index metadata
+- persistent Watchlist Groups as a separate manual organization layer
+- removal of the redundant top-level **All Items / Favorites** Watchlist filter while preserving per-item Favorite state
+- adaptive **Suggested Bid**
+- persistent per-item **My Bid**
+- My Bid market status: **AT TOP / OUTBID / ABOVE TOP / NO MARKET DATA**
+- longer **6 Months / 1 Year** Trend Windows
+- Collector-first 1-year history with cached GW2TP gap filling for missing older coverage
+- **Hybrid History** source reporting when long-window analysis combines sources
+- time-normalized whole-window **Avg** plus local **Roll Avg**
+- compact Market Depth order-book diagnostics
+- price-chart renderer reliability improvements for dense Collector-backed data
+- richer item-index metadata for icons, hover details, automatic category classification, and item presentation
+- refreshed Guild Wars 2 / Living World visual themes plus Cyberpunk 2077
+- Item Analysis UI polish, including the compact **Top Buy / Lowest Sell / selected-window Avg** summary, refined Sell/Buy cards, and cleaner Market Depth / Market Snapshot presentation
+
+### Release-version validation
+
+Release identifiers were advanced from v0.1.4 to v0.2.0:
+
+- Nexus addon version: `0.2.0.0`
+- in-app footer: `Copper&Claw v0.2.0`
+
+The exact **Release x64** build using those identifiers loaded successfully in Guild Wars 2 and the new version values were verified in-game.
+
+### Documentation / release packaging
+
+- `README.md` updated for v0.2.0
+- `DEVELOPMENT_LOG.md` updated for v0.2.0
+- README reconciled with the current Watchlist organization model
+- per-item Favorites remain available, but the redundant top-level All Items / Favorites filter is no longer documented as current UI
+- release artifact should use the exact validated Release x64 `Copper & Claw.dll`
+
+**Result: PASS — v0.2.0 RELEASE BUILD VALIDATED; READY FOR TAG / GITHUB RELEASE**
 
 ---
 
@@ -2611,7 +2660,7 @@ The following systems are currently working in-game:
 
 **Current overall status: Core standalone functionality is working. Collector integration is now active in development builds, with Collector-first pricing, historical import, automatic retry, and dynamic refresh fallback validated in-game.**
 
-Copper&Claw has since published releases through `v0.1.4`.
+Copper&Claw has since published releases through `v0.2.0`.
 
 ---
 
@@ -3408,6 +3457,29 @@ Current standalone signature:
 Decision: retain for standalone/non-Raidcore use.
 
 Replace only if Copper&Claw later receives an assigned Raidcore signature.
+
+---
+
+## v0.2.0 Release Checklist
+
+- [x] set `entry.cpp` version to `0.2.0.0`
+- [x] set in-app footer to `Copper&Claw v0.2.0`
+- [x] update `README.md` for v0.2.0
+- [x] update `DEVELOPMENT_LOG.md` for v0.2.0
+- [x] current Watchlist Groups / category organization reflected in README
+- [x] redundant top-level All Items / Favorites filter removed from current README behavior
+- [x] per-item Favorite behavior retained
+- [x] clean **Release x64** build completed
+- [x] exact v0.2.0 Release x64 DLL installed and tested
+- [x] Nexus reports `0.2.0.0`
+- [x] footer reports `Copper&Claw v0.2.0`
+- [x] no blocking regression found in the release-version smoke test
+- [ ] commit and push v0.2.0 release-prep documentation/version changes
+- [ ] create Git tag `v0.2.0`
+- [ ] push tag `v0.2.0`
+- [ ] publish GitHub release `v0.2.0`
+- [ ] attach the exact tested Release x64 `Copper & Claw.dll`
+- [ ] confirm GitHub shows `v0.2.0` as the latest normal release
 
 ---
 

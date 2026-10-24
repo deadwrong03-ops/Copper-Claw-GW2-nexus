@@ -7,10 +7,32 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 
 ## Status
 
-**Latest Published Release:** v0.1.4  
+**Latest Published Release:** v0.2.0
 **Development:** Active
 
 > **Development Note:** Copper&Claw is actively developed. Some recently added features or improvements may be available in the source or development build before they are included in the latest published release.
+
+---
+
+## What's New in v0.2.0
+
+v0.2.0 is the largest Copper&Claw update since v0.1.4, combining the major market-analysis, Watchlist, item-index, and UI work completed during the post-v0.1.4 development cycle.
+
+Highlights include:
+
+- persistent **Watchlist Groups** alongside the automatic item-category filters
+- removal of the redundant top-level **All Items / Favorites** filter while retaining per-item Favorite marking
+- **Prowl Radar** with Live, New 1h, Following, and Resolved 24h views
+- paginated Collector signal feeds so Radar is no longer intentionally limited to the first 500 rows
+- persistent per-item **My Bid** references with **AT TOP / OUTBID / ABOVE TOP / NO MARKET DATA** status
+- adaptive **Suggested Bid** reference pricing
+- **6 Months / 1 Year** Trend Windows with Collector-first hybrid history support
+- compact **Market Depth** order-book diagnostics
+- expanded local item-index metadata for icons, hover details, automatic categories, and richer item presentation
+- refreshed Guild Wars 2 / Living World themes plus the Cyberpunk 2077 alternate theme
+- substantial Item Analysis polish, including the compact **Top Buy / Lowest Sell / selected-window Avg** summary and cleaner analysis/snapshot presentation
+
+The v0.2.0 Release x64 build was validated in-game with the new version identifiers before packaging.
 
 ---
 
@@ -20,6 +42,7 @@ Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Po
 - Official Guild Wars 2 item icons beside watched items
 - Hover item icons for brief indexed item details and stats without making a new network request on hover
 - Automatic **Watchlist category filters**: All, Weapons, Armor, Dyes, Consumables, Materials, Upgrades, Trinkets, and Other
+- Persistent **Watchlist Groups** for manual organization alongside the automatic category filters
 - Persistent per-item **Favorites**
 - **List / Heatmap** Watchlist presentation with compact market-state tiles
 - Persistent **Prowl Follow List** with 24-hour, 48-hour, or until-removed follow durations
@@ -96,7 +119,7 @@ Volatility sorting uses the same readiness rules as the **Market Volatility** ba
 
 ---
 
-## Watchlist Heatmap, Categories & Favorites
+## Watchlist Heatmap, Categories, Groups & Favorites
 
 Copper&Claw's Watchlist uses the current compact card layout and also includes a **Heatmap** presentation for quickly scanning watched items.
 
@@ -105,13 +128,16 @@ Heatmap tiles show the item icon, current Sell price, selected-window percentage
 Heatmap interaction remains fully functional:
 
 - left-click a tile to open that item in **Item Analysis**
-- right-click a tile for Favorite, Follow, Refresh Price, and Remove actions
+- right-click a tile for Favorite, Follow, Move to Group, Refresh Price, and Remove actions
 
 The Heatmap preference persists across Guild Wars 2 restarts.
 
 The Watchlist can also be collapsed into a narrow icon rail. Watched-item icons remain selectable from the rail so Item Analysis can still be switched without reopening the full list.
 
-The old manual Watchlist folder/group workflow has been replaced with compact **automatic category filters**. Copper&Claw classifies watched items from the Guild Wars 2 item metadata stored in the local item index.
+The Watchlist uses two complementary organization layers:
+
+- compact **automatic category filters** derived from Guild Wars 2 item metadata
+- persistent **Watchlist Groups** for manual organization
 
 Current category buttons:
 
@@ -125,13 +151,14 @@ Current category buttons:
 - **TRINK** — Trinkets
 - **OTHER** — Items that do not fit the categories above
 
-Categories are display filters only. Items are not manually moved between folders, and there is no **Ungrouped** maintenance step.
+Categories are display filters only. Group assignments are a separate persistent organization layer and survive Guild Wars 2 restarts.
 
 The category filter is intentionally session-only and starts on **ALL** each launch. When a newly watched item is added while another category is selected, Copper&Claw switches to the new item's category so the item does not appear to vanish.
 
 The compact category strip stays inside the Watchlist pane and does not add another tall section above Item Analysis or push the **Trend Window** farther down the page.
 
-Items can also be marked as **Favorites** using the star beside the item. **All Items** shows the complete watch list, while **Favorites** filters the current category to starred items only.
+Items can still be marked as **Favorites** using the existing per-item star. The old top-level **All Items / Favorites** filter has been removed from the Watchlist toolbar because Watchlist Groups now provide the primary manual organization workflow; Favorite state remains available as a lightweight per-item marker.
+
 ### Prowl Follow List
 
 Any item surfaced by Prowl can be followed without permanently adding it to the Watchlist.
@@ -631,6 +658,7 @@ Copper&Claw saves:
 - watched items
 - per-item My Bid references and saved timestamps
 - Favorites
+- Watchlist group assignments
 - Heatmap presentation preference
 - Prowl Follow List and follow expiration times
 - Sell Targets
