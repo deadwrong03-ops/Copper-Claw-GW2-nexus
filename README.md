@@ -3,7 +3,8 @@
 
 Copper&Claw is a standalone **Guild Wars 2 Nexus addon** for tracking Trading Post prices, building local price history, analyzing market movement, and alerting you when watched items reach a target price.
 
-<img width="350" height="350" alt="newmarketlook" src="https://github.com/user-attachments/assets/ab994539-5f1c-43a7-892a-36f3fe577486" />
+<img width="500" height="500" alt="Screenshot 2026-10-24 233927" src="https://github.com/user-attachments/assets/c3ede746-5c91-4c3e-b190-3588aafbc690" />
+
 
 ## Status
 
