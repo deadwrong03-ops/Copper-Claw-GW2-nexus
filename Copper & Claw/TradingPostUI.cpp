@@ -21851,11 +21851,16 @@ void TradingPostUI::RenderTab(
                     );
 
                 const int coveragePercent =
-                    static_cast<int>(
-                        selectedWindowCoverage *
-                        100.0 +
-                        0.5
-                        );
+                    windowCoverage.coveredSeconds >=
+                    trendWindowSeconds
+                    ? 100
+                    : std::min(
+                        99,
+                        static_cast<int>(
+                            selectedWindowCoverage *
+                            100.0
+                            )
+                    );
 
                 const uint64_t newestHistoryTimestamp =
                     history.empty()
